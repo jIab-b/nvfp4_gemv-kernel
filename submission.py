@@ -115,10 +115,7 @@ torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::
     int K = a.size(1) * 2;
     int L = a.size(2);
     int N_rows = b.size(0);
-
-    TORCH_CHECK(N_rows >= 1, "Input B must have at least one row");
-    TORCH_CHECK(sfb.size(0) == N_rows, "Scale tensor B row mismatch");
-
+    
     dim3 grid(M, L);
     dim3 block(32);
 
