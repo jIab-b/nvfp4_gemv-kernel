@@ -34,7 +34,8 @@ __device__ __forceinline__ uint64_t pack_smem_desc(uint32_t base, uint32_t ldm_b
 
 __device__ __forceinline__ void ld_tmem(float (&frag)[8], uint32_t src) {
     asm volatile(
-        "tcgen05.ldmatrix.sync.aligned.m16n8.row.f32 { %0, %1, %2, %3, %4, %5, %6, %7 }, [%8];\n"
+        "tcgen05.ld.sync.aligned.32x32b.x8.b32 { %0, %1, %2, %3, %4, %5, %6, %7 }, [%8];\n"
+        "tcgen05.wait::ld.sync.aligned;\n"
         : "=f"(frag[0]), "=f"(frag[1]), "=f"(frag[2]), "=f"(frag[3]),
           "=f"(frag[4]), "=f"(frag[5]), "=f"(frag[6]), "=f"(frag[7])
         : "r"(src)
