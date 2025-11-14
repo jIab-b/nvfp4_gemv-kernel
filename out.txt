@@ -1,5 +1,5 @@
 "**NVIDIA on GitHub ✅ success**
-> Workflow [19352788733](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19352788733>) completed
+> Workflow [19353847546](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19353847546>) completed
 > Downloading artifacts... done
 > ❌ Running benchmarks failed (internal error 1)
 
@@ -11,79 +11,22 @@ Running on:
 * Torch: `2.9.0+cu130`
 # Running failed
 Command ```bash
-python3 eval.py benchmark /tmp/tmpl2vhs7sw```
-exited with error code **1** after 10.90 seconds.
+python3 eval.py benchmark /tmp/tmpupifimay```
+exited with error code **1** after 2.23 seconds.
 
 ## Program stderr:
 ```
 multiprocessing.pool.RemoteTraceback: 
 \"\"\"
 Traceback (most recent call last):
-  File \"/usr/local/lib/python3.10/dist-packages/torch/utils/cpp_extension.py\", line 2597, in _run_ninja_build
-    subprocess.run(
-  File \"/usr/lib/python3.10/subprocess.py\", line 526, in run
-    raise CalledProcessError(retcode, process.args,
-subprocess.CalledProcessError: Command '['ninja', '-v']' returned non-zero exit status 2.
-
-The above exception was the direct cause of the following exception:
-
-Traceback (most recent call last):
   File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 125, in worker
     result = (True, func(*args, **kwds))
   File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 208, in _run_single_benchmark
     from submission import custom_kernel
-  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 223, in <module>
-    module = load_inline(
-  File \"/usr/local/lib/python3.10/dist-packages/torch/utils/cpp_extension.py\", line 2051, in load_inline
-    return _jit_compile(
-  File \"/usr/local/lib/python3.10/dist-packages/torch/utils/cpp_extension.py\", line 2134, in _jit_compile
-    _write_ninja_file_and_build_library(
-  File \"/usr/local/lib/python3.10/dist-packages/torch/utils/cpp_extension.py\", line 2286, in _write_ninja_file_and_build_library
-    _run_ninja_build(
-  File \"/usr/local/lib/python3.10/dist-packages/torch/utils/cpp_extension.py\", line 2614, in _run_ninja_build
-    raise RuntimeError(message) from e
-RuntimeError: Error building extension 'batched_scaled_gemv': [1/2] /usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output cuda.cuda.o.d -DTORCH_EXTENSION_NAME=batched_scaled_gemv -DTORCH_API_INCLUDE_EXTENSION_H -isystem /usr/local/lib/python3.10/dist-packages/torch/include -isystem /usr/local/lib/python3.10/dist-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /usr/include/python3.10 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++17 -gencode=arch=compute_100,code=sm_100 -gencode=arch=compute_110,code=sm_110 -c /home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu -o cuda.cuda.o 
-FAILED: [code=2] cuda.cuda.o 
-/usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output cuda.cuda.o.d -DTORCH_EXTENSION_NAME=batched_scaled_gemv -DTORCH_API_INCLUDE_EXTENSION_H -isystem /usr/local/lib/python3.10/dist-packages/torch/include -isystem /usr/local/lib/python3.10/dist-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /usr/include/python3.10 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++17 -gencode=arch=compute_100,code=sm_100 -gencode=arch=compute_110,code=sm_110 -c /home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu -o cuda.cuda.o 
-/home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu(31): error: expected a \")\"
-      tcgen05_alloc(cta_group_1{}, &handle, cols);
-                               ^
-
-/home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu(31): error: no instance of function template \"cuda::ptx::__4::tcgen05_alloc\" matches the argument list
-            argument types are: (const cuda::ptx::__4::cta_group_1_t)
-      tcgen05_alloc(cta_group_1{}, &handle, cols);
-      ^
-/usr/local/cuda-13.0/targets/x86_64-linux/include/cccl/cuda/__ptx/instructions/generated/tcgen05_alloc.h(19): note #3322-D: number of parameters of function template \"cuda::ptx::__4::tcgen05_alloc\" does not match the call
-  tcgen05_alloc(cta_group_t<_Cta_Group> __cta_group, ::cuda::std::__4::uint32_t* __dst, const ::cuda::std::__4::uint32_t& __nCols)
-  ^
-
-/home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu(36): error: expected a \")\"
-      tcgen05_dealloc(cta_group_1{}, handle, cols);
-                                 ^
-
-/home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu(36): error: no instance of function template \"cuda::ptx::__4::tcgen05_dealloc\" matches the argument list
-            argument types are: (const cuda::ptx::__4::cta_group_1_t)
-      tcgen05_dealloc(cta_group_1{}, handle, cols);
-      ^
-/usr/local/cuda-13.0/targets/x86_64-linux/include/cccl/cuda/__ptx/instructions/generated/tcgen05_alloc.h(57): note #3322-D: number of parameters of function template \"cuda::ptx::__4::tcgen05_dealloc\" does not match the call
-  tcgen05_dealloc(cta_group_t<_Cta_Group> __cta_group, ::cuda::std::__4::uint32_t __taddr, const ::cuda::std::__4::uint32_t& __nCols)
-  ^
-
-/home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu(40): error: expected a \")\"
-      tcgen05_cp_64x128b_warpx2_01_23(cta_group_1{}, dst, s_desc);
-                                                 ^
-
-/home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu(40): error: no instance of function template \"cuda::ptx::__4::tcgen05_cp_64x128b_warpx2_01_23\" matches the argument list
-            argument types are: (const cuda::ptx::__4::cta_group_1_t)
-      tcgen05_cp_64x128b_warpx2_01_23(cta_group_1{}, dst, s_desc);
-      ^
-/usr/local/cuda-13.0/targets/x86_64-linux/include/cccl/cuda/__ptx/instructions/generated/tcgen05_cp.h(146): note #3322-D: number of parameters of function template \"cuda::ptx::__4::tcgen05_cp_64x128b_warpx2_01_23\" does not match the call
-  __attribute__((device)) static inline void tcgen05_cp_64x128b_warpx2_01_23(
-                                             ^
-
-6 errors detected in the compilation of \"/home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu\".
-ninja: build stopped: subcommand failed.
-
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 56
+    float acc = 0.f;
+                 ^
+SyntaxError: invalid decimal literal
 \"\"\"
 
 The above exception was the direct cause of the following exception:
@@ -101,44 +44,7 @@ Traceback (most recent call last):
     return self.apply_async(func, args, kwds).get()
   File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 774, in get
     raise self._value
-RuntimeError: Error building extension 'batched_scaled_gemv': [1/2] /usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output cuda.cuda.o.d -DTORCH_EXTENSION_NAME=batched_scaled_gemv -DTORCH_API_INCLUDE_EXTENSION_H -isystem /usr/local/lib/python3.10/dist-packages/torch/include -isystem /usr/local/lib/python3.10/dist-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /usr/include/python3.10 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++17 -gencode=arch=compute_100,code=sm_100 -gencode=arch=compute_110,code=sm_110 -c /home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu -o cuda.cuda.o 
-FAILED: [code=2] cuda.cuda.o 
-/usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output cuda.cuda.o.d -DTORCH_EXTENSION_NAME=batched_scaled_gemv -DTORCH_API_INCLUDE_EXTENSION_H -isystem /usr/local/lib/python3.10/dist-packages/torch/include -isystem /usr/local/lib/python3.10/dist-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /usr/include/python3.10 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++17 -gencode=arch=compute_100,code=sm_100 -gencode=arch=compute_110,code=sm_110 -c /home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu -o cuda.cuda.o 
-/home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu(31): error: expected a \")\"
-      tcgen05_alloc(cta_group_1{}, &handle, cols);
-                               ^
-
-/home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu(31): error: no instance of function template \"cuda::ptx::__4::tcgen05_alloc\" matches the argument list
-            argument types are: (const cuda::ptx::__4::cta_group_1_t)
-      tcgen05_alloc(cta_group_1{}, &handle, cols);
-      ^
-/usr/local/cuda-13.0/targets/x86_64-linux/include/cccl/cuda/__ptx/instructions/generated/tcgen05_alloc.h(19): note #3322-D: number of parameters of function template \"cuda::ptx::__4::tcgen05_alloc\" does not match the call
-  tcgen05_alloc(cta_group_t<_Cta_Group> __cta_group, ::cuda::std::__4::uint32_t* __dst, const ::cuda::std::__4::uint32_t& __nCols)
-  ^
-
-/home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu(36): error: expected a \")\"
-      tcgen05_dealloc(cta_group_1{}, handle, cols);
-                                 ^
-
-/home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu(36): error: no instance of function template \"cuda::ptx::__4::tcgen05_dealloc\" matches the argument list
-            argument types are: (const cuda::ptx::__4::cta_group_1_t)
-      tcgen05_dealloc(cta_group_1{}, handle, cols);
-      ^
-/usr/local/cuda-13.0/targets/x86_64-linux/include/cccl/cuda/__ptx/instructions/generated/tcgen05_alloc.h(57): note #3322-D: number of parameters of function template \"cuda::ptx::__4::tcgen05_dealloc\" does not match the call
-  tcgen05_dealloc(cta_group_t<_Cta_Group> __cta_group, ::cuda::std::__4::uint32_t __taddr, const ::cuda::std::__4::uint32_t& __nCols)
-  ^
-
-/home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu(40): error: expected a \")\"
-      tcgen05_cp_64x128b_warpx2_01_23(cta_group_1{}, dst, s_desc);
-                                                 ^
-
-/home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu(40): error: no instance of function template \"cuda::ptx::__4::tcgen05_cp_64x128b_warpx2_01_23\" matches the argument list
-            argument types are: (const cuda::ptx::__4::cta_group_1_t)
-      tcgen05_cp_64x128b_warpx2_01_23(cta_group_1{}, dst, s_desc);
-      ^
-/usr/local/cuda-13.0/targets/x86_64-linux/include/cccl/cuda/__ptx/instructions/generated/tcgen05_cp.h(146): note #3322-D: number of parameters of function template \"cuda::ptx::__4::tcgen05_cp_64x128b_warpx2_01_23\" does not match the call
-  __attribute__((device)) static inline void tcgen05_cp_64x128b_warpx2_01_23(
-                                             ^
-
-6 errors detected in the compilation of \"/home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu\".
-ninja: build stopped: subcommand failed.```"
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 56
+    float acc = 0.f;
+                 ^
+SyntaxError: invalid decimal literal```"

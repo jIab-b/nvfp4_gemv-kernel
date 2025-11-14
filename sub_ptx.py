@@ -20,8 +20,6 @@ constexpr int BLOCK_N = 8;
 constexpr int BLOCK_K = 64;
 
 __device__ __forceinline__ uint64_t pack_smem_desc(uint32_t base, uint32_t ldm_bytes, uint32_t stride_bytes) {
-    // Descriptor layout documented in PTX ISA: bits [0:15] = leading dimension bytes,
-    // bits [16:29] = stride/16B, bits [30:47] = base>>4, bits [48:63] swizzle (zero for linear row-major).
     uint64_t desc = 0;
     uint64_t ldm = static_cast<uint64_t>(ldm_bytes & 0xFFFFull);
     uint64_t stride = static_cast<uint64_t>((stride_bytes >> 4) & 0x3FFFull);
@@ -30,20 +28,6 @@ __device__ __forceinline__ uint64_t pack_smem_desc(uint32_t base, uint32_t ldm_b
     desc |= (stride << 16);
     desc |= (base_field << 30);
     return desc;
-}
-
-__device__ __forceinline__ uint32_t alloc_tmem(uint32_t cols) {
-    uint32_t handle = 0;
-    tcgen05_alloc(cta_group_1{}, &handle, cols);
-    return handle;
-}
-
-__device__ __forceinline__ void dealloc_tmem(uint32_t handle, uint32_t cols) {
-    tcgen05_dealloc(cta_group_1{}, handle, cols);
-}
-
-__device__ __forceinline__ void cp_to_tmem(uint32_t dst, uint64_t s_desc) {
-    tcgen05_cp_64x128b_warpx2_01_23(cta_group_1{}, dst, s_desc);
 }
 
 __device__ __forceinline__ void ld_tmem(float (&frag)[8], uint32_t src) {
@@ -103,9 +87,9 @@ __global__ void gemv_ptx_kernel(
     uint32_t scale_cols = ((BLOCK_K / 16) + 31) / 32 * 32;
 
     if (lane == 0) {
-        shared_handles[0] = alloc_tmem(d_tmem_cols);
-        shared_handles[1] = alloc_tmem(scale_cols);
-        shared_handles[2] = alloc_tmem(scale_cols);
+        tcgen05_alloc(cta_group_1, &shared_handles[0], d_tmem_cols);
+        tcgen05_alloc(cta_group_1, &shared_handles[1], scale_cols);
+        tcgen05_alloc(cta_group_1, &shared_handles[2], scale_cols);
     }
     __syncthreads();
 
@@ -118,7 +102,7 @@ __global__ void gemv_ptx_kernel(
     uint32_t smem_base_sfa = __cvta_generic_to_shared(smem_scale_a);
     uint32_t smem_base_sfb = __cvta_generic_to_shared(smem_scale_b);
 
-    uint64_t idesc = 0x0000000000000000ull;
+    uint32_t idesc = 0u;
 
     auto mma_op = [&](uint32_t k_tile) {
         for (int idx = lane; idx < BLOCK_M * BLOCK_K / 2; idx += threads) {
@@ -144,10 +128,8 @@ __global__ void gemv_ptx_kernel(
         uint64_t scaleA_desc = pack_smem_desc(smem_base_sfa, BLOCK_K / 16, BLOCK_K / 16);
         uint64_t scaleB_desc = pack_smem_desc(smem_base_sfb, BLOCK_K / 16, BLOCK_K / 16);
 
-        cp_to_tmem(scaleA_tmem, scaleA_desc);
-        cp_to_tmem(scaleB_tmem, scaleB_desc);
-        cp_to_tmem(d_tmem, a_desc);
-        cp_to_tmem(d_tmem, b_desc);
+        tcgen05_cp_64x128b_warpx2_01_23(cta_group_1, scaleA_tmem, scaleA_desc);
+        tcgen05_cp_64x128b_warpx2_01_23(cta_group_1, scaleB_tmem, scaleB_desc);
 
         __syncthreads();
 
@@ -175,48 +157,10 @@ __global__ void gemv_ptx_kernel(
 
     __syncthreads();
     if (lane == 0) {
-        dealloc_tmem(scaleB_tmem, scale_cols);
-        dealloc_tmem(scaleA_tmem, scale_cols);
-        dealloc_tmem(d_tmem, d_tmem_cols);
+        tcgen05_dealloc(cta_group_1, scaleB_tmem, scale_cols);
+        tcgen05_dealloc(cta_group_1, scaleA_tmem, scale_cols);
+        tcgen05_dealloc(cta_group_1, d_tmem, d_tmem_cols);
     }
-}
-
-torch::Tensor batched_scaled_gemv_cuda(
-    torch::Tensor a,
-    torch::Tensor b,
-    torch::Tensor sfa,
-    torch::Tensor sfb,
-    torch::Tensor c)
-{
-    const int M = a.size(0);
-    const int K_bytes = a.size(1);
-    const int L = a.size(2);
-
-    auto a_strides = a.strides();
-    auto b_strides = b.strides();
-    auto sfa_strides = sfa.strides();
-    auto sfb_strides = sfb.strides();
-    auto c_strides = c.strides();
-
-    dim3 block(BLOCK_M);
-    dim3 grid((M + BLOCK_M - 1) / BLOCK_M, L);
-
-    gemv_ptx_kernel<<<grid, block>>>(
-        reinterpret_cast<const uint8_t*>(a.data_ptr<int8_t>()),
-        a_strides[0], a_strides[1], a_strides[2],
-        reinterpret_cast<const uint8_t*>(b.data_ptr<int8_t>()),
-        b_strides[1], b_strides[2],
-        sfa.data_ptr<int8_t>(),
-        sfa_strides[0], sfa_strides[1], sfa_strides[2],
-        sfb.data_ptr<int8_t>(),
-        sfb_strides[1], sfb_strides[2],
-        c.data_ptr<at::Half>(),
-        c_strides[0], c_strides[2],
-        M,
-        K_bytes,
-        L);
-
-    return c;
 }
 """
 
@@ -230,7 +174,8 @@ module = load_inline(
         "--use_fast_math",
         "-std=c++17",
         "-gencode=arch=compute_100,code=sm_100",
-        "-gencode=arch=compute_110,code=sm_110"
+        "-gencode=arch=compute_101,code=sm_101",
+        "-gencode=arch=compute_103,code=sm_103"
     ],
     with_cuda=True,
     verbose=False,
