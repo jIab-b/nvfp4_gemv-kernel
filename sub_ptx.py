@@ -174,8 +174,7 @@ module = load_inline(
         "--use_fast_math",
         "-std=c++17",
         "-gencode=arch=compute_100,code=sm_100",
-        "-gencode=arch=compute_101,code=sm_101",
-        "-gencode=arch=compute_103,code=sm_103"
+
     ],
     with_cuda=True,
     verbose=False,
