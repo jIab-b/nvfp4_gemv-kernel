@@ -1,3 +1,5 @@
+import os
+os.environ.setdefault("TORCH_CUDA_ARCH_LIST", "10.0a")
 import torch
 from torch.utils.cpp_extension import load_inline
 from task import input_t, output_t
@@ -169,13 +171,23 @@ module = load_inline(
     cpp_sources=cpp_source,
     cuda_sources=cuda_source,
     functions=["batched_scaled_gemv_cuda"],
-    extra_cuda_cflags=[
-        "-O3",
-        "--use_fast_math",
-        "-std=c++17",
-        "-gencode=arch=compute_100,code=sm_100",
-
-    ],
+    #extra_cuda_cflags=[
+    #    "-O3",
+    #    "--use_fast_math",
+    #    "-std=c++17",
+    #    "-gencode=arch=sm_100,code=sm_100",
+    #],
+   extra_cuda_cflags=[
+       '-O3',  
+       '--use_fast_math',  
+       '-std=c++17',  
+       '-maxrregcount=64', 
+       '--ftz=true',  
+       '-prec-div=false',  
+       '-Xptxas -O3',  
+       '-Xptxas -v',  
+       '-gencode=arch=compute_100a,code=sm_100a',  
+   ],
     with_cuda=True,
     verbose=False,
 )

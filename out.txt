@@ -1,5 +1,5 @@
 "**NVIDIA on GitHub ✅ success**
-> Workflow [19353935078](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19353935078>) completed
+> Workflow [19355257363](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19355257363>) completed
 > Downloading artifacts... done
 > ❌ Running benchmarks failed (internal error 1)
 
@@ -11,8 +11,8 @@ Running on:
 * Torch: `2.9.0+cu130`
 # Running failed
 Command ```bash
-python3 eval.py benchmark /tmp/tmpqq98n7pt```
-exited with error code **1** after 2.60 seconds.
+python3 eval.py benchmark /tmp/tmpj23lob7z```
+exited with error code **1** after 22.22 seconds.
 
 ## Program stderr:
 ```
@@ -23,7 +23,7 @@ Traceback (most recent call last):
     subprocess.run(
   File \"/usr/lib/python3.10/subprocess.py\", line 526, in run
     raise CalledProcessError(retcode, process.args,
-subprocess.CalledProcessError: Command '['ninja', '-v']' returned non-zero exit status 1.
+subprocess.CalledProcessError: Command '['ninja', '-v']' returned non-zero exit status 255.
 
 The above exception was the direct cause of the following exception:
 
@@ -32,7 +32,7 @@ Traceback (most recent call last):
     result = (True, func(*args, **kwds))
   File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 208, in _run_single_benchmark
     from submission import custom_kernel
-  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 167, in <module>
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 169, in <module>
     module = load_inline(
   File \"/usr/local/lib/python3.10/dist-packages/torch/utils/cpp_extension.py\", line 2051, in load_inline
     return _jit_compile(
@@ -42,10 +42,11 @@ Traceback (most recent call last):
     _run_ninja_build(
   File \"/usr/local/lib/python3.10/dist-packages/torch/utils/cpp_extension.py\", line 2614, in _run_ninja_build
     raise RuntimeError(message) from e
-RuntimeError: Error building extension 'batched_scaled_gemv': [1/2] /usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output cuda.cuda.o.d -DTORCH_EXTENSION_NAME=batched_scaled_gemv -DTORCH_API_INCLUDE_EXTENSION_H -isystem /usr/local/lib/python3.10/dist-packages/torch/include -isystem /usr/local/lib/python3.10/dist-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /usr/include/python3.10 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++17 -gencode=arch=compute_100,code=sm_100 -gencode=arch=compute_101,code=sm_101 -gencode=arch=compute_103,code=sm_103 -c /home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu -o cuda.cuda.o 
-FAILED: [code=1] cuda.cuda.o 
-/usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output cuda.cuda.o.d -DTORCH_EXTENSION_NAME=batched_scaled_gemv -DTORCH_API_INCLUDE_EXTENSION_H -isystem /usr/local/lib/python3.10/dist-packages/torch/include -isystem /usr/local/lib/python3.10/dist-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /usr/include/python3.10 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++17 -gencode=arch=compute_100,code=sm_100 -gencode=arch=compute_101,code=sm_101 -gencode=arch=compute_103,code=sm_103 -c /home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu -o cuda.cuda.o 
-nvcc fatal   : Unsupported gpu architecture 'compute_101'
+RuntimeError: Error building extension 'batched_scaled_gemv': [1/2] /usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output cuda.cuda.o.d -DTORCH_EXTENSION_NAME=batched_scaled_gemv -DTORCH_API_INCLUDE_EXTENSION_H -isystem /usr/local/lib/python3.10/dist-packages/torch/include -isystem /usr/local/lib/python3.10/dist-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /usr/include/python3.10 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++17 -maxrregcount=64 --ftz=true -prec-div=false -Xptxas -O3 -Xptxas -v -gencode=arch=compute_100a,code=sm_100a -c /home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu -o cuda.cuda.o 
+FAILED: [code=255] cuda.cuda.o 
+/usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output cuda.cuda.o.d -DTORCH_EXTENSION_NAME=batched_scaled_gemv -DTORCH_API_INCLUDE_EXTENSION_H -isystem /usr/local/lib/python3.10/dist-packages/torch/include -isystem /usr/local/lib/python3.10/dist-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /usr/include/python3.10 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++17 -maxrregcount=64 --ftz=true -prec-div=false -Xptxas -O3 -Xptxas -v -gencode=arch=compute_100a,code=sm_100a -c /home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu -o cuda.cuda.o 
+ptxas /tmp/tmpxft_00037cb3_00000000-6_cuda.ptx, line 508; fatal   : Parsing error near '.sync': syntax error
+ptxas fatal   : Ptx assembly aborted due to errors
 ninja: build stopped: subcommand failed.
 
 \"\"\"
@@ -65,8 +66,9 @@ Traceback (most recent call last):
     return self.apply_async(func, args, kwds).get()
   File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 774, in get
     raise self._value
-RuntimeError: Error building extension 'batched_scaled_gemv': [1/2] /usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output cuda.cuda.o.d -DTORCH_EXTENSION_NAME=batched_scaled_gemv -DTORCH_API_INCLUDE_EXTENSION_H -isystem /usr/local/lib/python3.10/dist-packages/torch/include -isystem /usr/local/lib/python3.10/dist-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /usr/include/python3.10 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++17 -gencode=arch=compute_100,code=sm_100 -gencode=arch=compute_101,code=sm_101 -gencode=arch=compute_103,code=sm_103 -c /home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu -o cuda.cuda.o 
-FAILED: [code=1] cuda.cuda.o 
-/usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output cuda.cuda.o.d -DTORCH_EXTENSION_NAME=batched_scaled_gemv -DTORCH_API_INCLUDE_EXTENSION_H -isystem /usr/local/lib/python3.10/dist-packages/torch/include -isystem /usr/local/lib/python3.10/dist-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /usr/include/python3.10 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++17 -gencode=arch=compute_100,code=sm_100 -gencode=arch=compute_101,code=sm_101 -gencode=arch=compute_103,code=sm_103 -c /home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu -o cuda.cuda.o 
-nvcc fatal   : Unsupported gpu architecture 'compute_101'
+RuntimeError: Error building extension 'batched_scaled_gemv': [1/2] /usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output cuda.cuda.o.d -DTORCH_EXTENSION_NAME=batched_scaled_gemv -DTORCH_API_INCLUDE_EXTENSION_H -isystem /usr/local/lib/python3.10/dist-packages/torch/include -isystem /usr/local/lib/python3.10/dist-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /usr/include/python3.10 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++17 -maxrregcount=64 --ftz=true -prec-div=false -Xptxas -O3 -Xptxas -v -gencode=arch=compute_100a,code=sm_100a -c /home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu -o cuda.cuda.o 
+FAILED: [code=255] cuda.cuda.o 
+/usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output cuda.cuda.o.d -DTORCH_EXTENSION_NAME=batched_scaled_gemv -DTORCH_API_INCLUDE_EXTENSION_H -isystem /usr/local/lib/python3.10/dist-packages/torch/include -isystem /usr/local/lib/python3.10/dist-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /usr/include/python3.10 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++17 -maxrregcount=64 --ftz=true -prec-div=false -Xptxas -O3 -Xptxas -v -gencode=arch=compute_100a,code=sm_100a -c /home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu -o cuda.cuda.o 
+ptxas /tmp/tmpxft_00037cb3_00000000-6_cuda.ptx, line 508; fatal   : Parsing error near '.sync': syntax error
+ptxas fatal   : Ptx assembly aborted due to errors
 ninja: build stopped: subcommand failed.```"
