@@ -1,5 +1,5 @@
-import os
-os.environ.setdefault("TORCH_CUDA_ARCH_LIST", "10.0a")
+#import os
+#os.environ.setdefault("TORCH_CUDA_ARCH_LIST", "10.0a")
 import torch
 from torch.utils.cpp_extension import load_inline
 from task import input_t, output_t
@@ -14,6 +14,8 @@ cuda_source = r"""
 #include <cuda_fp16.h>
 #include <cuda_fp8.h>
 #include <cuda/ptx>
+#include <ATen/cuda/CUDAContext.h>
+#include <c10/cuda/CUDAStream.h>
 
 using namespace cuda::ptx;
 
@@ -164,6 +166,59 @@ __global__ void gemv_ptx_kernel(
         tcgen05_dealloc(cta_group_1, scaleA_tmem, scale_cols);
         tcgen05_dealloc(cta_group_1, d_tmem, d_tmem_cols);
     }
+}
+
+torch::Tensor batched_scaled_gemv_cuda(
+    torch::Tensor a,
+    torch::Tensor b,
+    torch::Tensor sfa,
+    torch::Tensor sfb,
+    torch::Tensor c) {
+    TORCH_CHECK(a.is_cuda() && b.is_cuda() && sfa.is_cuda() && sfb.is_cuda(),
+                "All tensors must be CUDA tensors.");
+    TORCH_CHECK(a.scalar_type() == torch::kInt8, "Tensor 'a' must be int8 view");
+    TORCH_CHECK(b.scalar_type() == torch::kInt8, "Tensor 'b' must be int8 view");
+    TORCH_CHECK(sfa.scalar_type() == torch::kInt8, "Tensor 'sfa' must be int8 view");
+    TORCH_CHECK(sfb.scalar_type() == torch::kInt8, "Tensor 'sfb' must be int8 view");
+    TORCH_CHECK(c.scalar_type() == at::kHalf, "Output tensor must be fp16");
+
+    int64_t M = a.size(0);
+    int64_t K_bytes = a.size(1);
+    int64_t L = a.size(2);
+
+    TORCH_CHECK(b.size(2) == L, "b batch dim mismatch");
+    TORCH_CHECK(sfa.size(2) == L, "sfa batch dim mismatch");
+    TORCH_CHECK(sfb.size(2) == L, "sfb batch dim mismatch");
+    TORCH_CHECK(c.size(0) == M && c.size(2) == L, "output shape mismatch");
+
+    dim3 grid((M + BLOCK_M - 1) / BLOCK_M, L, 1);
+    dim3 block(128, 1, 1);
+
+    auto stream = at::cuda::getCurrentCUDAStream();
+
+    gemv_ptx_kernel<<<grid, block, 0, stream>>>(
+        reinterpret_cast<const uint8_t*>(a.data_ptr<int8_t>()),
+        static_cast<long long>(a.stride(0)),
+        static_cast<long long>(a.stride(1)),
+        static_cast<long long>(a.stride(2)),
+        reinterpret_cast<const uint8_t*>(b.data_ptr<int8_t>()),
+        static_cast<long long>(b.stride(1)),
+        static_cast<long long>(b.stride(2)),
+        reinterpret_cast<const int8_t*>(sfa.data_ptr<int8_t>()),
+        static_cast<long long>(sfa.stride(0)),
+        static_cast<long long>(sfa.stride(1)),
+        static_cast<long long>(sfa.stride(2)),
+        reinterpret_cast<const int8_t*>(sfb.data_ptr<int8_t>()),
+        static_cast<long long>(sfb.stride(1)),
+        static_cast<long long>(sfb.stride(2)),
+        reinterpret_cast<at::Half*>(c.data_ptr<at::Half>()),
+        static_cast<long long>(c.stride(0)),
+        static_cast<long long>(c.stride(2)),
+        static_cast<int>(M),
+        static_cast<int>(K_bytes),
+        static_cast<int>(L));
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return c;
 }
 """
 
