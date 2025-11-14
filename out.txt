@@ -1,7 +1,7 @@
 "**NVIDIA on GitHub ✅ success**
-> Workflow [19356471192](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19356471192>) completed
+> Workflow [19359475244](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19359475244>) completed
 > Downloading artifacts... done
-> ❌ Running benchmarks failed (timeout)
+> ❌ Running benchmarks failed (internal error 1)
 
 Running on:
 * GPU: `NVIDIA B200`
@@ -11,5 +11,47 @@ Running on:
 * Torch: `2.9.0+cu130`
 # Running failed
 Command ```bash
-python3 eval.py benchmark /tmp/tmpytvephp3```
-**timed out** after 180.00 seconds."
+python3 eval.py benchmark /tmp/tmpkaf5lhlv```
+exited with error code **1** after 3.76 seconds.
+
+## Program stderr:
+```
+multiprocessing.pool.RemoteTraceback: 
+\"\"\"
+Traceback (most recent call last):
+  File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 125, in worker
+    result = (True, func(*args, **kwds))
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 217, in _run_single_benchmark
+    output = custom_kernel(_clone_data(data))
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 397, in custom_kernel
+    torch.cuda.synchronize()
+  File \"/usr/local/lib/python3.10/dist-packages/torch/cuda/__init__.py\", line 1083, in synchronize
+    return torch._C._cuda_synchronize()
+torch.AcceleratorError: CUDA error: unspecified launch failure
+Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+\"\"\"
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 485, in <module>
+    sys.exit(main())
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 453, in main
+    return run_benchmarking(logger, pool, tests)
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 306, in run_benchmarking
+    run_single_benchmark(pool, tests[0], False, 200, 10e7)
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 291, in run_single_benchmark
+    return pool.apply(_run_single_benchmark, (test, recheck, max_repeats, max_time_ns))
+  File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 360, in apply
+    return self.apply_async(func, args, kwds).get()
+  File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 774, in get
+    raise self._value
+torch.AcceleratorError: CUDA error: unspecified launch failure
+Search for `cudaErrorLaunchFailure' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.```"
