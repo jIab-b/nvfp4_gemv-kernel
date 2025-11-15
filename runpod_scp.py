@@ -5,7 +5,7 @@ import os, sys, subprocess, shlex
 DEFAULT_IP = "38.80.152.76"
 DEFAULT_PORT = "30406"
 SSH_KEY_PATH = os.path.expanduser("~/.ssh/runpodprivate")
-LOCAL_FILE = "submission.py"
+LOCAL_FILE = "sub_pod.py"
 
 def run(cmd):
     """Run a shell command and print it"""

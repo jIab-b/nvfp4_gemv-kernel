@@ -1,11 +1,10 @@
 import os
 import torch
 from torch.utils.cpp_extension import load_inline
-from task import input_t, output_t
 
 BLOCK_M = 128
 DEBUG_STAGE_COUNT = 6
-STAGE_LIMIT = int(os.getenv("SUB_TEST_STAGE_LIMIT", "0"))
+STAGE_LIMIT = int(os.getenv("SUB_TEST_MAX_STAGE", "0"))
 
 cpp_source = """
 #include <torch/extension.h>
@@ -48,7 +47,7 @@ __device__ __forceinline__ const char* stage_name(int stage) {
     }
 }
 
-__device__ __forceinline__ void stage_precheck(
+__device__ __forceinline__ void stage_checkpoint(
     int stage_limit,
     int stage,
     int batch,
@@ -56,32 +55,17 @@ __device__ __forceinline__ void stage_precheck(
     int tile_k) {
     __syncthreads();
     if (threadIdx.x == 0) {
-        printf("[sub_test] enter stage %d (%s) batch=%d tile=%d tile_k=%d limit=%d\n",
-               stage, stage_name(stage), batch, tile, tile_k, stage_limit);
+        printf("[sub_test] stage %d (%s) batch=%d tile=%d tile_k=%d\n",
+               stage, stage_name(stage), batch, tile, tile_k);
     }
     __syncthreads();
-    if (stage_limit == stage) {
+    if (stage == stage_limit) {
         if (threadIdx.x == 0) {
-            printf("[sub_test] halting before stage %d (%s)\n",
-                   stage, stage_name(stage));
+            printf("[sub_test] stopping at stage %d (%s)\n", stage, stage_name(stage));
         }
         __threadfence();
         asm volatile("trap;\n");
     }
-    __syncthreads();
-}
-
-__device__ __forceinline__ void stage_success(
-    int stage,
-    int batch,
-    int tile,
-    int tile_k) {
-    __syncthreads();
-    if (threadIdx.x == 0) {
-        printf("[sub_test] leave stage %d (%s) batch=%d tile=%d tile_k=%d\n",
-               stage, stage_name(stage), batch, tile, tile_k);
-    }
-    __syncthreads();
 }
 
 __device__ __forceinline__ void timeout_trap(
@@ -202,7 +186,7 @@ extern "C" __global__ void gemv_tcgen05_kernel(
     uint32_t scale_a_tmem = 0;
     uint32_t scale_b_tmem = 0;
 
-    stage_precheck(stage_limit, DBG_ALLOC, batch, tile_idx, -1);
+    __syncthreads();
     if (lane == 0) {
         tcgen05_alloc(cta_group_1, &tmem_handles[0], accum_cols);
         tcgen05_alloc(cta_group_1, &tmem_handles[1], scale_cols);
@@ -212,7 +196,8 @@ extern "C" __global__ void gemv_tcgen05_kernel(
         asm volatile("mbarrier.init.shared::cta.b64 [%0], %1;\n" :: "l"(__cvta_generic_to_shared(dst)), "r"(arrival) : "memory");
     }
     __syncthreads();
-    stage_success(DBG_ALLOC, batch, tile_idx, 0);
+
+    stage_checkpoint(stage_limit, DBG_ALLOC, batch, tile_idx, 0);
 
     d_tmem = tmem_handles[0];
     scale_a_tmem = tmem_handles[1];
@@ -223,8 +208,6 @@ extern "C" __global__ void gemv_tcgen05_kernel(
     const uint32_t smem_base_scale_a = __cvta_generic_to_shared(smem_scale_a);
     const uint32_t smem_base_scale_b = __cvta_generic_to_shared(smem_scale_b);
     const uint64_t mbar_addr = static_cast<uint64_t>(__cvta_generic_to_shared(&mbar_state));
-
-    stage_precheck(stage_limit, DBG_COPY, batch, tile_idx, -1);
 
     for (int tile_k = 0; tile_k < tiles_k; ++tile_k) {
         const int byte_base = tile_k * (BLOCK_K / 2);
@@ -280,7 +263,7 @@ extern "C" __global__ void gemv_tcgen05_kernel(
 
         __syncthreads();
         if (tile_k == 0) {
-            stage_success(DBG_COPY, batch, tile_idx, tile_k);
+            stage_checkpoint(stage_limit, DBG_COPY, batch, tile_idx, tile_k);
         }
 
         const uint64_t a_desc = pack_smem_desc(smem_base_a, BLOCK_K / 2, BLOCK_K / 2);
@@ -293,10 +276,6 @@ extern "C" __global__ void gemv_tcgen05_kernel(
 
         __syncthreads();
 
-        if (tile_k == 0) {
-            stage_precheck(stage_limit, DBG_MMA, batch, tile_idx, tile_k);
-        }
-
         int enable_input = tile_k > 0;
         asm volatile(
             "{ .reg .pred p; setp.ne.b32 p, %6, 0;\n"
@@ -307,11 +286,10 @@ extern "C" __global__ void gemv_tcgen05_kernel(
             : "memory");
 
         __syncthreads();
+        if (tile_k == 0) {
+            stage_checkpoint(stage_limit, DBG_MMA, batch, tile_idx, tile_k);
+        }
     }
-
-    stage_success(DBG_MMA, batch, tile_idx, tiles_k);
-
-    stage_precheck(stage_limit, DBG_COMMIT, batch, tile_idx, 0);
 
     if (lane == 0) {
         asm volatile(
@@ -321,10 +299,7 @@ extern "C" __global__ void gemv_tcgen05_kernel(
             : "memory");
     }
 
-    __syncthreads();
-    stage_success(DBG_COMMIT, batch, tile_idx, 0);
-
-    stage_precheck(stage_limit, DBG_WAIT, batch, tile_idx, 0);
+    stage_checkpoint(stage_limit, DBG_COMMIT, batch, tile_idx, 0);
 
     const unsigned long long wait_start = clock64();
     while (true) {
@@ -344,12 +319,10 @@ extern "C" __global__ void gemv_tcgen05_kernel(
         }
     }
 
-    stage_success(DBG_WAIT, batch, tile_idx, 0);
+    stage_checkpoint(stage_limit, DBG_WAIT, batch, tile_idx, 0);
 
     asm volatile("tcgen05.fence::after_thread_sync;\n" ::: "memory");
     __syncthreads();
-
-    stage_precheck(stage_limit, DBG_STORE, batch, tile_idx, 0);
 
     const size_t c_batch_offset = static_cast<size_t>(batch) * M;
     if (lane < BLOCK_M) {
@@ -364,7 +337,7 @@ extern "C" __global__ void gemv_tcgen05_kernel(
 
     __syncthreads();
 
-    stage_success(DBG_STORE, batch, tile_idx, 0);
+    stage_checkpoint(stage_limit, DBG_STORE, batch, tile_idx, 0);
 
     if (lane == 0) {
         tcgen05_dealloc(cta_group_1, scale_b_tmem, scale_cols);
@@ -444,7 +417,7 @@ module = load_inline(
 )
 
 
-def custom_kernel(data: input_t) -> output_t:
+def custom_kernel(data):
     a, b, sfa_ref, sfb_ref, _, _, c = data
     device = a.device
 

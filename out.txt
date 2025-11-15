@@ -1,1 +1,109 @@
-Submission cancelled.
+"**NVIDIA on GitHub ✅ success**
+> Workflow [19383555055](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19383555055>) completed
+> Downloading artifacts... done
+> ❌ Running benchmarks failed (internal error 1)
+
+Running on:
+* GPU: `NVIDIA B200`
+* CPU: `INTEL(R) XEON(R) PLATINUM 8570`
+* Runtime: `CUDA`
+* Platform: `Linux-6.8.0-51-generic-x86_64-with-glibc2.35`
+* Torch: `2.9.0+cu130`
+# Running failed
+Command ```bash
+python3 eval.py benchmark /tmp/tmp1583lyu_```
+exited with error code **1** after 3.48 seconds.
+
+## Program stderr:
+```
+multiprocessing.pool.RemoteTraceback: 
+\"\"\"
+Traceback (most recent call last):
+  File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 125, in worker
+    result = (True, func(*args, **kwds))
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 220, in _run_single_benchmark
+    good, message = check_implementation(check_copy, output)
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/utils.py\", line 144, in wrapped
+    return match_reference(data, output, reference=reference, **kwargs)
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/utils.py\", line 133, in match_reference
+    expected = reference(data)
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/reference.py\", line 45, in ref_kernel
+    res = torch._scaled_mm(
+RuntimeError: CUDA error: CUBLAS_STATUS_INTERNAL_ERROR when calling `cublasCreate(handle)`
+\"\"\"
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 485, in <module>
+    sys.exit(main())
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 453, in main
+    return run_benchmarking(logger, pool, tests)
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 306, in run_benchmarking
+    run_single_benchmark(pool, tests[0], False, 200, 10e7)
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 291, in run_single_benchmark
+    return pool.apply(_run_single_benchmark, (test, recheck, max_repeats, max_time_ns))
+  File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 360, in apply
+    return self.apply_async(func, args, kwds).get()
+  File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 774, in get
+    raise self._value
+RuntimeError: CUDA error: CUBLAS_STATUS_INTERNAL_ERROR when calling `cublasCreate(handle)````
+
+## Program stdout:
+```
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=50 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=51 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=6 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=52 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=7 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=53 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=8 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=9 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=54 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=55 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=10 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=38 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=11 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=39 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=40 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=41 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=44 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=12 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=42 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=45 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=0 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=43 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=46 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=1 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=49 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=47 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=13 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=48 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=14 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=15 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=20 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=21 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=22 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=23 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=32 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=18 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=33 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=19 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=24 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=34 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=16 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=25 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=36 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=35 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=26 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=17 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=4 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=27 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=5 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=28 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=37 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=30 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=29 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=2 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=3 tile_k=-1 limit=0
+[sub_test] enter stage 0 (ALLOC) batch=0 tile=31 tile_k=-1 limit=0```"
