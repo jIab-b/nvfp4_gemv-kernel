@@ -21,6 +21,7 @@ cuda_source = r"""
 #include <cutlass/epilogue/collective/collective_builder.hpp>
 #include <cutlass/detail/sm100_blockscaled_layout.hpp>
 #include <cute/tensor.hpp>
+#include <cutlass/util/packed_stride.hpp>
 
 using ElementA = cutlass::nv_float4_t<cutlass::float_e2m1_t>;
 using ElementB = cutlass::nv_float4_t<cutlass::float_e2m1_t>;
@@ -93,8 +94,11 @@ torch::Tensor batched_scaled_gemv_cutlass(torch::Tensor a,
     int L = a.size(2);
     int N = 1;
 
-    auto* ptr_a = reinterpret_cast<ElementA const*>(a.data_ptr<int8_t>());
-    auto* ptr_b = reinterpret_cast<ElementB const*>(b.data_ptr<int8_t>());
+    using DataA = typename ElementA::DataType;
+    using DataB = typename ElementB::DataType;
+
+    auto* ptr_a = reinterpret_cast<DataA const*>(a.data_ptr<int8_t>());
+    auto* ptr_b = reinterpret_cast<DataB const*>(b.data_ptr<int8_t>());
     auto* ptr_sfa = reinterpret_cast<ElementScale const*>(sfa.data_ptr<int8_t>());
     auto* ptr_sfb = reinterpret_cast<ElementScale const*>(sfb.data_ptr<int8_t>());
     auto* ptr_c = reinterpret_cast<ElementOutput*>(c.data_ptr<at::Half>());
