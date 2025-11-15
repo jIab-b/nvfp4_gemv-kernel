@@ -1,29 +1,17 @@
-#import os
-#os.environ.setdefault("TORCH_CUDA_ARCH_LIST", "10.0a")
 import torch
 from torch.utils.cpp_extension import load_inline
 from task import input_t, output_t
-
-BLOCK_M = 128
 
 cpp_source = """
 #include <torch/extension.h>
 torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::Tensor sfa, torch::Tensor sfb, torch::Tensor c);
 """
 
-DEBUG_MODE = True
-
 cuda_source = r"""
 #include <torch/extension.h>
 #include <cuda_fp16.h>
-#include <cuda_fp8.h>
 #include <cuda/ptx>
 #include <ATen/cuda/CUDAContext.h>
-#include <c10/cuda/CUDAStream.h>
-
-#ifndef NVFP4_DEBUG
-#define NVFP4_DEBUG 0
-#endif
 
 using namespace cuda::ptx;
 
@@ -31,9 +19,9 @@ constexpr int BLOCK_M = 128;
 constexpr int BLOCK_N = 8;
 constexpr int BLOCK_K = 64;
 
-constexpr uint32_t encode_mxf4nvf4_idesc(int m, int n, int k, bool scale_is_ue8m0) {
+__host__ __device__ __forceinline__ constexpr uint32_t encode_mxf4nvf4_idesc(int m, int n, int k, bool scale_is_ue8m0) {
     constexpr uint32_t sparsity = 0u;
-    constexpr uint32_t scale_b_id = 0u;  // scale_vec::4X uses ID 0
+    constexpr uint32_t scale_b_id = 0u;
     constexpr uint32_t scale_a_id = 0u;
     constexpr uint32_t atype = 1u;  // e2m1 nvfp4
     constexpr uint32_t btype = 1u;  // e2m1 nvfp4
@@ -64,9 +52,6 @@ constexpr uint32_t encode_mxf4nvf4_idesc(int m, int n, int k, bool scale_is_ue8m
 }
 
 constexpr uint32_t MMA_IDESC = encode_mxf4nvf4_idesc(BLOCK_M, BLOCK_N, BLOCK_K, false);
-#if NVFP4_DEBUG
-constexpr int NVFP4_COMMIT_WATCHDOG = 1 << 24;
-#endif
 
 __device__ __forceinline__ uint64_t pack_smem_desc(uint32_t base, uint32_t ldm_bytes, uint32_t stride_bytes) {
     uint64_t desc = 0;
@@ -89,149 +74,150 @@ __device__ __forceinline__ void ld_tmem(float (&frag)[8], uint32_t src) {
         : "memory");
 }
 
-__global__ void gemv_ptx_kernel(
-    const uint8_t* __restrict__ a,
-    long long sa0,
-    long long sa1,
-    long long sa2,
-    const uint8_t* __restrict__ b,
-    long long sb1,
-    long long sb2,
+extern "C" __global__ void gemv_tcgen05_kernel(
+    const int8_t* __restrict__ a,
+    const int8_t* __restrict__ b,
     const int8_t* __restrict__ sfa,
-    long long ssfa0,
-    long long ssfa1,
-    long long ssfa2,
     const int8_t* __restrict__ sfb,
-    long long ssfb1,
-    long long ssfb2,
-    at::Half* __restrict__ c,
-    long long sc0,
-    long long sc2,
+    half* __restrict__ c,
     int M,
     int K_bytes,
     int L,
-    int* completion_counter,
-    int* completion_flag,
-    int tiles_m)
+    int N_rows)
 {
     const int batch = blockIdx.y;
-    if (batch >= L)
-        return;
+    const int tile_m = blockIdx.x * BLOCK_M;
+    const int lane = threadIdx.x;
 
-    const bool is_watchdog = (blockIdx.x == tiles_m);
-    if (is_watchdog) {
-        if (threadIdx.x == 0) {
-            const uint64_t start_cycles = clock64();
-            const uint64_t limit_cycles = 100000000ull;
-            while ((clock64() - start_cycles) < limit_cycles) {
-                if (completion_flag[batch])
-                    break;
-            }
-            if (!completion_flag[batch]) {
-                asm volatile("trap;\n");
-            }
-        }
+    if (batch >= L || tile_m >= M) {
         return;
     }
-
-    const int tile_row = blockIdx.x * BLOCK_M;
-    if (tile_row >= M)
-        return;
-
-    __shared__ uint8_t smem_a[BLOCK_M * BLOCK_K / 2];
-    __shared__ uint8_t smem_b[BLOCK_N * BLOCK_K / 2];
-    __shared__ uint8_t smem_scale_a[BLOCK_M * (BLOCK_K / 16)];
-    __shared__ uint8_t smem_scale_b[BLOCK_N * (BLOCK_K / 16)];
-    __shared__ uint32_t shared_handles[3];
-    __shared__ unsigned long long mbar_state;
-
-    const int lane = threadIdx.x;
-    const int threads = blockDim.x;
-
-    const uint8_t* tile_a_global = a + tile_row * sa0 + batch * sa2;
-    const uint8_t* tile_b_global = b + batch * sb2;
-    const int8_t* tile_sfa_global = sfa + tile_row * ssfa0 + batch * ssfa2;
-    const int8_t* tile_sfb_global = sfb + batch * ssfb2;
 
     const int K = K_bytes * 2;
-    const int tiles_k = K / BLOCK_K;
+    const int K_sf = (K + 15) / 16;
+    const int tiles_k = (K + BLOCK_K - 1) / BLOCK_K;
 
-    uint32_t d_tmem_cols = ((BLOCK_M * BLOCK_N + 31) / 32) * 32;
-    uint32_t scale_cols = ((BLOCK_K / 16) + 31) / 32 * 32;
+    const size_t stride_a_batch = static_cast<size_t>(M) * K_bytes;
+    const size_t stride_b_batch = static_cast<size_t>(N_rows) * K_bytes;
+    const size_t stride_sfa_batch = static_cast<size_t>(M) * K_sf;
+    const size_t stride_sfb_batch = static_cast<size_t>(N_rows) * K_sf;
 
+    const uint8_t* batch_a = reinterpret_cast<const uint8_t*>(a) + batch * stride_a_batch;
+    const uint8_t* batch_b = reinterpret_cast<const uint8_t*>(b) + batch * stride_b_batch;
+    const uint8_t* batch_sfa = reinterpret_cast<const uint8_t*>(sfa) + batch * stride_sfa_batch;
+    const uint8_t* batch_sfb = reinterpret_cast<const uint8_t*>(sfb) + batch * stride_sfb_batch;
+
+    __shared__ uint8_t smem_a[BLOCK_M * (BLOCK_K / 2)];
+    __shared__ uint8_t smem_b[BLOCK_N * (BLOCK_K / 2)];
+    __shared__ uint8_t smem_scale_a[BLOCK_M * (BLOCK_K / 16)];
+    __shared__ uint8_t smem_scale_b[BLOCK_N * (BLOCK_K / 16)];
+    __shared__ uint32_t tmem_handles[3];
+    __shared__ unsigned long long mbar_state;
+
+    const uint32_t accum_cols = ((BLOCK_M * BLOCK_N + 31) / 32) * 32;
+    const uint32_t scale_cols = ((BLOCK_K / 16) + 31) / 32 * 32;
+
+    uint32_t d_tmem = 0;
+    uint32_t scale_a_tmem = 0;
+    uint32_t scale_b_tmem = 0;
+
+    __syncthreads();
     if (lane == 0) {
-        tcgen05_alloc(cta_group_1, &shared_handles[0], d_tmem_cols);
-        tcgen05_alloc(cta_group_1, &shared_handles[1], scale_cols);
-        tcgen05_alloc(cta_group_1, &shared_handles[2], scale_cols);
+        tcgen05_alloc(cta_group_1, &tmem_handles[0], accum_cols);
+        tcgen05_alloc(cta_group_1, &tmem_handles[1], scale_cols);
+        tcgen05_alloc(cta_group_1, &tmem_handles[2], scale_cols);
+        unsigned int arrival = 1u;
+        unsigned long long* dst = &mbar_state;
+        asm volatile("mbarrier.init.shared::cta.b64 [%0], %1;\n" :: "l"(__cvta_generic_to_shared(dst)), "r"(arrival) : "memory");
     }
     __syncthreads();
 
-    const uint32_t d_tmem = shared_handles[0];
-    const uint32_t scaleA_tmem = shared_handles[1];
-    const uint32_t scaleB_tmem = shared_handles[2];
+    d_tmem = tmem_handles[0];
+    scale_a_tmem = tmem_handles[1];
+    scale_b_tmem = tmem_handles[2];
 
-    uint32_t smem_base_a = __cvta_generic_to_shared(smem_a);
-    uint32_t smem_base_b = __cvta_generic_to_shared(smem_b);
-    uint32_t smem_base_sfa = __cvta_generic_to_shared(smem_scale_a);
-    uint32_t smem_base_sfb = __cvta_generic_to_shared(smem_scale_b);
-    uint64_t mbar_addr = static_cast<uint64_t>(__cvta_generic_to_shared(&mbar_state));
+    const uint32_t smem_base_a = __cvta_generic_to_shared(smem_a);
+    const uint32_t smem_base_b = __cvta_generic_to_shared(smem_b);
+    const uint32_t smem_base_scale_a = __cvta_generic_to_shared(smem_scale_a);
+    const uint32_t smem_base_scale_b = __cvta_generic_to_shared(smem_scale_b);
+    const uint64_t mbar_addr = static_cast<uint64_t>(__cvta_generic_to_shared(&mbar_state));
 
-    uint32_t idesc = MMA_IDESC;
+    for (int tile_k = 0; tile_k < tiles_k; ++tile_k) {
+        const int byte_base = tile_k * (BLOCK_K / 2);
+        const int scale_base = tile_k * (BLOCK_K / 16);
 
-    if (lane == 0) {
-        uint32_t arrival = 1;
-        asm volatile(
-            "mbarrier.init.shared::cta.b64 [%0], %1;\n"
-            :
-            : "l"(mbar_addr), "r"(arrival)
-            : "memory");
-    }
-    __syncthreads();
-
-    auto mma_op = [&](uint32_t k_tile) {
-        for (int idx = lane; idx < BLOCK_M * BLOCK_K / 2; idx += threads) {
+        for (int idx = lane; idx < BLOCK_M * (BLOCK_K / 2); idx += blockDim.x) {
             int row = idx / (BLOCK_K / 2);
             int col = idx % (BLOCK_K / 2);
-            smem_a[idx] = tile_a_global[row * sa0 + (k_tile * (BLOCK_K / 2)) + col * sa1];
+            int global_row = tile_m + row;
+            int global_byte = byte_base + col;
+            uint8_t val = 0;
+            if (global_row < M && global_byte < K_bytes) {
+                val = batch_a[static_cast<size_t>(global_row) * K_bytes + global_byte];
+            }
+            smem_a[idx] = val;
         }
-        for (int idx = lane; idx < BLOCK_N * BLOCK_K / 2; idx += threads) {
+
+        for (int idx = lane; idx < BLOCK_N * (BLOCK_K / 2); idx += blockDim.x) {
             int row = idx / (BLOCK_K / 2);
             int col = idx % (BLOCK_K / 2);
-            smem_b[idx] = tile_b_global[row * sb1 + (k_tile * (BLOCK_K / 2)) + col * sb1];
+            int global_row = row;
+            int global_byte = byte_base + col;
+            uint8_t val = 0;
+            if (global_row < N_rows && global_byte < K_bytes) {
+                val = batch_b[static_cast<size_t>(global_row) * K_bytes + global_byte];
+            }
+            smem_b[idx] = val;
         }
-        for (int idx = lane; idx < BLOCK_M * (BLOCK_K / 16); idx += threads) {
-            smem_scale_a[idx] = tile_sfa_global[idx + k_tile * (BLOCK_M * (BLOCK_K / 16))];
+
+        for (int idx = lane; idx < BLOCK_M * (BLOCK_K / 16); idx += blockDim.x) {
+            int row = idx / (BLOCK_K / 16);
+            int col = idx % (BLOCK_K / 16);
+            int global_row = tile_m + row;
+            int global_sf = scale_base + col;
+            uint8_t val = 0;
+            if (global_row < M && global_sf < K_sf) {
+                val = batch_sfa[static_cast<size_t>(global_row) * K_sf + global_sf];
+            }
+            smem_scale_a[idx] = val;
         }
-        for (int idx = lane; idx < BLOCK_N * (BLOCK_K / 16); idx += threads) {
-            smem_scale_b[idx] = tile_sfb_global[idx + k_tile * (BLOCK_N * (BLOCK_K / 16))];
+
+        for (int idx = lane; idx < BLOCK_N * (BLOCK_K / 16); idx += blockDim.x) {
+            int row = idx / (BLOCK_K / 16);
+            int col = idx % (BLOCK_K / 16);
+            int global_row = row;
+            int global_sf = scale_base + col;
+            uint8_t val = 0;
+            if (global_row < N_rows && global_sf < K_sf) {
+                val = batch_sfb[static_cast<size_t>(global_row) * K_sf + global_sf];
+            }
+            smem_scale_b[idx] = val;
         }
+
         __syncthreads();
 
-        uint64_t a_desc = pack_smem_desc(smem_base_a, BLOCK_K / 2, BLOCK_K / 2);
-        uint64_t b_desc = pack_smem_desc(smem_base_b, BLOCK_K / 2, BLOCK_K / 2);
-        uint64_t scaleA_desc = pack_smem_desc(smem_base_sfa, BLOCK_K / 16, BLOCK_K / 16);
-        uint64_t scaleB_desc = pack_smem_desc(smem_base_sfb, BLOCK_K / 16, BLOCK_K / 16);
+        const uint64_t a_desc = pack_smem_desc(smem_base_a, BLOCK_K / 2, BLOCK_K / 2);
+        const uint64_t b_desc = pack_smem_desc(smem_base_b, BLOCK_K / 2, BLOCK_K / 2);
+        const uint64_t scale_a_desc = pack_smem_desc(smem_base_scale_a, BLOCK_K / 16, BLOCK_K / 16);
+        const uint64_t scale_b_desc = pack_smem_desc(smem_base_scale_b, BLOCK_K / 16, BLOCK_K / 16);
 
-        tcgen05_cp_64x128b_warpx2_01_23(cta_group_1, scaleA_tmem, scaleA_desc);
-        tcgen05_cp_64x128b_warpx2_01_23(cta_group_1, scaleB_tmem, scaleB_desc);
+        tcgen05_cp_64x128b_warpx2_01_23(cta_group_1, scale_a_tmem, scale_a_desc);
+        tcgen05_cp_64x128b_warpx2_01_23(cta_group_1, scale_b_tmem, scale_b_desc);
 
         __syncthreads();
 
+        int enable_input = tile_k > 0;
         asm volatile(
-            "{ .reg .pred p; setp.ne.b32 p, %6, %6;\n"
+            "{ .reg .pred p; setp.ne.b32 p, %6, 0;\n"
             "tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec::4X [%0], %1, %2, %3, [%4], [%5], p;\n}"
             :
-            : "r"(d_tmem), "l"(a_desc), "l"(b_desc), "r"(idesc),
-              "r"(scaleA_tmem), "r"(scaleB_tmem), "r"(0)
+            : "r"(d_tmem), "l"(a_desc), "l"(b_desc), "r"(MMA_IDESC),
+              "r"(scale_a_tmem), "r"(scale_b_tmem), "r"(enable_input)
             : "memory");
-        __syncthreads();
-    };
 
-    for (uint32_t k_tile = 0; k_tile < tiles_k; ++k_tile) {
-        mma_op(k_tile);
+        __syncthreads();
     }
 
-    __syncthreads();
     if (lane == 0) {
         asm volatile(
             "tcgen05.commit.cta_group::1.mbarrier::arrive::one.b64 [%0];\n"
@@ -240,49 +226,38 @@ __global__ void gemv_ptx_kernel(
             : "memory");
     }
 
-    int wait_iter = 0;
     while (true) {
         unsigned ready = 0;
         asm volatile(
-            "{\n"
-            ".reg .pred p;\n"
-            "mbarrier.try_wait.parity.shared::cta.b64 p, [%1], 0;\n"
-            "selp.b32 %0, 1, 0, p;\n"
-            "}\n"
+            "{ .reg .pred p; mbarrier.try_wait.parity.shared::cta.b64 p, [%1], 0;\n"
+            "selp.b32 %0, 1, 0, p;\n}\n"
             : "=r"(ready)
             : "l"(mbar_addr)
             : "memory");
         if (ready) {
             break;
         }
-#if NVFP4_DEBUG
-        if (++wait_iter > NVFP4_COMMIT_WATCHDOG) {
-            asm volatile("trap;\n");
-            break;
-        }
-#endif
     }
 
     asm volatile("tcgen05.fence::after_thread_sync;\n" ::: "memory");
     __syncthreads();
 
+    const size_t c_batch_offset = static_cast<size_t>(batch) * M;
     if (lane < BLOCK_M) {
+        int global_row = tile_m + lane;
         float frag[8];
         ld_tmem(frag, d_tmem);
-        float value = frag[0];
-        at::Half* out_ptr = c + (tile_row + lane) * sc0 + batch * sc2;
-        *out_ptr = __float2half(value);
+        if (global_row < M) {
+            half value = __float2half(frag[0]);
+            c[c_batch_offset + global_row] = value;
+        }
     }
 
     __syncthreads();
     if (lane == 0) {
-        tcgen05_dealloc(cta_group_1, scaleB_tmem, scale_cols);
-        tcgen05_dealloc(cta_group_1, scaleA_tmem, scale_cols);
-        tcgen05_dealloc(cta_group_1, d_tmem, d_tmem_cols);
-        int prev = atomicAdd(&completion_counter[batch], 1);
-        if ((prev + 1) == tiles_m) {
-            completion_flag[batch] = 1;
-        }
+        tcgen05_dealloc(cta_group_1, scale_b_tmem, scale_cols);
+        tcgen05_dealloc(cta_group_1, scale_a_tmem, scale_cols);
+        tcgen05_dealloc(cta_group_1, d_tmem, accum_cols);
     }
 }
 
@@ -292,88 +267,63 @@ torch::Tensor batched_scaled_gemv_cuda(
     torch::Tensor sfa,
     torch::Tensor sfb,
     torch::Tensor c) {
-    TORCH_CHECK(a.is_cuda() && b.is_cuda() && sfa.is_cuda() && sfb.is_cuda(),
-                "All tensors must be CUDA tensors.");
-    TORCH_CHECK(a.scalar_type() == torch::kInt8, "Tensor 'a' must be int8 view");
-    TORCH_CHECK(b.scalar_type() == torch::kInt8, "Tensor 'b' must be int8 view");
-    TORCH_CHECK(sfa.scalar_type() == torch::kInt8, "Tensor 'sfa' must be int8 view");
-    TORCH_CHECK(sfb.scalar_type() == torch::kInt8, "Tensor 'sfb' must be int8 view");
+    TORCH_CHECK(a.is_cuda() && b.is_cuda() && sfa.is_cuda() && sfb.is_cuda(), "All tensors must be CUDA resident");
+    TORCH_CHECK(a.scalar_type() == torch::kInt8, "Tensor 'a' must be viewed as int8");
+    TORCH_CHECK(b.scalar_type() == torch::kInt8, "Tensor 'b' must be viewed as int8");
+    TORCH_CHECK(sfa.scalar_type() == torch::kInt8 && sfb.scalar_type() == torch::kInt8, "Scale tensors must be int8 views");
     TORCH_CHECK(c.scalar_type() == at::kHalf, "Output tensor must be fp16");
 
-    int64_t M = a.size(0);
-    int64_t K_bytes = a.size(1);
-    int64_t L = a.size(2);
+    int M = static_cast<int>(a.size(0));
+    int K_bytes = static_cast<int>(a.size(1));
+    int L = static_cast<int>(a.size(2));
+    int N_rows = static_cast<int>(b.size(0));
 
-    TORCH_CHECK(b.size(2) == L, "b batch dim mismatch");
-    TORCH_CHECK(sfa.size(2) == L, "sfa batch dim mismatch");
-    TORCH_CHECK(sfb.size(2) == L, "sfb batch dim mismatch");
-    TORCH_CHECK(c.size(0) == M && c.size(2) == L, "output shape mismatch");
+    dim3 grid((M + BLOCK_M - 1) / BLOCK_M, L);
+    dim3 block(BLOCK_M);
 
-    int tiles_m = static_cast<int>((M + BLOCK_M - 1) / BLOCK_M);
-    dim3 grid(tiles_m + 1, L, 1);
-    dim3 block(128, 1, 1);
-
-    auto stream = at::cuda::getCurrentCUDAStream();
-    auto opts_i32 = c.options().dtype(torch::kInt32);
-    auto counter = torch::zeros({L}, opts_i32);
-    auto flags = torch::zeros({L}, opts_i32);
-
-    gemv_ptx_kernel<<<grid, block, 0, stream>>>(
-        reinterpret_cast<const uint8_t*>(a.data_ptr<int8_t>()),
-        static_cast<long long>(a.stride(0)),
-        static_cast<long long>(a.stride(1)),
-        static_cast<long long>(a.stride(2)),
-        reinterpret_cast<const uint8_t*>(b.data_ptr<int8_t>()),
-        static_cast<long long>(b.stride(1)),
-        static_cast<long long>(b.stride(2)),
+    gemv_tcgen05_kernel<<<grid, block>>>(
+        reinterpret_cast<const int8_t*>(a.data_ptr<int8_t>()),
+        reinterpret_cast<const int8_t*>(b.data_ptr<int8_t>()),
         reinterpret_cast<const int8_t*>(sfa.data_ptr<int8_t>()),
-        static_cast<long long>(sfa.stride(0)),
-        static_cast<long long>(sfa.stride(1)),
-        static_cast<long long>(sfa.stride(2)),
         reinterpret_cast<const int8_t*>(sfb.data_ptr<int8_t>()),
-        static_cast<long long>(sfb.stride(1)),
-        static_cast<long long>(sfb.stride(2)),
-        reinterpret_cast<at::Half*>(c.data_ptr<at::Half>()),
-        static_cast<long long>(c.stride(0)),
-        static_cast<long long>(c.stride(2)),
-        static_cast<int>(M),
-        static_cast<int>(K_bytes),
-        static_cast<int>(L),
-        counter.data_ptr<int>(),
-        flags.data_ptr<int>(),
-        tiles_m);
+        reinterpret_cast<half*>(c.data_ptr<at::Half>()),
+        M,
+        K_bytes,
+        L,
+        N_rows);
     C10_CUDA_KERNEL_LAUNCH_CHECK();
     return c;
 }
 """
 
-debug_flag = "1" if DEBUG_MODE else "0"
-
 module = load_inline(
-    name="batched_scaled_gemv",
+    name="batched_scaled_gemv_subtest_ptx",
     cpp_sources=cpp_source,
     cuda_sources=cuda_source,
     functions=["batched_scaled_gemv_cuda"],
-    #extra_cuda_cflags=[
-    #    "-O3",
-    #    "--use_fast_math",
-    #    "-std=c++17",
-    #    "-gencode=arch=sm_100,code=sm_100",
-    #],
-   extra_cuda_cflags=[
-       '-O3',  
-       '--use_fast_math',  
-       '-std=c++17',  
-       '-maxrregcount=64', 
-       '--ftz=true',  
-       '-prec-div=false',  
-       '-Xptxas -O3',  
-       '-Xptxas -v',  
-       f'-DNVFP4_DEBUG={debug_flag}',
-       '-gencode=arch=compute_100a,code=sm_100a',  
-   ],
+    # extra_cuda_cflags=[
+    #     "-O3",
+    #     "--use_fast_math",
+    #     "-std=c++17",
+    #     "-Xptxas", "-O3",
+    #     "-gencode=arch=compute_100a,code=sm_100a",
+    # ],
+
+
+    extra_cuda_cflags=[
+        '-O3',
+        '--use_fast_math',
+        '-std=c++17',
+        '-maxrregcount=64',
+        '--ftz=true',
+        '-prec-div=false',
+        '-Xptxas', '-O3',
+        '-Xptxas', '-v',
+        '-DNVFP4_DEBUG=1',
+        '-gencode=arch=compute_100a,code=sm_100a',
+    ],
     with_cuda=True,
-    verbose=False,
+    verbose=False
 )
 
 
@@ -393,7 +343,4 @@ def custom_kernel(data: input_t) -> output_t:
         sfb_i8,
         c,
     )
-    if DEBUG_MODE:
-        torch.cuda.synchronize()
-
     return c
