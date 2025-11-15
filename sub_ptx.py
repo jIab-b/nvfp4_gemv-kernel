@@ -124,7 +124,7 @@ __global__ void gemv_nvfp4_ptx_kernel(const int8_t* __restrict__ a,
 
     if (threadIdx.x == 0) {
         const uint32_t cols = 512;
-        tcgen05_alloc(cta_group_1{}, &storage.tmem_addr, cols);
+        tcgen05_alloc(cta_group_1, &storage.tmem_addr, cols);
     }
     __syncthreads();
 
@@ -133,9 +133,9 @@ __global__ void gemv_nvfp4_ptx_kernel(const int8_t* __restrict__ a,
     const uint32_t tmem_scale_b = tmem_acc + 384;
 
     if (threadIdx.x == 0) {
-        tcgen05_cp_4x256b(cta_group_1{}, tmem_scale_a, sfa_desc);
-        tcgen05_cp_4x256b(cta_group_1{}, tmem_scale_b, sfb_desc);
-        tcgen05_mma_block_scale_vec_2x(kind_mxf4nvf4_t{}, cta_group_1{},
+        tcgen05_cp_4x256b(cta_group_1, tmem_scale_a, sfa_desc);
+        tcgen05_cp_4x256b(cta_group_1, tmem_scale_b, sfb_desc);
+        tcgen05_mma_block_scale_vec_2x(kind_mxf4nvf4_t{}, cta_group_1,
                                        tmem_acc, a_desc, b_desc, idesc,
                                        tmem_scale_a, tmem_scale_b, false);
     }
@@ -168,8 +168,8 @@ __global__ void gemv_nvfp4_ptx_kernel(const int8_t* __restrict__ a,
 
     __syncthreads();
     if (threadIdx.x == 0) {
-        tcgen05_dealloc(cta_group_1{}, tmem_acc, 512);
-        tcgen05_relinquish_alloc_permit(cta_group_1{});
+        tcgen05_dealloc(cta_group_1, tmem_acc, 512);
+        tcgen05_relinquish_alloc_permit(cta_group_1);
     }
 }
 
@@ -209,8 +209,7 @@ module = load_inline(
         "-O3",
         "--use_fast_math",
         "-std=c++17",
-        "-gencode=arch=compute_100,code=sm_100",
-        "-gencode=arch=compute_110,code=sm_110"
+        "-gencode=arch=compute_100a,code=sm_100a",
     ],
     with_cuda=True,
     verbose=False
