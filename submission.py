@@ -29,7 +29,7 @@ __device__ __forceinline__ float decode_fp8(int8_t byte) {
     return half_raw_to_float(raw);
 }
 
-// Direct PTX inline assembly for tcgen05.mma with block scaling
+
 __global__ void gemv_nvfp4_kernel(
     const int8_t* __restrict__ a,
     const int8_t* __restrict__ b,
