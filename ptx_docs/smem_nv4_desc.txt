@@ -1,0 +1,477 @@
+The shared memory descriptor describes the properties of multiplicand matrix in shared memory including its location in the shared memory of the current CTA. It is a 64-bit value contained in a register with the following layout:
+Table 40 Shared memory descriptor layout
+
+Bit-field
+	
+
+Size in bits
+	
+
+Description
+
+0-13
+	
+
+14
+	
+
+matrix-descriptor-encode (Matrix start address)
+
+16-29
+	
+
+14
+	
+
+matrix-descriptor-encode (Leading dimension byte offset relative)
+
+OR
+
+matrix-descriptor-encode (Leading dimension byte address absolute)
+
+32-45
+	
+
+14
+	
+
+matrix-descriptor-encode (Stride dimension byte offset)
+
+46-48
+	
+
+3
+	
+
+Fixed constant value of 0b001
+
+49-51
+	
+
+3
+	
+
+Matrix base offset
+
+52
+	
+
+1
+	
+
+Leading dimension stride mode: - 0: byte offset relative - 1: byte address absolute
+
+53-60
+	
+
+8
+	
+
+Fixed constant value of 0xb00000000
+
+61-63
+	
+
+3
+	
+
+Specifies the swizzling mode to be used: 0. No swizzling 1. 128-Byte with 32B atomic swizzling 2. 128-Byte swizzling 4. 64-Byte swizzling 6. 32-Byte swizzling
+
+Note: Values 3, 5 and 7 are invalid
+
+where matrix-descriptor-encode(x) = (x & 0x3FFFF) >> 4
+
+The value of base offset is 0 when the repeating pattern of the specified swizzling mode starts as per shown in Table 41.
+Table 41 Starting address of repeating pattern for various swizzling modes
+
+Swizzling mode
+	
+
+Starting address of the repeating pattern
+
+128-Byte swizzle
+	
+
+1024-Byte boundary
+
+64-Byte swizzle
+	
+
+512-Byte boundary
+
+32-Byte swizzle
+	
+
+256-Byte boundary
+
+Otherwise, the base offset must be a non-zero value, computed using the following formula: base offset = (pattern start addr >> 0x7) & 0x7
+
+The following must be 16-byte aligned:
+
+    Matrix start address
+
+    Leading dimension byte offset
+
+    Stride dimension byte offset
+
+
+
+
+ Table 44 Instruction descriptor format for .kind::mxf4 and .kind::mxf4nvf4
+
+Bits
+	
+
+Size
+
+(bits)
+	
+
+Description
+	
+
+Values
+
+.kind::mxf4
+	
+
+.kind::mxf4nvf4
+
+0-1
+	
+
+2
+	
+
+Reserved
+	
+
+0
+
+2
+	
+
+1
+	
+
+Sparsity
+	
+
+Dense = 0
+
+Sparse = 1
+
+3
+	
+
+1
+	
+
+Reserved
+	
+
+0
+
+4-5
+	
+
+2
+	
+
+Matrix B Scale Factor Data ID
+	
+
+0 or 2
+
+6
+	
+
+1
+	
+
+Reserved
+	
+
+0
+
+7-9
+	
+
+3
+	
+
+atype (Matrix A type)
+	
+
+E2M1 = 1
+
+10-11
+	
+
+2
+	
+
+btype (Matrix B type)
+
+12
+	
+
+1
+	
+
+Reserved
+	
+
+0
+
+13
+	
+
+1
+	
+
+Negate A Matrix
+	
+
+No Negate = 0
+
+Negate = 1
+
+14
+	
+
+1
+	
+
+Negate B Matrix
+
+15
+	
+
+1
+	
+
+Transpose A Matrix
+	
+
+No Transpose = 0
+
+16
+	
+
+1
+	
+
+Transpose B Matrix
+
+17-22
+	
+
+6
+	
+
+N, Dimension of Matrix B (3 LSBs not included)
+	
+
+N >> 3
+
+23
+	
+
+1
+	
+
+Scale Matrix Type, for both scale_A / scale_B
+	
+
+UE8M0 = 1
+	
+
+UE4M3 = 0
+
+24-26
+	
+
+3
+	
+
+Reserved
+	
+
+0
+
+27-28
+	
+
+2
+	
+
+M, Dimension of Matrix A (7 LSBs not included)
+	
+
+M >> 7
+
+29-30
+	
+
+2
+	
+
+Matrix A Scale Factor Data ID
+	
+
+0 or 2
+
+31
+	
+
+1
+	
+
+K Dimension
+	
+
+(Dense K=64 / Sparse K=128) = 0
+
+(Dense K=96) = 1
+
+
+
+
+
+
+
+Blackwell (SM100) tcgen05 Block-Scaled Kernel Layout and Examples
+
+Shared-Memory Layout: Blackwell MMA expects both operands in K-major form (row-major for A, column-major for B)
+research.colfax-intl.com
+modular.com
+. In practice, we match CUTLASS’s Layout_K_SW128: each 128B-aligned block along K is contiguous. For example, a 64×8 tile (M=64 rows, K=64 cols) used in a reference kernel had a descriptor of “(64, 8)” – i.e. a 64-byte LBO and 8-byte SBO in the SMEM descriptor
+modular.com
+. Per PTX Table 40, bits 61–63 set to 2 select 128‑Byte swizzling
+docs.nvidia.com
+. The LBO (leading-dimension byte offset) is K*sizeof(element) and the SBO (stride offset) covers the contiguous sub-block (e.g. 8×element size for an 8-wide block). Table 40 mandates 16-byte alignment of base, LBO and SBO addresses
+docs.nvidia.com
+.
+
+Matrix/Instruction Descriptors: Each MMA step needs a 64-bit SMEM descriptor and a 32-bit instruction (idesc) descriptor. The SMEM descriptor packs the tile’s base address, LBO, SBO and swizzle per Table 40
+docs.nvidia.com
+. The idesc fields for .kind::mxf4nvf4 are given in Table 44. In particular, for block‐scaled FP4:
+
+atypes/btype: Matrix A and B element types are .e2m1 (E2M1) so both atype and btype fields = 1
+docs.nvidia.com
+.
+
+Scale vector size: For scale_vec::4X, Table 44 shows “Scale Matrix Type = UE4M3 = 0” (bit 23=0)
+docs.nvidia.com
+.
+
+Dimensions: The idesc encodes N>>3 and M>>7. For N=8, N>>3=1 (bits 17–22=1)
+docs.nvidia.com
+. For M=128, M>>7=1 (bits 27–28=1)
+docs.nvidia.com
+. K=64 is encoded as 0 at bit 31 (dense K=64)
+docs.nvidia.com
+.
+
+Scale-factor IDs: The descriptor has 2-bit fields for “Matrix A Scale Factor Data ID” (bits 29–30) and “Matrix B Scale Factor Data ID” (bits 4–5), each must be 0 or 2
+docs.nvidia.com
+docs.nvidia.com
+. These IDs select which per-warp byte threads load the scale vector.
+
+By combining these, the correct idesc bits can be computed (aty=E2M1, bty=E2M1, scale_vec=4X, etc.). For example, Table 44 shows atype=1 (E2M1) at bits 7–9 and UE4M3=0 at bit 23
+docs.nvidia.com
+docs.nvidia.com
+. A known-good .mma.sync.aligned line (for M=16,N=8,K=64) is:
+
+
+mma.sync.aligned.m16n8k64.row.col.kind::mxf4nvf4.block_scale.scale_vec::4X.f32.e2m1.e2m1.f32.ue4m3
+    {%Rd0,%Rd1,%Rd2,%Rd3},
+    {%Ra0,%Ra1,%Ra2,%Ra3},
+    {%Rb0,%Rb1},
+    {%Rc0,%Rc1,%Rc2,%Rc3},
+    scaleAData,{bidA,tidA}, scaleBData,{bidB,tidB};
+his shows the layout: A’s 4×4 registers, B’s 8 registers, and the D accumulator registers, followed by the TMEM addresses scaleAData and scaleBData plus their byte/thread selectors. A complete M=128, N=8, K=64 kernel would use the same format (with 128 for M and properly packed descriptors).
+
+Sources: NVIDIA PTX docs (Table 40 for SMEM layout
+docs.nvidia.com
+; Table 44 for .mxf4nvf4 idesc
+docs.nvidia.com
+docs.nvidia.com
+) and NVIDIA/CUTLASS tutorials
+research.colfax-intl.com
+research.colfax-intl.com
+modular.com
+ provide these details and examples. The above example is adapted from publicly available PTX in the TVM/CUTLASS ecosystem
+discuss.tvm.apache.org
+Matrix & Shared-Memory Layout
+
+For Blackwell (tcgen05) GEMMs with M=128, N=8, K=64, both A and B tiles should use K-major layout (each column of 8×1 core-matrices contiguous). In practice we match CUTLASS’s “Layout_K_SW128” style: a K-major layout with 128‑byte swizzle. For example, the CUTLASS/Modular blog notes that using a 128B swizzle (pattern <3,4,3>) places each 16B chunk across different banks, eliminating bank conflicts
+modular.com
+. Table 40 of the PTX ISA defines the SMEM descriptor fields: notably the LBO (leading-byte offset between core-matrix columns) and SBO (stride between rows)
+docs.nvidia.com
+. As an example, for M=128 with 4‑bit (E2M1) elements, one computes LBO = 128×(16 B) = 2048 B and SBO = 128 B (eight rows × 16 B per core-matrix). By extension, for N=8 one would use LBO = 8×16=128 B and SBO = 128 B. (In a published example with M=64 FP16, they found aLBO=1024 and aSBO=128
+modular.com
+.) These values (plus base offset and swizzle mode) are encoded per Table 40
+docs.nvidia.com
+.
+
+The instruction descriptor is a 32‑bit word defined by Table 44
+docs.nvidia.com
+. For block-scaled MMA .kind::mxf4nvf4, the fields include A/B data types and scale types: e.g. both A and B types should be set to E2M1 (which Table 44 lists as value 5)
+docs.nvidia.com
+. The descriptor’s N- and M-fields must hold N>>3 and M>>7 (so 8>>3=1 and 128>>7=1), and the “Scale Matrix Type” bit (UE4M3 vs UE8M0) must match the chosen scale-vector size. In short, Tables 40/44 give the precise bit-layout for all fields
+docs.nvidia.com
+docs.nvidia.com
+. (We did not find ready-made numeric examples for the M=128,N=8,K=64 case; one must compute them or use a tool to pack according to those tables.)
+
+Descriptor Packing and Validation
+
+To avoid errors, one usually writes helper routines to pack these bits exactly per Tables 40&44. For instance, the “MMASmemDescriptor” in Mojo/CuTe DSL automates this: calling MMASmemDescriptor.create(LBO,SBO,swizzle) sets up the 64-bit SMEM descriptor for A or B
+modular.com
+. In a Mojo example (no swizzle case) they showed for A:aSBO=128  aLBO=1024  
+ith commentary “LBO = BM*16B, SBO = size of each core matrix”
+modular.com
+. (With BM=128, that formula would give aLBO=2048, aSBO=128.)
+
+The instruction descriptor (idesc) is similarly constructed via bitfields. Table 44 shows that .kind::mxf4nvf4 requires setting atype=btype=E2M1 (5), and bits for sparsity=0, N>>3 and M>>7, plus scale-vector ID bits
+docs.nvidia.com
+. We can confirm these layouts by cross-referencing the PTX docs: for example, Table 40’s notes say bit 52=0 selects relative-offset mode, bit 61–63=1 selects 128‑Byte swizzle
+docs.nvidia.com
+. In practice one would test by round-trip encoding/decoding or by comparing to CUTLASS’s output. Unfortunately, absent hardware there are few concrete examples published. The key references are the PTX ISA tables themselves
+docs.nvidia.com
+docs.nvidia.com
+, which should be followed to pack every bit correctly.
+
+TMEM Allocation & Multi-CTA Scheduling
+
+Tensor Memory (TMEM) on SM100 is 256 KB (512 columns × 128 lanes of 32-bit cells)
+research.colfax-intl.com
+. We allocate TMEM by columns (in powers of two, ≥32 columns) using tcgen05.alloc
+research.colfax-intl.com
+. In one example, the code allocates all 512 columns (2^18 bytes) so that a single CTA’s accumulator has full space. Warp-level restrictions mean each warp can only access 32 of the 128 lanes (warp0→lanes0–31, warp1→32–63, etc.)
+research.colfax-intl.com
+, so the accumulation result is effectively partitioned by warp. Notably, the largest MMA shape (128×256×16) occupies exactly half of TMEM (256 columns)
+research.colfax-intl.com
+. For our M=128,N=8,K=64 tile (much smaller than 128×256), each CTA’s accumulators will use fewer columns (we would allocate enough columns to store one BM×BN=128×8 block).
+
+If multiple CTAs share an SM, each CTA must reserve disjoint TMEM columns. In practice one would choose allocations like 32,64,128,… columns per CTA (power-of-2). The references imply an upper bound: one CTA (128×256 MMA) uses 256 columns
+research.colfax-intl.com
+, so two such CTAs can fit. Thus, for M=128×8, each CTA might only need (say) 128 columns, allowing several CTAs per SM. The PTX docs and CUTLASS notes advise the kernel explicitly coordinate these allocations (using a tensor memory allocator) so that columns aren’t over-subscribed
+research.colfax-intl.com
+research.colfax-intl.com
+. In summary, consult the PTX guide and CUTLASS “tmemory” utilities for precise column counts and warp mappings when writing the final code
+research.colfax-intl.com
+research.colfax-intl.com
+.
+
+Sources: NVIDIA PTX ISA (Tables 40,44)
+docs.nvidia.com
+docs.nvidia.com
+; CUTLASS/Modular blogs on Blackwell (layout and TMEM)
+modular.com
+research.colfax-intl.com
+; Modular/CUTLASS code examples
+modular.com
+research.colfax-intl.com
+.

@@ -148,8 +148,7 @@ module = load_inline(
         '-O3',
         '--use_fast_math',
         '-std=c++17',
-        '-gencode=arch=compute_100,code=sm_100',
-        '-gencode=arch=compute_110,code=sm_110'
+        '-gencode=arch=compute_100a,code=sm_100a'
     ],
     with_cuda=True,
     verbose=False
