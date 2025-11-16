@@ -1,7 +1,7 @@
 "**NVIDIA on GitHub ✅ success**
-> Workflow [19400244006](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19400244006>) completed
+> Workflow [19400498314](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19400498314>) completed
 > Downloading artifacts... done
-> ✅ Benchmarking successful
+> ❌ Running benchmarks failed (timeout)
 
 Running on:
 * GPU: `NVIDIA B200`
@@ -9,19 +9,7 @@ Running on:
 * Runtime: `CUDA`
 * Platform: `Linux-6.8.0-51-generic-x86_64-with-glibc2.35`
 * Torch: `2.9.0+cu130`
-
-
-## Benchmarks:
-```
-k: 16384; l: 1; m: 7168; seed: 1111
- ⏱ 2.03 ± 0.002 ms
- ⚡ 2.02 ms 🐌 2.05 ms
-
-k: 7168; l: 8; m: 4096; seed: 1111
- ⏱ 920 ± 0.4 µs
- ⚡ 914 µs 🐌 927 µs
-
-k: 2048; l: 4; m: 7168; seed: 1111
- ⏱ 259 ± 0.2 µs
- ⚡ 256 µs 🐌 262 µs
-```"
+# Running failed
+Command ```bash
+python3 eval.py benchmark /tmp/tmphezf2ugn```
+**timed out** after 180.00 seconds."
