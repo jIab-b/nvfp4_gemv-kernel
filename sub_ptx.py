@@ -9,6 +9,7 @@ torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::
 
 cuda_source = """
 #include <torch/extension.h>
+#include <cuda_runtime.h>
 #include <cuda_fp16.h>
 #include <cuda_fp4.h>
 #include <cuda_fp8.h>
@@ -28,6 +29,16 @@ __device__ __forceinline__ float decode_fp8(int8_t byte) {
     __half_raw raw = __nv_cvt_fp8_to_halfraw(storage, __NV_E4M3);
     return half_raw_to_float(raw);
 }
+
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+__device__ __forceinline__ void cp_async_16(void* dst, const void* src) {
+    unsigned dst_addr = static_cast<unsigned>(__cvta_generic_to_shared(dst));
+    asm volatile(
+        "cp.async.ca.shared.global [%0], [%1], 16;"
+        :
+        : "r"(dst_addr), "l"(src));
+}
+#endif
 
 
 __global__ void gemv_nvfp4_kernel(
@@ -67,6 +78,50 @@ __global__ void gemv_nvfp4_kernel(
     const uint8_t* row_sfa = batch_sfa + static_cast<size_t>(m) * K_sf;
 
     __shared__ float smem_acc[32];
+    extern __shared__ uint8_t shared_bytes[];
+    uint8_t* smem_a = shared_bytes;
+    uint8_t* smem_b = shared_bytes + K_half;
+
+    const uint8_t* row_a_data = row_a;
+    const uint8_t* batch_b_data = batch_b;
+
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+    for (int offset = tid * 16; offset < K_half; offset += blockDim.x * 16) {
+        cp_async_16(smem_a + offset, row_a + offset);
+        cp_async_16(smem_b + offset, batch_b + offset);
+    }
+    asm volatile("cp.async.commit_group;");
+    asm volatile("cp.async.wait_group 0;");
+    __syncthreads();
+    row_a_data = smem_a;
+    batch_b_data = smem_b;
+
+    // Debug check for GMEM->SMEM copies (remove once validated).
+    if (tid == 0) {
+        bool mismatch = false;
+        for (int i = 0; i < K_half; ++i) {
+            if (smem_a[i] != row_a[i] || smem_b[i] != batch_b[i]) {
+                mismatch = true;
+                break;
+            }
+        }
+        if (mismatch) {
+            asm volatile("trap;");
+        }
+    }
+#else
+    for (int offset = tid * 16; offset < K_half; offset += blockDim.x * 16) {
+        int remaining = K_half - offset;
+        int bytes = remaining >= 16 ? 16 : remaining;
+        for (int i = 0; i < bytes; ++i) {
+            smem_a[offset + i] = row_a[offset + i];
+            smem_b[offset + i] = batch_b[offset + i];
+        }
+    }
+    __syncthreads();
+    row_a_data = smem_a;
+    batch_b_data = smem_b;
+#endif
 
     float acc = 0.0f;
 
@@ -82,8 +137,8 @@ __global__ void gemv_nvfp4_kernel(
             if (k >= K) break;
 
             int byte_idx = k / 2;
-            uint8_t a_byte = row_a[byte_idx];
-            uint8_t b_byte = batch_b[byte_idx];
+            uint8_t a_byte = row_a_data[byte_idx];
+            uint8_t b_byte = batch_b_data[byte_idx];
 
             uint8_t a_nib = (k & 1) ? (a_byte >> 4) : (a_byte & 0xF);
             uint8_t b_nib = (k & 1) ? (b_byte >> 4) : (b_byte & 0xF);
@@ -111,16 +166,19 @@ __global__ void gemv_nvfp4_kernel(
         size_t c_idx = static_cast<size_t>(m) + static_cast<size_t>(l) * M;
         c[c_idx] = __float2half(smem_acc[0]);
     }
+
 }
 
 torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::Tensor sfa, torch::Tensor sfb, torch::Tensor c) {
     int M = a.size(0);
     int K = a.size(1) * 2;
+    int K_half = K / 2;
     int L = a.size(2);
     int N_rows = b.size(0);
     
     dim3 grid(M, L);
     dim3 block(32);
+    size_t shared_bytes = static_cast<size_t>(K_half) * 2;
 
     auto* a_ptr = reinterpret_cast<const int8_t*>(a.data_ptr());
     auto* b_ptr = reinterpret_cast<const int8_t*>(b.data_ptr());
@@ -128,7 +186,7 @@ torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::
     auto* sfb_ptr = reinterpret_cast<const int8_t*>(sfb.data_ptr());
     auto* c_ptr = reinterpret_cast<half*>(c.data_ptr());
 
-    gemv_nvfp4_kernel<<<grid, block>>>(
+    gemv_nvfp4_kernel<<<grid, block, shared_bytes>>>(
         a_ptr,
         b_ptr,
         sfa_ptr,
