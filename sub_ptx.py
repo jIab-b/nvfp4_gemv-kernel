@@ -83,22 +83,63 @@ __global__ void gemv_nvfp4_kernel(
 #endif
     extern __shared__ uint8_t shared_bytes[];
     uint8_t* smem_a = shared_bytes;
-    uint8_t* smem_b = shared_bytes + K_half;
+    uint8_t* smem_b = smem_a + K_half;
+    uint8_t* smem_sfa = smem_b + K_half;
+    uint8_t* smem_sfb = smem_sfa + K_sf;
 
     const uint8_t* row_a_data = row_a;
     const uint8_t* batch_b_data = batch_b;
+    const int8_t* row_sfa_data = reinterpret_cast<const int8_t*>(row_sfa);
+    const int8_t* batch_sfb_data = reinterpret_cast<const int8_t*>(batch_sfb);
 
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
-    for (int offset = tid * 16; offset < K_half; offset += blockDim.x * 16) {
+    int aligned_a = (K_half / 16) * 16;
+    for (int offset = tid * 16; offset < aligned_a; offset += blockDim.x * 16) {
         cp_async_16(smem_a + offset, row_a + offset);
         cp_async_16(smem_b + offset, batch_b + offset);
+    }
+    int aligned_sf = (K_sf / 16) * 16;
+    for (int offset = tid * 16; offset < aligned_sf; offset += blockDim.x * 16) {
+        cp_async_16(smem_sfa + offset, row_sfa + offset);
+        cp_async_16(smem_sfb + offset, batch_sfb + offset);
     }
     asm volatile("cp.async.commit_group;");
     asm volatile("cp.async.wait_group 0;");
     __syncthreads();
     row_a_data = smem_a;
     batch_b_data = smem_b;
+    row_sfa_data = reinterpret_cast<const int8_t*>(smem_sfa);
+    batch_sfb_data = reinterpret_cast<const int8_t*>(smem_sfb);
 
+    // Tail copies for remaining bytes (<16)
+    int tail_a = K_half - aligned_a;
+    if (tail_a > 0 && tid == 0) {
+        for (int i = 0; i < tail_a; ++i) {
+            smem_a[aligned_a + i] = row_a[aligned_a + i];
+            smem_b[aligned_a + i] = batch_b[aligned_a + i];
+        }
+    }
+    int tail_sf = K_sf - aligned_sf;
+    if (tail_sf > 0 && tid == 0) {
+        for (int i = 0; i < tail_sf; ++i) {
+            smem_sfa[aligned_sf + i] = row_sfa[aligned_sf + i];
+            smem_sfb[aligned_sf + i] = batch_sfb[aligned_sf + i];
+        }
+    }
+    __syncthreads();
+
+    if (m == 0 && l == 0 && tid == 0) {
+        bool mismatch = false;
+        for (int i = 0; i < K_sf; ++i) {
+            if (smem_sfa[i] != row_sfa[i] || smem_sfb[i] != batch_sfb[i]) {
+                mismatch = true;
+                break;
+            }
+        }
+        if (mismatch) {
+            asm volatile("trap;");
+        }
+    }
 #else
     for (int offset = tid * 16; offset < K_half; offset += blockDim.x * 16) {
         int remaining = K_half - offset;
@@ -108,9 +149,19 @@ __global__ void gemv_nvfp4_kernel(
             smem_b[offset + i] = batch_b[offset + i];
         }
     }
+    for (int offset = tid * 16; offset < K_sf; offset += blockDim.x * 16) {
+        int remaining = K_sf - offset;
+        int bytes = remaining >= 16 ? 16 : remaining;
+        for (int i = 0; i < bytes; ++i) {
+            smem_sfa[offset + i] = row_sfa[offset + i];
+            smem_sfb[offset + i] = batch_sfb[offset + i];
+        }
+    }
     __syncthreads();
     row_a_data = smem_a;
     batch_b_data = smem_b;
+    row_sfa_data = reinterpret_cast<const int8_t*>(smem_sfa);
+    batch_sfb_data = reinterpret_cast<const int8_t*>(smem_sfb);
 #endif
 
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1000
@@ -145,8 +196,8 @@ __global__ void gemv_nvfp4_kernel(
     // Each thread processes K/32 elements
     for (int k_block = tid; k_block < K_sf; k_block += 32) {
         // Load scale factors (FP8 E4M3 -> float)
-        float scale_a = decode_fp8(static_cast<int8_t>(row_sfa[k_block]));
-        float scale_b = decode_fp8(static_cast<int8_t>(batch_sfb[k_block]));
+        float scale_a = decode_fp8(row_sfa_data[k_block]);
+        float scale_b = decode_fp8(batch_sfb_data[k_block]);
 
         // Process 16 FP4 elements
         for (int i = 0; i < 16; i++) {
@@ -190,12 +241,13 @@ torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::
     int M = a.size(0);
     int K = a.size(1) * 2;
     int K_half = K / 2;
+    int K_sf = K / 16;
     int L = a.size(2);
     int N_rows = b.size(0);
     
     dim3 grid(M, L);
     dim3 block(32);
-    size_t shared_bytes = static_cast<size_t>(K_half) * 2;
+    size_t shared_bytes = static_cast<size_t>(K_half) * 2 + static_cast<size_t>(K_sf) * 2;
 
     auto* a_ptr = reinterpret_cast<const int8_t*>(a.data_ptr());
     auto* b_ptr = reinterpret_cast<const int8_t*>(b.data_ptr());
