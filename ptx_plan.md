@@ -1,57 +1,40 @@
-# PTX Bring-Up Plan for `sub_ptx.py`
+# PTX Bring-Up Plan (Updated)
 
-## Target Pipeline (GMEM → SMEM → TMEM → Registers → GMEM)
-- **Mainloop tiles**: target `M_tile=128`, `N_tile=64` (for GEMV we’ll only use the first column), `K_tile=64`. These align with tcgen05 shape options (Table 39 in `ptx_docs/ptx_isa.txt`).
-- **Data stages & instructions**:
-  1. **GMEM → SMEM**: `tma.load.tensor.{1d,2d}.shared::cluster.global` (PTX §9.7.16.6). Requires TMA descriptors + `mbarrier` sync (§9.7.16.5).
-  2. **SMEM → TMEM (MMA)**:
-     - SMEM descriptors per Table 40 in `smem_nv4_desc.txt`.
-     - `tcgen05.cp.async` for block-scale vectors (PTX §9.7.16.7.2).
-     - `tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale` (PTX §9.7.16.4) with IDESC from Table 44.
-  3. **TMEM → Registers**: `tcgen05.ld.32x32b*` (PTX §9.7.16.7.3).
-  4. **Registers → GMEM**: standard CUDA stores or `st.global` (no new PTX).
+## Target Tile Shape
+- CTA processes `(tile_M=128, tile_N=64)` with `K` looped in `tile_K=64` chunks.
+- For GEMV (`N=1`), treat `tile_N` as 64 to match tcgen05 descriptors; we’ll only materialize column 0 in the epilogue.
 
-## Incremental Replacement Strategy
-1. **Baseline sanity (already done)**
-   - Keep scalar CUDA loops; only PTX inlined is `fma.rn.f32` (ensures inline PTX tooling works).
+## Stage Outline
+1. **Stage A** — GMEM→SMEM (done): `cp.async` double-buffered tiles for A/B and scale tensors.
+2. **Stage B** — TMEM allocation scaffold (done): `tcgen05.alloc/dealloc` once per CTA.
+3. **Stage C** — Scale-factor staging (done for SMEM): copy `sfa/sfb` tiles into shared memory.
+4. **Stage D** — Block-scale vector path (new sub-steps):
+   - **D1: Tile restructure** (CTA per 128×64 tile, `K` looped in 64-chunk). Scalar math still used.
+   - **D2: TMEM copy verification** (`tcgen05.cp` from SMEM to TMEM, `tcgen05.ld` back to verify). [CURRENT]
+   - **D3: tcgen05.mma smoke test** (one MMA per chunk; read TMEM accumulator and compare to scalar result).
+5. **Stage E** — Epilogue: move TMEM accumulator directly to registers, apply `alpha/beta`, write GMEM.
 
-2. **Stage A: GMEM→SMEM with TMA (no tensor cores yet)**
-   - Introduce shared-memory staging buffers for A/B tiles (128×64, 64×64).
-   - Emit TMA descriptor setup on host (C++) or inline constant arrays referencing `ptx_docs/ptx_isa.txt` §9.7.16.6.
-   - In kernel: replace manual loads with `tma.load.tensor` + `mbarrier.arrive/try_wait` loops (see CuTe tutorial 02 for sequence). Still run the old scalar loop on the SMEM tile to verify correctness.
-   - Debug focus: descriptor bitfields (Table 40), swizzle alignment, mbarrier parity.
+## Stage D Sub-Steps in Detail
+- **D1: Tile restructure**
+  - Launch grid `(ceil(M/128), L)` with `blockDim=128`.
+  - For each CTA: iterate `K` in `64`-wide chunks. Inside the chunk, cooperate to load `A_tile[128][64/2]`, `B_tile[64/2]`, `SFA_tile[128][4]`, `SFB_tile[4]` into SMEM.
+  - Keep the existing scalar GEMV loop but reindex it to use `tile_M` and `tile_K`.
+  - *Verification:* Run the full test suite—results must match the baseline since math hasn’t changed.
 
-3. **Stage B: TMEM allocation scaffolding**
-   - Re-introduce `tcgen05.alloc/dealloc/relinquish_alloc_permit` once per tile CTA (PTX §9.7.16.7.1).
-   - Reserve minimal columns (32) and verify CTAs don’t deadlock (warp-synchronous issue). No MMA yet; just test allocator+deallocator to ensure they run without stalling (limit CTAs per SM temporarily if needed).
+- **D2: TMEM copy verification**
+  - After staging each chunk, allocate TMEM columns once per CTA (`tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32`).
+  - Build SMEM descriptors for the staged `SFA_tile` and `SFB_tile` (see Table 40). Issue `tcgen05.cp.cta_group::1.128x256b` (or appropriate shape) to copy those tiles into TMEM columns.
+  - Immediately issue `tcgen05.ld.32x32b` on the same TMEM addresses, copy the data into registers, and compare against the original SMEM buffers. Trap if any mismatch occurs.
+  - Deallocate the TMEM columns afterwards (`tcgen05.dealloc`, `tcgen05.relinquish_alloc_permit`).
+  - *References:* PTX ISA §9.7.16.7.1 (alloc/dealloc), §9.7.16.9.2 (`tcgen05.cp`), §9.7.16.7.3 (`tcgen05.ld`).
+  - *Verification:* Test suite passes unless TMEM copies misbehave—in which case the CTA hits the trap immediately.
 
-4. **Stage C: Block-scale vector path**
-   - TMA-load `sfa/sfb` tiles into SMEM (same stage as A).
-   - Emit `tcgen05.cp.async` to copy those SMEM tiles into TMEM columns (`PTX §9.7.16.7.2`). Still keep scalar math for the dot product so we can verify the TMEM copies land where we expect (e.g., read TMEM back with `tcgen05.ld` and compare).
+- **D3: tcgen05.mma smoke test**
+  - For each chunk, use the staged SMEM tiles and TMEM scales to issue `tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale` with `tile_M=128`, `tile_N=64`, `tile_K=64` (IDESC per Table 44).
+  - Immediately load the TMEM accumulator via `tcgen05.ld` and compare to the scalar result for that chunk. Keep the scalar path active in parallel for A/B testing.
+  - *Verification:* For small test inputs (M=128, K=64, L=1) the tcgen05 output should match the scalar result exactly.
 
-5. **Stage D: Replace scalar inner loop with `tcgen05.mma`**
-   - Build the instruction descriptor (IDESC) per Table 44 (`smem_nv4_desc.txt`) for `.kind::mxf4nvf4.block_scale`. Confirm bitfields by cross-checking CUTLASS 72b example.
-   - Emit `tcgen05.mma` once per K tile, pointing to the SMEM descriptors and TMEM accumulator pointer.
-   - For verification, immediately read TMEM back with `tcgen05.ld` and run the existing reduction, so only the compute stage changes.
-
-6. **Stage E: Full TMEM epilogue**
-   - After all K tiles, replace the shared-memory reduction with a proper TMEM→register load using `tcgen05.ld.32x32b`. Map warp/lane IDs to `(M_tile, N_tile)` rows.
-   - Apply `alpha/beta` scaling in registers (same math as before) and store to GMEM.
-
-7. **Stage F: GEMV-specific optimizations**
-   - Exploit the fact N=1 by trimming the descriptor to only issue the first column, or fuse L dimension as N.
-   - Once consistent, consider `tma.store` for the epilogue, persistent CTAs, etc.
-
-## Debug/Validation Checklist per Stage
-- **Stage A**: compare SMEM tile contents against CPU copy. Use conditional compilation to dump SMEM via printf for small shapes.
-- **Stage B**: keep CTA count low while testing allocation to avoid starving; check for deadlocks/timeouts.
-- **Stage C**: read TMEM scale-factor columns back via `tcgen05.ld` and compare to original scale data.
-- **Stage D**: verify MMA outputs tile-wise by comparing TMEM contents vs. scalar results for small shapes.
-- **Stage E**: ensure TMEM addressing matches lane layout; we may need to derive the column/lane mapping from PTX docs.
-
-## References
-- `ptx_docs/ptx_isa.txt`: §9.7.16 (TMEM/TMA/TCGEN05), §9.7.16.7 (alloc/cp/ld instructions).
-- `ptx_docs/smem_nv4_desc.txt`: Table 40 (SMEM descriptor bitfields), Table 44 (IDESC).
-- CuTe tutorials (`cute/02_mma_tma_sm100.cu`, `cute/03_mma_tma_multicast_sm100.cu`) for sequencing TMEM alloc + MMA.
-- CUTLASS example `cutlass_examples/72b_blackwell_nvfp4_nvfp4_gemm.cu` for block-scaled layout and dtype tags.
-
+## Testing Strategy
+- After D1: run the full harness; results must match baseline (no PTX yet).
+- After D2: run harness; expect either success or a `trap` if TMEM copies are wrong.
+- After D3: run small tests (M=128, K=64) to compare scalar vs. tcgen05 per chunk; once parity is proven, remove the scalar redundancy chunk-by-chunk.
