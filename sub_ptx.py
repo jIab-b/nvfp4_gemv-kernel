@@ -78,6 +78,9 @@ __global__ void gemv_nvfp4_kernel(
     const uint8_t* row_sfa = batch_sfa + static_cast<size_t>(m) * K_sf;
 
     __shared__ float smem_acc[32];
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1000
+    __shared__ unsigned tmem_debug_addr;
+#endif
     extern __shared__ uint8_t shared_bytes[];
     uint8_t* smem_a = shared_bytes;
     uint8_t* smem_b = shared_bytes + K_half;
@@ -96,19 +99,6 @@ __global__ void gemv_nvfp4_kernel(
     row_a_data = smem_a;
     batch_b_data = smem_b;
 
-    // Debug check for GMEM->SMEM copies (remove once validated).
-    if (tid == 0) {
-        bool mismatch = false;
-        for (int i = 0; i < K_half; ++i) {
-            if (smem_a[i] != row_a[i] || smem_b[i] != batch_b[i]) {
-                mismatch = true;
-                break;
-            }
-        }
-        if (mismatch) {
-            asm volatile("trap;");
-        }
-    }
 #else
     for (int offset = tid * 16; offset < K_half; offset += blockDim.x * 16) {
         int remaining = K_half - offset;
@@ -121,6 +111,33 @@ __global__ void gemv_nvfp4_kernel(
     __syncthreads();
     row_a_data = smem_a;
     batch_b_data = smem_b;
+#endif
+
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 1000
+    // Stage B: TMEM allocation scaffold (only CTA (0,0) runs to avoid perf impact).
+    if (m == 0 && l == 0) {
+        unsigned smem_ptr = 0;
+        if (tid == 0) {
+            smem_ptr = __cvta_generic_to_shared(&tmem_debug_addr);
+        }
+        smem_ptr = __shfl_sync(0xffffffff, smem_ptr, 0);
+        if (tid < 32) {
+            asm volatile(
+                "tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [%0], 32;"
+                :
+                : "r"(smem_ptr));
+        }
+        __syncthreads();
+        unsigned tmem_base = tmem_debug_addr;
+        if (tid < 32) {
+            asm volatile(
+                "tcgen05.dealloc.cta_group::1.sync.aligned.b32 %0, 32;"
+                :
+                : "r"(tmem_base));
+            asm volatile("tcgen05.relinquish_alloc_permit.cta_group::1.sync.aligned;");
+        }
+        __syncthreads();
+    }
 #endif
 
     float acc = 0.0f;
