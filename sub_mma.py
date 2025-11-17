@@ -56,7 +56,10 @@ constexpr int kTmemColsA = 64;
 constexpr int kTmemColsB = 64;
 constexpr int kTmemColsScale = 32;
 constexpr int kTmemColsAccumulator = 64;
-constexpr int kDebugBytesPerLane = 4;
+constexpr int kTileKBytes = kTileK / 2;
+constexpr int kScalePerRow = kTileK / 16;
+constexpr int kSmemTileBytes = kTileM * kTileKBytes;
+constexpr int kSmemScaleBytes = kTileM * kScalePerRow;
 
 #define STR_HELPER(x) #x
 #define STR(x) STR_HELPER(x)
@@ -96,6 +99,48 @@ __device__ __forceinline__ void tmem_relinquish() {{
     asm volatile("tcgen05.relinquish_alloc_permit.cta_group::1.sync.aligned;");
 }}
 
+__device__ __forceinline__ uint64_t encode_field(uint32_t value) {{
+    return (static_cast<uint64_t>(value & 0x3FFFF) >> 4) & 0x3FFFULL;
+}}
+
+__device__ __forceinline__ uint64_t encode_smem_descriptor(uint32_t start_addr, uint32_t leading_bytes, uint32_t stride_bytes) {{
+    uint64_t desc = 0;
+    desc |= encode_field(start_addr);
+    desc |= encode_field(leading_bytes) << 16;
+    desc |= encode_field(stride_bytes) << 32;
+    desc |= (1ull << 46);
+    desc |= (static_cast<uint64_t>(0xb0) << 53);
+    // swizzle bits left as zero (no swizzle)
+    return desc;
+}}
+
+__device__ __forceinline__ void mbarrier_init(uint64_t* ptr, unsigned count) {{
+    asm volatile("mbarrier.init.shared::cta.b64 [%0], %1;" :: "r"(ptr), "r"(count));
+}}
+
+__device__ __forceinline__ void mbarrier_wait(uint64_t* ptr, unsigned parity) {{
+    unsigned ready = 0;
+    do {{
+        asm volatile(
+            "mbarrier.try_wait.parity.shared::cta.b64 %0, [%1], %2;"
+            : "=r"(ready)
+            : "r"(ptr), "r"(parity));
+    }} while (!ready);
+}}
+
+__device__ __forceinline__ void tensor_cp_128x256(unsigned tmem_base, uint64_t desc, uint64_t* mbar_ptr, unsigned& parity) {{
+    asm volatile(
+        "tcgen05.cp.cta_group::1.128x256b [%0], %1;"
+        :
+        : "r"(tmem_base), "l"(desc));
+    asm volatile(
+        "tcgen05.commit.cta_group::1.mbarrier::arrive::one.b64 [%0];"
+        :
+        : "r"(mbar_ptr));
+    mbarrier_wait(mbar_ptr, parity);
+    parity ^= 1u;
+}}
+
 __global__ void gemv_nvfp4_mma_kernel(
     const int8_t* __restrict__ a,
     const int8_t* __restrict__ b,
@@ -112,12 +157,27 @@ __global__ void gemv_nvfp4_mma_kernel(
     (void)N_rows;
 
     const uint8_t* base_a = reinterpret_cast<const uint8_t*>(a);
+    const uint8_t* base_b = reinterpret_cast<const uint8_t*>(b);
+    const uint8_t* base_sfa = reinterpret_cast<const uint8_t*>(sfa);
+    const uint8_t* base_sfb = reinterpret_cast<const uint8_t*>(sfb);
     const size_t K_half = static_cast<size_t>(K) / 2;
+    const size_t K_sf = static_cast<size_t>(K) / 16;
     const size_t batch_stride_a = static_cast<size_t>(M) * K_half;
+    const size_t batch_stride_b = static_cast<size_t>(N_rows) * K_half;
+    const size_t batch_stride_sfa = static_cast<size_t>(M) * K_sf;
+    const size_t batch_stride_sfb = static_cast<size_t>(N_rows) * K_sf;
     const uint8_t* batch_a = base_a + static_cast<size_t>(blockIdx.y) * batch_stride_a;
+    const uint8_t* batch_b = base_b + static_cast<size_t>(blockIdx.y) * batch_stride_b;
+    const uint8_t* batch_sfa = base_sfa + static_cast<size_t>(blockIdx.y) * batch_stride_sfa;
+    const uint8_t* batch_sfb = base_sfb + static_cast<size_t>(blockIdx.y) * batch_stride_sfb;
 
-    extern __shared__ uint8_t shared_bytes[];
-    uint32_t* debug_stage = reinterpret_cast<uint32_t*>(shared_bytes);
+    extern __shared__ __align__(16) uint8_t shared_bytes[];
+    uint8_t* smem_a = shared_bytes;
+    uint8_t* smem_b = smem_a + kSmemTileBytes;
+    uint8_t* smem_sfa = smem_b + kSmemTileBytes;
+    uint8_t* smem_sfb = smem_sfa + kSmemScaleBytes;
+    uint8_t* smem_after_scales = smem_sfb + kSmemScaleBytes;
+    uint64_t* tma_mbar = reinterpret_cast<uint64_t*>(smem_after_scales);
 
     __shared__ unsigned tmem_a_base;
     __shared__ unsigned tmem_b_base;
@@ -128,7 +188,6 @@ __global__ void gemv_nvfp4_mma_kernel(
     const int lane = threadIdx.x & (kWarpSize - 1);
     const bool warp0 = threadIdx.x < kWarpSize;
     const int tile_m_start = blockIdx.x * kTileM;
-    const int tile_row = tile_m_start + lane;
 
     if (warp0) {{
         tmem_alloc_cols<kTmemColsA>(tmem_a_base, true);
@@ -146,52 +205,93 @@ __global__ void gemv_nvfp4_mma_kernel(
                tmem_sfa_base, tmem_sfb_base, tmem_d_base);
     }}
 
-    if (kEnableDebug) {{
-        if (warp0) {{
-            uint32_t gmem_word = 0;
-            if (tile_row < M && K_half > 0) {{
-                const uint8_t* row_ptr = batch_a + static_cast<size_t>(tile_row) * K_half;
-                uint32_t assembled = 0;
-                int bytes_to_copy = static_cast<int>(K_half);
-                bytes_to_copy = bytes_to_copy < kDebugBytesPerLane ? bytes_to_copy : kDebugBytesPerLane;
-                #pragma unroll
-                for (int i = 0; i < kDebugBytesPerLane; ++i) {{
-                    uint32_t byte_val = (i < bytes_to_copy) ? static_cast<uint32_t>(row_ptr[i]) : 0u;
-                    assembled |= (byte_val << (8 * i));
-                }}
-                gmem_word = assembled;
+    if (threadIdx.x == 0) {{
+        mbarrier_init(tma_mbar, 1);
+    }}
+    __syncthreads();
+
+    const int total_k_tiles = (K + kTileK - 1) / kTileK;
+    const int guarded_rows = N_rows > 0 ? N_rows : 1;
+    unsigned cp_parity = 0;
+
+    for (int kt = 0; kt < total_k_tiles; ++kt) {{
+        const int k_byte_offset = kt * kTileKBytes;
+        const int k_scale_offset = kt * kScalePerRow;
+
+        for (int idx = threadIdx.x; idx < kSmemTileBytes; idx += blockDim.x) {{
+            int local_row = idx / kTileKBytes;
+            int local_byte = idx % kTileKBytes;
+            size_t global_row = tile_m_start + local_row;
+            size_t global_byte = static_cast<size_t>(k_byte_offset) + local_byte;
+            uint8_t value = 0;
+            if (global_row < static_cast<size_t>(M) && global_byte < K_half) {{
+                value = batch_a[global_row * K_half + global_byte];
             }}
-            debug_stage[lane] = gmem_word;
+            smem_a[idx] = value;
         }}
+
+        for (int idx = threadIdx.x; idx < kSmemTileBytes; idx += blockDim.x) {{
+            int local_row = idx / kTileKBytes;
+            int local_byte = idx % kTileKBytes;
+            size_t global_row = local_row % guarded_rows;
+            size_t global_byte = static_cast<size_t>(k_byte_offset) + local_byte;
+            uint8_t value = 0;
+            if (global_row < static_cast<size_t>(N_rows) && global_byte < K_half) {{
+                value = batch_b[global_row * K_half + global_byte];
+            }}
+            smem_b[idx] = value;
+        }}
+
+        for (int idx = threadIdx.x; idx < kSmemScaleBytes; idx += blockDim.x) {{
+            int local_row = idx / kScalePerRow;
+            int local_byte = idx % kScalePerRow;
+            size_t global_row = tile_m_start + local_row;
+            size_t global_byte = static_cast<size_t>(k_scale_offset) + local_byte;
+            uint8_t value = 0;
+            if (global_row < static_cast<size_t>(M) && global_byte < K_sf) {{
+                value = batch_sfa[global_row * K_sf + global_byte];
+            }}
+            smem_sfa[idx] = value;
+        }}
+
+        for (int idx = threadIdx.x; idx < kSmemScaleBytes; idx += blockDim.x) {{
+            int local_row = idx / kScalePerRow;
+            int local_byte = idx % kScalePerRow;
+            size_t global_row = local_row % guarded_rows;
+            size_t global_byte = static_cast<size_t>(k_scale_offset) + local_byte;
+            uint8_t value = 0;
+            if (global_row < static_cast<size_t>(N_rows) && global_byte < K_sf) {{
+                value = batch_sfb[global_row * K_sf + global_byte];
+            }}
+            smem_sfb[idx] = value;
+        }}
+
         __syncthreads();
 
         if (warp0) {{
-            uint32_t smem_word = debug_stage[lane];
-            asm volatile(
-                "tcgen05.st.sync.aligned.32x32b.x1.b32 [%0], {{%1}};"
-                :
-                : "r"(tmem_a_base), "r"(smem_word));
-            asm volatile("tcgen05.wait::st.sync.aligned;");
-            uint32_t tmem_word = 0;
-            asm volatile(
-                "tcgen05.ld.sync.aligned.32x32b.x1.b32 {{%0}}, [%1];"
-                : "=r"(tmem_word)
-                : "r"(tmem_a_base));
-            asm volatile("tcgen05.wait::ld.sync.aligned;");
-            if (tile_row < M && smem_word != tmem_word) {{
-                printf("[sub_mma][error] TMEM mismatch lane=%d smem=0x%08x tmem=0x%08x\\n",
-                       lane, smem_word, tmem_word);
-                asm volatile("trap;");
-            }}
-            if (lane == 0) {{
-                printf("[sub_mma] debug TMEM roundtrip ok for CTA (%d,%d) rows [%d,%d)\\n",
-                       blockIdx.x, blockIdx.y, tile_m_start, tile_m_start + kWarpSize);
-            }}
+            uint32_t smem_addr_a = __cvta_generic_to_shared(smem_a);
+            uint32_t smem_addr_b = __cvta_generic_to_shared(smem_b);
+            uint32_t smem_addr_sfa = __cvta_generic_to_shared(smem_sfa);
+            uint32_t smem_addr_sfb = __cvta_generic_to_shared(smem_sfb);
+            uint64_t desc_a = encode_smem_descriptor(smem_addr_a, kTileKBytes, kTileKBytes);
+            uint64_t desc_b = encode_smem_descriptor(smem_addr_b, kTileKBytes, kTileKBytes);
+            uint64_t desc_sfa = encode_smem_descriptor(smem_addr_sfa, kScalePerRow, kScalePerRow);
+            uint64_t desc_sfb = encode_smem_descriptor(smem_addr_sfb, kScalePerRow, kScalePerRow);
+            tensor_cp_128x256(tmem_a_base, desc_a, tma_mbar, cp_parity);
+            tensor_cp_128x256(tmem_b_base, desc_b, tma_mbar, cp_parity);
+            tensor_cp_128x256(tmem_sfa_base, desc_sfa, tma_mbar, cp_parity);
+            tensor_cp_128x256(tmem_sfb_base, desc_sfb, tma_mbar, cp_parity);
         }}
+
         __syncthreads();
+
+        if (kEnableDebug && warp0 && lane == 0) {{
+            printf("[sub_mma] cp tile %d complete for CTA (%d,%d)\\n", kt, blockIdx.x, blockIdx.y);
+        }}
     }}
 
     __syncthreads();
+
 
     if constexpr (kStubMode) {{
         if (warp0) {{
@@ -220,11 +320,6 @@ torch::Tensor batched_scaled_gemv_mma_cuda(
     torch::Tensor sfb,
     torch::Tensor c
 ) {{
-    TORCH_CHECK(a.is_cuda(), "input a must be CUDA tensor");
-    TORCH_CHECK(b.is_cuda(), "input b must be CUDA tensor");
-    TORCH_CHECK(sfa.is_cuda(), "input sfa must be CUDA tensor");
-    TORCH_CHECK(sfb.is_cuda(), "input sfb must be CUDA tensor");
-    TORCH_CHECK(c.is_cuda(), "output c must be CUDA tensor");
 
     int M = a.size(0);
     int K = a.size(1) * 2;
@@ -233,7 +328,10 @@ torch::Tensor batched_scaled_gemv_mma_cuda(
 
     dim3 grid((M + kTileM - 1) / kTileM, L);
     dim3 block(kThreadsPerBlock);
-    size_t shared_bytes = static_cast<size_t>(kTileM) * sizeof(float);  // placeholder for reductions
+    size_t shared_bytes =
+        static_cast<size_t>(kSmemTileBytes) * 2 +
+        static_cast<size_t>(kSmemScaleBytes) * 2 +
+        sizeof(uint64_t);
 
     auto* a_ptr = reinterpret_cast<const int8_t*>(a.data_ptr());
     auto* b_ptr = reinterpret_cast<const int8_t*>(b.data_ptr());

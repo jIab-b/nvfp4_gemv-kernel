@@ -1,6 +1,12 @@
 import torch
 from torch.utils.cpp_extension import load_inline
 from task import input_t, output_t
+import cutlass
+import cutlass.cute as cute
+from cutlass import Int32, Boolean, const_expr
+from cutlass.cute.nvgpu import tcgen05
+from cutlass._mlir.dialects import llvm
+
 
 cpp_source = """
 #include <torch/extension.h>

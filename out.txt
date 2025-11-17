@@ -1,5 +1,5 @@
 "**NVIDIA on GitHub ✅ success**
-> Workflow [19415744943](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19415744943>) completed
+> Workflow [19421387858](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19421387858>) completed
 > Downloading artifacts... done
 > ❌ Running benchmarks failed (internal error 1)
 
@@ -11,8 +11,8 @@ Running on:
 * Torch: `2.9.0+cu130`
 # Running failed
 Command ```bash
-python3 eval.py benchmark /tmp/tmpctkew3af```
-exited with error code **1** after 3.96 seconds.
+python3 eval.py benchmark /tmp/tmpu30_kdy1```
+exited with error code **1** after 2.36 seconds.
 
 ## Program stderr:
 ```
@@ -21,15 +21,11 @@ multiprocessing.pool.RemoteTraceback:
 Traceback (most recent call last):
   File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 125, in worker
     result = (True, func(*args, **kwds))
-  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 220, in _run_single_benchmark
-    good, message = check_implementation(check_copy, output)
-  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/utils.py\", line 144, in wrapped
-    return match_reference(data, output, reference=reference, **kwargs)
-  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/utils.py\", line 133, in match_reference
-    expected = reference(data)
-  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/reference.py\", line 45, in ref_kernel
-    res = torch._scaled_mm(
-RuntimeError: CUDA error: CUBLAS_STATUS_INTERNAL_ERROR when calling `cublasCreate(handle)`
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 208, in _run_single_benchmark
+    from submission import custom_kernel
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 10, in <module>
+    import flash_attn.cute.mma_sm100_desc as sm100_desc
+ModuleNotFoundError: No module named 'flash_attn'
 \"\"\"
 
 The above exception was the direct cause of the following exception:
@@ -47,64 +43,4 @@ Traceback (most recent call last):
     return self.apply_async(func, args, kwds).get()
   File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 774, in get
     raise self._value
-RuntimeError: CUDA error: CUBLAS_STATUS_INTERNAL_ERROR when calling `cublasCreate(handle)````
-
-## Program stdout:
-```
-[sub_mma] debug TMEM roundtrip ok for CTA (50,0) rows [6400,6432)
-[sub_mma] debug TMEM roundtrip ok for CTA (51,0) rows [6528,6560)
-[sub_mma] debug TMEM roundtrip ok for CTA (52,0) rows [6656,6688)
-[sub_mma] debug TMEM roundtrip ok for CTA (53,0) rows [6784,6816)
-[sub_mma] debug TMEM roundtrip ok for CTA (54,0) rows [6912,6944)
-[sub_mma] debug TMEM roundtrip ok for CTA (6,0) rows [768,800)
-[sub_mma] debug TMEM roundtrip ok for CTA (55,0) rows [7040,7072)
-[sub_mma] debug TMEM roundtrip ok for CTA (7,0) rows [896,928)
-[sub_mma] debug TMEM roundtrip ok for CTA (8,0) rows [1024,1056)
-[sub_mma] debug TMEM roundtrip ok for CTA (38,0) rows [4864,4896)
-[sub_mma] debug TMEM roundtrip ok for CTA (9,0) rows [1152,1184)
-[sub_mma] debug TMEM roundtrip ok for CTA (39,0) rows [4992,5024)
-[sub_mma] debug TMEM roundtrip ok for CTA (40,0) rows [5120,5152)
-[sub_mma] debug TMEM roundtrip ok for CTA (10,0) rows [1280,1312)
-[sub_mma] debug TMEM roundtrip ok for CTA (41,0) rows [5248,5280)
-[sub_mma] debug TMEM roundtrip ok for CTA (4,0) rows [512,544)
-[sub_mma] debug TMEM roundtrip ok for CTA (11,0) rows [1408,1440)
-[sub_mma] debug TMEM roundtrip ok for CTA (5,0) rows [640,672)
-[sub_mma] debug TMEM roundtrip ok for CTA (1,0) rows [128,160)
-[sub_mma] debug TMEM roundtrip ok for CTA (42,0) rows [5376,5408)
-[sub_mma] debug TMEM roundtrip ok for CTA (44,0) rows [5632,5664)
-[sub_mma] debug TMEM roundtrip ok for CTA (43,0) rows [5504,5536)
-[sub_mma] debug TMEM roundtrip ok for CTA (45,0) rows [5760,5792)
-[sub_mma] debug TMEM roundtrip ok for CTA (46,0) rows [5888,5920)
-[sub_mma] debug TMEM roundtrip ok for CTA (47,0) rows [6016,6048)
-[sub_mma] debug TMEM roundtrip ok for CTA (12,0) rows [1536,1568)
-[sub_mma] debug TMEM roundtrip ok for CTA (48,0) rows [6144,6176)
-[sub_mma] debug TMEM roundtrip ok for CTA (13,0) rows [1664,1696)
-[sub_mma] debug TMEM roundtrip ok for CTA (49,0) rows [6272,6304)
-[sub_mma] debug TMEM roundtrip ok for CTA (2,0) rows [256,288)
-[sub_mma] debug TMEM roundtrip ok for CTA (3,0) rows [384,416)
-[sub_mma] debug TMEM roundtrip ok for CTA (14,0) rows [1792,1824)
-[sub_mma] debug TMEM roundtrip ok for CTA (15,0) rows [1920,1952)
-[sub_mma] debug TMEM roundtrip ok for CTA (20,0) rows [2560,2592)
-[sub_mma] debug TMEM roundtrip ok for CTA (21,0) rows [2688,2720)
-[sub_mma] debug TMEM roundtrip ok for CTA (18,0) rows [2304,2336)
-[sub_mma] debug TMEM roundtrip ok for CTA (22,0) rows [2816,2848)
-[sub_mma] debug TMEM roundtrip ok for CTA (32,0) rows [4096,4128)
-[sub_mma] debug TMEM roundtrip ok for CTA (19,0) rows [2432,2464)
-[sub_mma] debug TMEM roundtrip ok for CTA (23,0) rows [2944,2976)
-[sub_mma] debug TMEM roundtrip ok for CTA (33,0) rows [4224,4256)
-[sub_mma] debug TMEM roundtrip ok for CTA (16,0) rows [2048,2080)
-[sub_mma] debug TMEM roundtrip ok for CTA (24,0) rows [3072,3104)
-[sub_mma] debug TMEM roundtrip ok for CTA (34,0) rows [4352,4384)
-[sub_mma] debug TMEM roundtrip ok for CTA (17,0) rows [2176,2208)
-[sub_mma] debug TMEM roundtrip ok for CTA (36,0) rows [4608,4640)
-[sub_mma] debug TMEM roundtrip ok for CTA (26,0) rows [3328,3360)
-[sub_mma] debug TMEM roundtrip ok for CTA (25,0) rows [3200,3232)
-[sub_mma] debug TMEM roundtrip ok for CTA (35,0) rows [4480,4512)
-[sub_mma] debug TMEM roundtrip ok for CTA (37,0) rows [4736,4768)
-[sub_mma] debug TMEM roundtrip ok for CTA (27,0) rows [3456,3488)
-[sub_mma] debug TMEM roundtrip ok for CTA (28,0) rows [3584,3616)
-[sub_mma] debug TMEM roundtrip ok for CTA (30,0) rows [3840,3872)
-[sub_mma] debug TMEM roundtrip ok for CTA (29,0) rows [3712,3744)
-[sub_mma] debug TMEM roundtrip ok for CTA (31,0) rows [3968,4000)
-[sub_mma] stub CTA launched M=7168 K=16384 L=1, TMEM bases A=0 B=64 SFA=128 SFB=160 D=192
-[sub_mma] debug TMEM roundtrip ok for CTA (0,0) rows [0,32)```"
+ModuleNotFoundError: No module named 'flash_attn'```"
