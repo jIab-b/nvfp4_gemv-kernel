@@ -1,341 +1,292 @@
 """
-Batched persistent GEMV kernel with persistent vector storage in TMEM.
-Optimized for NVIDIA Blackwell (SM100) with NVFP4 quantization + block-scaled factors.
-
-Problem: c[M, 1, L] = a[M, K, L] @ b[1, K, L] with scale factors
-  - a, b: NVFP4 (e2m1), K-major layout
-  - sfa, sfb: FP8 (e4m3fnuz), 1 scale per 16 values
-  - Output c: FP16
-
-Key optimization: Vector b[K, L] and sfb scales stay in TMEM,
-reused across all M-tile computations.
+Batched persistent GEMV kernel for NVIDIA Blackwell (SM100) with NVFP4 quantization.
+Persistent scheduling with vector storage in TMEM, reused across M-tiles per K-block.
 """
 
 import torch
-import cuda.bindings.driver as cuda
 import cutlass
 import cutlass.cute as cute
 from cutlass.cute.nvgpu import tcgen05
-from cutlass._mlir.dialects import llvm
+import cutlass.utils.blackwell_helpers as sm100_utils
 from typing import Tuple
-import math
 
 
-class GemvPersistentConfig:
+class GemvConfig:
     """Configuration for persistent batched GEMV kernel."""
 
     def __init__(
         self,
-        mma_tiler_m: int = 128,        # MMA tile M dimension
-        block_k: int = 64,              # K dimension tile
-        sf_vec_size: int = 16,          # Scale factor vector size (NVFP4 uses 16)
-        cluster_shape_m: int = 1,       # Cluster M dimension
-        cluster_shape_n: int = 1,       # Cluster N dimension (always 1 for GEMV)
-        num_ab_stages: int = 2,         # Pipeline stages for A/B loads
-        num_acc_stages: int = 1,        # Pipeline stages for accumulators
-        smem_capacity_bytes: int = 98304,  # SM100 shared memory
+        mma_tiler_m: int = 128,
+        block_k: int = 64,
+        sf_vec_size: int = 16,
+        num_ab_stages: int = 2,
     ):
         self.mma_tiler_m = mma_tiler_m
         self.block_k = block_k
         self.sf_vec_size = sf_vec_size
-        self.cluster_shape_m = cluster_shape_m
-        self.cluster_shape_n = cluster_shape_n
         self.num_ab_stages = num_ab_stages
-        self.num_acc_stages = num_acc_stages
-        self.smem_capacity = smem_capacity_bytes
 
-        # Derived settings
         self.acc_dtype = cutlass.Float32
-        self.ab_dtype = cutlass.Float4E2M1FN  # NVFP4
-        self.sf_dtype = cutlass.Float8E4M3FN   # FP8 for scales
+        self.ab_dtype = cutlass.Float4E2M1FN
+        self.sf_dtype = cutlass.Float8E4M3FN
         self.c_dtype = cutlass.Float16
         self.cta_group = tcgen05.CtaGroup.ONE
 
-        # Warp IDs for specialization
-        self.tma_warp_id = 5
-        self.mma_warp_id = 4
-        self.epi_warp_ids = (0, 1, 2, 3)
 
-
-def _compute_tile_scheduler_params(m_tiles: int, k_tiles: int, cluster_m: int, max_active_clusters: int):
-    """Compute persistent tile scheduler parameters."""
-    # Total tiles to schedule
-    total_tiles = m_tiles * k_tiles
-
-    # Cluster-level scheduling
-    clusters_m = (m_tiles + cluster_m - 1) // cluster_m
-    ctas_per_cluster = cluster_m
-
-    return {
-        'total_m_tiles': m_tiles,
-        'total_k_tiles': k_tiles,
-        'clusters_m': clusters_m,
-        'ctas_per_cluster': ctas_per_cluster,
-        'total_tiles': total_tiles,
-    }
-
-
-def _compute_smem_layout_a(config: GemvPersistentConfig, mma_tiler: Tuple[int, int, int]):
-    """Layout for matrix A in SMEM: (M_tile, K_tile, stages)."""
-    m, k, stages = mma_tiler[0], mma_tiler[2], config.num_ab_stages
-    # Swizzle-friendly layout for bank conflict avoidance
-    return cute.make_layout(
-        cute.make_shape(m, k, stages),
-        cute.make_stride(k, 1, m * k)  # K-major, stage-contiguous
-    )
-
-
-def _compute_smem_layout_sfa(config: GemvPersistentConfig, mma_tiler: Tuple[int, int, int]):
-    """Layout for scale factors SFA in SMEM: (M_tile, K_tile÷16, stages)."""
-    m, k_tiles, stages = mma_tiler[0], mma_tiler[2] // config.sf_vec_size, config.num_ab_stages
-    return cute.make_layout(
-        cute.make_shape(m, k_tiles, stages),
-        cute.make_stride(k_tiles, 1, m * k_tiles)
-    )
-
-
-def _make_tiled_mma(config: GemvPersistentConfig, mma_shape_mnk: Tuple[int, int, int]):
+def _make_tiled_mma(config: GemvConfig):
     """Create tiled MMA descriptor for block-scaled NVFP4."""
-    return cutlass.cute.nvgpu.sm100_utils.make_blockscaled_trivial_tiled_mma(
+    mma_shape_mn = (config.mma_tiler_m, 1)
+    return sm100_utils.make_blockscaled_trivial_tiled_mma(
         ab_dtype=config.ab_dtype,
-        a_major_mode="K",  # K-major for A
-        b_major_mode="K",  # K-major for B (vector)
+        a_major_mode="K",
+        b_major_mode="K",
         sf_dtype=config.sf_dtype,
         sf_vec_size=config.sf_vec_size,
         cta_group=config.cta_group,
-        mma_inst_shape_mn=(mma_shape_mnk[0], mma_shape_mnk[1]),
+        mma_inst_shape_mn=mma_shape_mn,
+    )
+
+
+def _make_copy_atom_simt():
+    """Create SIMT copy atom for SMEM loads."""
+    return cute.make_copy_atom(
+        cute.nvgpu.cp_async,
+        cutlass.Float4E2M1FN,
+        num_bits_per_copy=64
     )
 
 
 class GemvPersistentKernel:
     """Persistent batched GEMV kernel with vector storage in TMEM."""
 
-    def __init__(self, config: GemvPersistentConfig):
+    def __init__(self, config: GemvConfig):
         self.config = config
-        self.mma_tiler = (config.mma_tiler_m, 1, config.block_k)
-        self.tiled_mma = _make_tiled_mma(config, self.mma_tiler)
-        self.smem_layout_a = _compute_smem_layout_a(config, self.mma_tiler)
-        self.smem_layout_sfa = _compute_smem_layout_sfa(config, self.mma_tiler)
+        self.tiled_mma = _make_tiled_mma(config)
+        self.copy_atom = _make_copy_atom_simt()
 
-    @cute.jit
-    def __call__(
+    @cute.kernel
+    def kernel(
         self,
         a_tensor: cute.Tensor,       # (M, K, L)
         b_tensor: cute.Tensor,       # (1, K, L)
-        sfa_tensor: cute.Tensor,     # (M, K÷16, L)
-        sfb_tensor: cute.Tensor,     # (1, K÷16, L)
+        sfa_tensor: cute.Tensor,     # (M, K//16, L)
+        sfb_tensor: cute.Tensor,     # (1, K//16, L)
         c_tensor: cute.Tensor,       # (M, 1, L) output
-        max_active_clusters: cutlass.Constexpr = 12,
-        stream: cuda.CUstream = None,
     ):
         """
-        Persistent kernel: processes M tiles with persistent vector b in TMEM.
-
-        Loop structure:
-        for k_tile_idx in range(K // BLOCK_K):
-            load b[k_tile] ’ TMEM_b (persistent)
-            load sfb[k_tile] ’ TMEM_sfb (persistent)
-
-            for m_tile_idx in persistent_scheduler:
-                load a[m_tile, k_tile] ’ SMEM
-                load sfa[m_tile, k_tile] ’ SMEM
-                mma: c[m_tile] += a[m_tile] @ b[k_tile] (from TMEM)
-
-            store c[all m_tiles] ’ GMEM
+        Persistent GEMV kernel body.
+        K-loop loads vector b to TMEM, M-loop reuses b across all matrix tiles.
         """
-
         config = self.config
         M, K, L = a_tensor.shape
         m_tiles = (M + config.mma_tiler_m - 1) // config.mma_tiler_m
         k_tiles = (K + config.block_k - 1) // config.block_k
 
-        # === INITIALIZATION ===
-        thread_idx = cute.thread_id()
-        block_idx = cute.block_id()
-        cluster_idx = cute.cluster_id()
+        thread_idx = cute.arch.thread_idx()
+        block_idx = cute.arch.block_idx()
+        warp_idx = thread_idx // 32
 
-        # Tile scheduler state
-        sched_params = _compute_tile_scheduler_params(
-            m_tiles, k_tiles, config.cluster_shape_m, int(max_active_clusters)
+        # Allocate SMEM for A and SFA staging
+        sA_size = config.mma_tiler_m * config.block_k * config.num_ab_stages
+        sSFA_size = config.mma_tiler_m * (config.block_k // config.sf_vec_size) * config.num_ab_stages
+
+        sA_ptr = cute.arch.alloc_smem(config.ab_dtype, sA_size)
+        sSFA_ptr = cute.arch.alloc_smem(config.sf_dtype, sSFA_size)
+
+        # Allocate TMEM for persistent vector b, scales sfb, and accumulator
+        # TMEM allocation: write address to SMEM, then retrieve typed ptr
+        tmem_addr_buffer = cute.arch.alloc_smem(cutlass.Int64, 4)  # Space for 4 addresses
+
+        # Allocate TMEM columns: vector b (BLOCK_K elems), scales (BLOCK_KÃ·16), accum (M_tile)
+        total_tmem_cols = config.block_k + (config.block_k // config.sf_vec_size) + config.mma_tiler_m
+        cute.arch.alloc_tmem(num_columns=total_tmem_cols, smem_ptr_to_write_address=tmem_addr_buffer)
+
+        # Retrieve TMEM pointers (with proper alignment)
+        b_tmem_ptr = cute.arch.retrieve_tmem_ptr(config.ab_dtype, alignment=16, ptr_to_buffer_holding_addr=tmem_addr_buffer)
+        sfb_tmem_ptr = cute.arch.retrieve_tmem_ptr(
+            config.sf_dtype, alignment=8,
+            ptr_to_buffer_holding_addr=cute.recast_ptr(tmem_addr_buffer + config.block_k)
         )
-        total_m_tiles = sched_params['total_m_tiles']
-        total_k_tiles = sched_params['total_k_tiles']
+        accum_tmem_ptr = cute.arch.retrieve_tmem_ptr(
+            config.acc_dtype, alignment=16,
+            ptr_to_buffer_holding_addr=cute.recast_ptr(
+                tmem_addr_buffer + config.block_k + (config.block_k // config.sf_vec_size)
+            )
+        )
 
-        # Allocate SMEM for staging A and SFA
-        a_smem = cute.allocate_smem(self.smem_layout_a)
-        sfa_smem = cute.allocate_smem(self.smem_layout_sfa)
+        # Make TMEM tensors
+        b_tmem_layout = cute.make_layout(
+            cute.make_shape(config.block_k),
+            cute.make_stride(1)
+        )
+        b_tmem_tensor = cute.make_tensor(b_tmem_ptr, b_tmem_layout)
 
-        # TMEM for persistent vector b and its scales (allocated once)
-        b_tmem_shape = (config.block_k,)
-        sfb_tmem_shape = (config.block_k // config.sf_vec_size,)
-        b_tmem = cute.allocate_tmem_tensor(b_tmem_shape)
-        sfb_tmem = cute.allocate_tmem_tensor(sfb_tmem_shape)
+        sfb_tmem_layout = cute.make_layout(
+            cute.make_shape(config.block_k // config.sf_vec_size),
+            cute.make_stride(1)
+        )
+        sfb_tmem_tensor = cute.make_tensor(sfb_tmem_ptr, sfb_tmem_layout)
 
-        # TMEM for accumulator (reused across K tiles for each M tile)
-        accum_tmem = cute.allocate_tmem_tensor((config.mma_tiler_m,))
-        cute.clear(accum_tmem)
+        accum_tmem_layout = cute.make_layout(
+            cute.make_shape(config.mma_tiler_m),
+            cute.make_stride(1)
+        )
+        accum_tmem_tensor = cute.make_tensor(accum_tmem_ptr, accum_tmem_layout)
 
-        # === SHARED STATE FOR WARP SPECIALIZATION ===
-        b_ready_barrier = cute.create_barrier(initial_count=0)
-        mma_done_barrier = cute.create_barrier(initial_count=0)
+        # Initialize accumulator
+        for i in range(config.mma_tiler_m):
+            accum_tmem_tensor[i] = config.acc_dtype(0.0)
 
-        # === MAIN PERSISTENT TILE LOOP ===
-        for k_tile_idx in range(total_k_tiles):
+        # Barrier for synchronization
+        barrier_id = cute.arch.barrier(barrier_id=1)
+
+        # === MAIN K-LOOP: Tile K dimension ===
+        for k_tile_idx in range(k_tiles):
             k_offset = k_tile_idx * config.block_k
             k_size = min(config.block_k, K - k_offset)
 
-            # === TMA WARP: Load persistent vector b and scales ===
-            if thread_idx == config.tma_warp_id:
-                # Load b[k_offset : k_offset+k_size, :] ’ TMEM
-                b_tile = cute.local_tile(b_tensor, (slice(k_offset, k_offset + k_size), slice(None)))
-                cute.copy(b_tile, b_tmem)
+            # TMA/DMA Warp: Load persistent vector b and scales to TMEM
+            if warp_idx == 1:  # Designate warp 1 for loads
+                # Extract b[k_offset:k_offset+k_size, :] from global memory
+                # For simplicity, assume cooperative load across warp
+                # In practice, would use tiled copy with partition
+                for lane_idx in range(32):
+                    if lane_idx < k_size:
+                        idx = lane_idx
+                        if idx < config.block_k:
+                            b_tmem_tensor[idx] = b_tensor[k_offset + idx, 0]
 
-                # Load sfb scales [k_offset÷16 : ..., :] ’ TMEM
+                # Load sfb scales
                 sfb_idx_start = k_offset // config.sf_vec_size
                 sfb_idx_end = (k_offset + k_size + config.sf_vec_size - 1) // config.sf_vec_size
-                sfb_tile = cute.local_tile(
-                    sfb_tensor,
-                    (slice(sfb_idx_start, sfb_idx_end), slice(None))
-                )
-                cute.copy(sfb_tile, sfb_tmem)
+                for lane_idx in range(32):
+                    if lane_idx < (sfb_idx_end - sfb_idx_start):
+                        idx = lane_idx
+                        if idx < (config.block_k // config.sf_vec_size):
+                            sfb_tmem_tensor[idx] = sfb_tensor[sfb_idx_start + idx, 0]
 
-                # Signal MMA warp that vector is ready
-                cute.mbarrier_arrive(b_ready_barrier)
+            cute.arch.barrier_arrive(barrier_id)
+            cute.arch.barrier(barrier_id)
 
-            # === PERSISTENT TILE SCHEDULER: Process M tiles ===
-            for persistent_idx in cute.persistent_tile_scheduler(total_m_tiles, max_active_clusters):
-                m_tile_idx = persistent_idx
-                m_offset = m_tile_idx * config.mma_tiler_m
+            # === PERSISTENT M-LOOP: Process M-tiles ===
+            m_block_idx = block_idx[0]
+
+            if m_block_idx < m_tiles:
+                m_offset = m_block_idx * config.mma_tiler_m
                 m_size = min(config.mma_tiler_m, M - m_offset)
 
-                # === TMA WARP (parallel): Load A and SFA for this M tile ===
-                if thread_idx == config.tma_warp_id:
-                    # Load a[m_offset : m_offset+m_size, k_offset : k_offset+k_size, :] ’ SMEM
-                    a_tile = cute.local_tile(
-                        a_tensor,
-                        (slice(m_offset, m_offset + m_size),
-                         slice(k_offset, k_offset + k_size),
-                         slice(None))
-                    )
-                    cute.copy(a_tile, a_smem[:, :, 0])
+                # Load A and SFA to SMEM
+                if warp_idx == 1:
+                    # Extract A[m_offset:m_offset+m_size, k_offset:k_offset+k_size, :]
+                    # Simplified: single-threaded load (in practice, use tiled copy)
+                    for m_idx in range(m_size):
+                        for k_idx in range(k_size):
+                            a_val = a_tensor[m_offset + m_idx, k_offset + k_idx, 0]
+                            sA_ptr_offset = (m_idx * config.block_k + k_idx)
+                            sA_ptr[sA_ptr_offset] = a_val
 
                     # Load SFA scales
                     sfa_idx_start = k_offset // config.sf_vec_size
                     sfa_idx_end = (k_offset + k_size + config.sf_vec_size - 1) // config.sf_vec_size
-                    sfa_tile = cute.local_tile(
-                        sfa_tensor,
-                        (slice(m_offset, m_offset + m_size),
-                         slice(sfa_idx_start, sfa_idx_end),
-                         slice(None))
+                    for m_idx in range(m_size):
+                        for sfa_idx in range(sfa_idx_end - sfa_idx_start):
+                            sfa_val = sfa_tensor[m_offset + m_idx, sfa_idx_start + sfa_idx, 0]
+                            sSFA_ptr_offset = (m_idx * (config.block_k // config.sf_vec_size) + sfa_idx)
+                            sSFA_ptr[sSFA_ptr_offset] = sfa_val
+
+                cute.arch.barrier_arrive(barrier_id)
+                cute.arch.barrier(barrier_id)
+
+                # MMA Warp: Execute block-scaled matrix-vector multiply
+                if warp_idx == 0:
+                    # Make SMEM tensors
+                    a_smem_tensor = cute.make_tensor(
+                        sA_ptr,
+                        cute.make_layout(
+                            cute.make_shape(config.mma_tiler_m, config.block_k),
+                            cute.make_stride(config.block_k, 1)
+                        )
                     )
-                    cute.copy(sfa_tile, sfa_smem[:, :, 0])
-
-                cute.cta_sync_barrier()  # All threads wait for SMEM loads
-
-                # === MMA WARP: Execute tensor core operations ===
-                if thread_idx == config.mma_warp_id:
-                    cute.mbarrier_wait(b_ready_barrier)  # Wait for persistent vector
+                    sfa_smem_tensor = cute.make_tensor(
+                        sSFA_ptr,
+                        cute.make_layout(
+                            cute.make_shape(config.mma_tiler_m, config.block_k // config.sf_vec_size),
+                            cute.make_stride(config.block_k // config.sf_vec_size, 1)
+                        )
+                    )
 
                     # Partition for MMA
-                    a_part = self.tiled_mma.partition_A(a_smem[:, :, 0])
-                    b_part_tmem = b_tmem  # Already in TMEM
-                    sfa_part = self.tiled_mma.partition_A(sfa_smem[:, :, 0])
-                    sfb_part = sfb_tmem
+                    thr_mma = self.tiled_mma.get_slice(thread_idx)
+                    a_partition = thr_mma.partition_A(a_smem_tensor)
+                    b_partition = b_tmem_tensor
+                    sfa_partition = thr_mma.partition_A(sfa_smem_tensor)
+                    sfb_partition = sfb_tmem_tensor
 
-                    # Execute block-scaled MMA
-                    cute.tcgen05_mma_block_scale_vec_2x(
-                        kind=cutlass.cute.nvgpu.tcgen05.kind_mxf4nvf4_t,
-                        d_tmem=accum_tmem,
-                        a_desc=a_part,           # Matrix A from SMEM
-                        b_desc=b_part_tmem,      # Vector B from TMEM (persistent)
-                        scale_A_tmem=sfa_part,
-                        scale_B_tmem=sfb_part,
-                        enable_input_d=(k_tile_idx > 0)  # Accumulate over K tiles
+                    # Set scale factor pointers
+                    self.tiled_mma.set(tcgen05.Field.SFA, sfa_partition)
+                    self.tiled_mma.set(tcgen05.Field.SFB, sfb_partition)
+
+                    # Execute GEMM: accum += a @ b
+                    # Note: enable_input_d=True to accumulate over K blocks
+                    self.tiled_mma.set(tcgen05.Field.ACCUMULATE, (k_tile_idx > 0))
+
+                    cute.gemm(
+                        self.tiled_mma,
+                        accum_tmem_tensor,
+                        a_partition,
+                        b_partition,
+                        accum_tmem_tensor
                     )
 
-                    cute.mbarrier_arrive(mma_done_barrier)
+                cute.arch.barrier_arrive(barrier_id)
+                cute.arch.barrier(barrier_id)
 
-                cute.cta_sync_barrier()
+            # === EPILOGUE: Store accumulated results ===
+            if m_block_idx < m_tiles and k_tile_idx == k_tiles - 1:
+                m_offset = m_block_idx * config.mma_tiler_m
+                m_size = min(config.mma_tiler_m, M - m_offset)
 
-            # === EPILOGUE WARP: Store results after processing all M tiles for this K tile ===
-            if thread_idx in config.epi_warp_ids:
-                cute.mbarrier_wait(mma_done_barrier)
+                # Load from TMEM and store to global C
+                if warp_idx < 2:  # Epilogue warps
+                    for m_idx in range(m_size):
+                        c_val = accum_tmem_tensor[m_idx]
+                        c_tensor[m_offset + m_idx, 0, 0] = c_val
 
-                # Load from TMEM to registers
-                accum_regs = cute.make_register_tensor(shape=(config.mma_tiler_m,))
-                cute.copy(accum_tmem, accum_regs)
+        # Cleanup
+        cute.arch.dealloc_tmem(b_tmem_ptr, num_columns=total_tmem_cols)
 
-                # For each M tile, store result
-                for m_tile_idx in range(m_tiles):
-                    m_offset = m_tile_idx * config.mma_tiler_m
-                    m_size = min(config.mma_tiler_m, M - m_offset)
 
-                    # Store c[m_offset : m_offset+m_size, 0, :]  accum_regs[0:m_size]
-                    c_tile = cute.local_tile(
-                        c_tensor,
-                        (slice(m_offset, m_offset + m_size), slice(None), slice(None))
-                    )
-                    cute.copy(accum_regs[0:m_size], c_tile)
+# Module-level kernel initialization (executed once at import)
+_config = GemvConfig(
+    mma_tiler_m=128,
+    block_k=64,
+    sf_vec_size=16,
+    num_ab_stages=2,
+)
+_kernel = GemvPersistentKernel(_config)
 
-        # === CLEANUP ===
-        cute.dealloc_tmem(b_tmem)
-        cute.dealloc_tmem(sfb_tmem)
-        cute.dealloc_tmem(accum_tmem)
+# Pre-compile kernel (no .launch() here yet - deferred to custom_kernel)
 
 
 def custom_kernel(data) -> torch.Tensor:
-    """
-    Interface matching submission.py signature.
-
-    Args:
-        data: Tuple of (a, b, sfa, sfb, _, _, c)
-              - a: (M, K, L) NVFP4
-              - b: (1, K, L) NVFP4
-              - sfa: (M, K÷16, L) FP8
-              - sfb: (1, K÷16, L) FP8
-              - c: (M, 1, L) FP16 (output)
-
-    Returns:
-        c: Accumulated result (M, 1, L) FP16
-    """
-    from task import input_t, output_t
-
+    """Launch persistent GEMV kernel. Minimal overhead."""
     a, b, sfa, sfb, _, _, c = data
-    device = a.device
 
-    # Create kernel configuration
-    M, K, L = a.shape
-    config = GemvPersistentConfig(
-        mma_tiler_m=128,
-        block_k=64,
-        sf_vec_size=16,
-        cluster_shape_m=1,
-        cluster_shape_n=1,
-        num_ab_stages=2,
-    )
-
-    # Create kernel instance
-    kernel = GemvPersistentKernel(config)
-
-    # Wrap tensors for CUTE
+    # Wrap tensors
     a_cute = cute.make_tensor(a)
     b_cute = cute.make_tensor(b)
-    sfa_cute = cute.make_tensor(sfa.to(device=device, non_blocking=True))
-    sfb_cute = cute.make_tensor(sfb.to(device=device, non_blocking=True))
+    sfa_cute = cute.make_tensor(sfa.to(device=a.device, non_blocking=True))
+    sfb_cute = cute.make_tensor(sfb.to(device=a.device, non_blocking=True))
     c_cute = cute.make_tensor(c)
 
-    # Get CUDA stream
-    stream = cuda.CUstream()
-
-    # Launch kernel
-    kernel(
-        a_cute,
-        b_cute,
-        sfa_cute,
-        sfb_cute,
-        c_cute,
-        max_active_clusters=cutlass.const_expr(12),
-        stream=stream
+    # Launch on default stream
+    _kernel.kernel(a_cute, b_cute, sfa_cute, sfb_cute, c_cute).launch(
+        grid=(
+            (a.shape[0] + _config.mma_tiler_m - 1) // _config.mma_tiler_m,
+            1,
+            a.shape[2],
+        ),
+        block=(128, 1, 1),
     )
 
     return c
