@@ -1,0 +1,1222 @@
+Common
+class cutlass.cute.nvgpu.OpError(*args: Any, **kwargs: Any)
+
+    Bases: DSLBaseError
+
+    An exception class for Op construction errors.
+
+class cutlass.cute.nvgpu.MmaUniversalOp(abacc_dtype: Type[cutlass.cute.typing.Numeric])
+
+Bases: MmaOp
+
+The universal MMA Operation.
+
+This Operation currently expects the A/B operands as well as the accumulator to share the same data types.
+
+Parameters:
+
+    abacc_dtype (Type[Numeric]) – The data type for the A/B operands and the accumulator
+
+abacc_dtype: Type[cutlass.cute.typing.Numeric]
+
+class cutlass.cute.nvgpu.CopyUniversalOp
+
+Bases: CopyOp
+
+The universal Copy Operation.
+
+When creating a Copy Atom out of this operation, the expected usage pattern is
+
+op = cute.nvgpu.CopyUniversalOp()
+atom = cute.make_copy_atom(op, tensor_dtype, num_bits_per_copy=64)
+
+    tensor_dtype is the data type used to build the reference TV Layout (either the source or the destination TV Layout) in unit of tensor elements and is used for partitioning by TiledCopy for example
+
+    num_bits_per_copy is a kw argument specifying the number of bits to copy per Atom execution. This can be larger than the width of the above data type. When not provided, the compiler will do a best effort at auto-vectorizing.
+
+warp submodule
+class cutlass.cute.nvgpu.warp.MmaF16BF16Op(
+
+    ab_dtype: Type[cutlass.cute.typing.Numeric],
+    acc_dtype: Type[cutlass.cute.typing.Numeric],
+    shape_mnk: cutlass.cute.typing.Shape,
+
+)
+
+Bases: WarpMmaOp
+
+F16/BF16 tcgen05 MMA Operation.
+
+See the PTX documentation. This Operation covers the instructions using the .f16 or .bf16 qualifiers for the input operands.
+
+ab_dtype: Type[cutlass.cute.typing.Numeric]
+
+acc_dtype: Type[cutlass.cute.typing.Numeric]
+
+shape_mnk: cutlass.cute.typing.Shape
+
+__init__(
+
+    ab_dtype: Type[cutlass.cute.typing.Numeric],
+    acc_dtype: Type[cutlass.cute.typing.Numeric],
+    shape_mnk: cutlass.cute.typing.Shape,
+
+) → None
+
+class cutlass.cute.nvgpu.warp.LdMatrix8x8x16bOp(transpose: bool = False, num_matrices: int = 1)
+
+Bases: BaseOp
+
+8x8 ldmatrix Operation.
+
+See the PTX documentation. This operation corresponds to the .m8n8 qualifier.
+
+__init__(
+
+    transpose: bool = False,
+    num_matrices: int = 1,
+
+) → None
+
+class cutlass.cute.nvgpu.warp.LdMatrix16x16x8bOp(num_matrices: int)
+
+Bases: BaseOp
+
+16x16 8-bit ldmatrix Operation.
+
+See the PTX documentation. This operation corresponds to the .m16n16 and the .b16 qualifiers.
+
+__init__(num_matrices: int) → None
+
+class cutlass.cute.nvgpu.warp.StMatrix8x8x16bOp(transpose: bool = False, num_matrices: int = 1)
+
+Bases: BaseOp
+
+8x8 stmatrix Operation.
+
+See the PTX documentation. This operation corresponds to the m8n8 qualifier.
+
+__init__(
+
+    transpose: bool = False,
+    num_matrices: int = 1,
+
+) → None
+
+class cutlass.cute.nvgpu.warp.StMatrix16x8x8bOp(num_matrices: int)
+
+Bases: BaseOp
+
+16x8 stmatrix Operation.
+
+See the PTX documentation. This operation corresponds to the m16n8 qualifier.
+
+__init__(num_matrices: int) → None
+
+
+warpgroup submodule
+class cutlass.cute.nvgpu.warpgroup.OperandMajorMode(value)
+
+    Bases: Enum
+
+    An enumeration for the majorness of the input operands of the MMA.
+
+class cutlass.cute.nvgpu.warpgroup.OperandSource(value)
+
+    Bases: Enum
+
+    An enumeration for the source memory location of the A input operand of the MMA.
+
+class cutlass.cute.nvgpu.warpgroup.Field(value)
+
+Bases: Enum
+
+An enumeration for the fields of the MMA Atom that can be modified at runtime.
+
+ACCUMULATE = 'accum_c'
+
+class cutlass.cute.nvgpu.warpgroup.MmaF16BF16Op(
+
+    ab_dtype: Type[cutlass.cute.typing.Numeric],
+    acc_dtype: Type[cutlass.cute.typing.Numeric],
+    instruction_shape: cutlass.cute.typing.Shape,
+    a_src: OperandSource,
+    a_major_mode: OperandMajorMode,
+    b_major_mode: OperandMajorMode,
+
+)
+
+Bases: MmaOp
+
+F16/BF16 warpgroup MMA Operation.
+
+See the PTX documentation. This Operation covers the instructions using the .f16 or .bf16 qualifiers for the input operands.
+
+descriptive_name = 'warpgroup F16/BF16 MMA Operation'
+
+__init__(
+
+    ab_dtype: Type[cutlass.cute.typing.Numeric],
+    acc_dtype: Type[cutlass.cute.typing.Numeric],
+    instruction_shape: cutlass.cute.typing.Shape,
+    a_src: OperandSource,
+    a_major_mode: OperandMajorMode,
+    b_major_mode: OperandMajorMode,
+
+) → None
+
+class cutlass.cute.nvgpu.warpgroup.MmaF8Op(
+
+    a_dtype: Type[cutlass.cute.typing.Numeric],
+    b_dtype: Type[cutlass.cute.typing.Numeric],
+    acc_dtype: Type[cutlass.cute.typing.Numeric],
+    instruction_shape: cutlass.cute.typing.Shape,
+    a_src: OperandSource,
+    a_major_mode: OperandMajorMode,
+    b_major_mode: OperandMajorMode,
+
+)
+
+Bases: MmaOp
+
+F16/BF16 warpgroup MMA Operation.
+
+See the PTX documentation. This Operation covers the instructions using the .e4m3 or .e5m2 qualifiers for the input operands.
+
+descriptive_name = 'warpgroup F8 MMA Operation'
+
+__init__(
+
+    a_dtype: Type[cutlass.cute.typing.Numeric],
+    b_dtype: Type[cutlass.cute.typing.Numeric],
+    acc_dtype: Type[cutlass.cute.typing.Numeric],
+    instruction_shape: cutlass.cute.typing.Shape,
+    a_src: OperandSource,
+    a_major_mode: OperandMajorMode,
+    b_major_mode: OperandMajorMode,
+
+) → None
+
+class cutlass.cute.nvgpu.warpgroup.SmemLayoutAtomKind(value)
+
+Bases: Enum
+
+Enum class for the kinds of SMEM layout atoms for SM90.
+
+Given a swizzle kind, an SMEM layout atom is the compact layout of smallest size that can be used to construct an SMEM layout using blocked product for operand A or B such that the resulting layout is legal for both TMA and UMMA.
+
+Note that there are other ways of creating legal layouts for operand A and B.
+
+MN_INTER = 1
+
+MN_SW32 = 2
+
+MN_SW64 = 3
+
+MN_SW128 = 4
+
+K_INTER = 5
+
+K_SW32 = 6
+
+K_SW64 = 7
+
+K_SW128 = 8
+
+cutlass.cute.nvgpu.warpgroup.make_smem_layout_atom(
+
+    kind: SmemLayoutAtomKind,
+    element_type: Type[cutlass.cute.typing.Numeric],
+    *,
+    loc=None,
+    ip=None,
+
+) → cutlass.cute.typing.ComposedLayout
+
+    Makes a SMEM layout Atom.
+
+    This function creates a composed layout in unit of elements consistent with the requested layout Atom kind and element data type.
+
+    Parameters:
+
+            kind (SmemLayoutAtomKind) – The kind of layout Atom
+
+            element_type (Type[Numeric]) – The element data type to construct the layout for
+
+    Returns:
+
+        The SMEM layout atom
+    Return type:
+
+        ComposedLayout
+
+cutlass.cute.nvgpu.warpgroup.fence(*, loc=None, ip=None) → None
+
+    See the PTX documentation.
+
+cutlass.cute.nvgpu.warpgroup.commit_group(*, loc=None, ip=None) → None
+
+    See the PTX documentation.
+
+cutlass.cute.nvgpu.warpgroup.wait_group(group, *, loc=None, ip=None) → None
+
+    See the PTX documentation.
+
+
+cpasync submodule
+class cutlass.cute.nvgpu.cpasync.LoadCacheMode(value)
+
+    Bases: Enum
+
+    An enumeration for the possible cache modes of a non-bulk cp.async instruction.
+
+    See the PTX documentation.
+
+class cutlass.cute.nvgpu.cpasync.CopyG2SOp(
+
+    cache_mode: LoadCacheMode = cutlass._mlir.dialects.cute_nvgpu.LoadCacheMode.always,
+
+)
+
+Bases: CopyOp
+
+Non-bulk asynchronous GMEM to SMEM Copy Operation.
+
+See the PTX documentation.
+
+__init__(
+
+    cache_mode: LoadCacheMode = cutlass._mlir.dialects.cute_nvgpu.LoadCacheMode.always,
+
+) → None
+
+class cutlass.cute.nvgpu.cpasync.CopyBulkTensorTileG2SOp(
+
+    cta_group: ~cutlass.cute.nvgpu.tcgen05.mma.CtaGroup = <CtaGroup.ONE>,
+
+)
+
+Bases: TmaCopyOp
+
+Bulk tensor asynchrnous GMEM to SMEM Copy Operation using the TMA unit.
+
+See the PTX documentation. This Operation uses TMA in the .tile mode.
+
+cta_group: CtaGroup = 1
+
+__init__(
+
+    cta_group: ~cutlass.cute.nvgpu.tcgen05.mma.CtaGroup = <CtaGroup.ONE>,
+
+) → None
+
+class cutlass.cute.nvgpu.cpasync.CopyBulkTensorTileG2SMulticastOp(
+
+    cta_group: ~cutlass.cute.nvgpu.tcgen05.mma.CtaGroup = <CtaGroup.ONE>,
+
+)
+
+Bases: TmaCopyOp
+
+Bulk tensor asynchrnous multicast GMEM to SMEM Copy Operation using the TMA unit.
+
+See the PTX documentation. This Operation uses TMA in the .tile mode.
+
+cta_group: CtaGroup = 1
+
+__init__(
+
+    cta_group: ~cutlass.cute.nvgpu.tcgen05.mma.CtaGroup = <CtaGroup.ONE>,
+
+) → None
+
+class cutlass.cute.nvgpu.cpasync.CopyBulkTensorTileS2GOp
+
+Bases: TmaCopyOp
+
+Bulk tensor asynchronous SMEM to GMEM Copy Operation using the TMA unit.
+
+See the PTX documentation. This Operation uses TMA in the .tile mode.
+
+__init__() → None
+
+class cutlass.cute.nvgpu.cpasync.CopyReduceBulkTensorTileS2GOp(
+
+    reduction_kind: cutlass._mlir.dialects.cute.ReductionOp = cutlass._mlir.dialects.cute.ReductionOp.ADD,
+
+)
+
+Bases: TmaCopyOp
+
+Bulk tensor asynchronous SMEM to GMEM Reduction Operation using the TMA unit.
+
+See the PTX documentation. This Operation uses TMA in the .tile mode.
+
+__init__(
+
+    reduction_kind: cutlass._mlir.dialects.cute.ReductionOp = cutlass._mlir.dialects.cute.ReductionOp.ADD,
+
+) → None
+
+cutlass.cute.nvgpu.cpasync.make_tiled_tma_atom(
+
+    op: CopyBulkTensorTileG2SOp | CopyBulkTensorTileG2SMulticastOp | CopyBulkTensorTileS2GOp | CopyReduceBulkTensorTileS2GOp,
+    gmem_tensor: cutlass.cute.typing.Tensor,
+    smem_layout: cutlass.cute.typing.Layout | cutlass.cute.typing.ComposedLayout,
+    cta_tiler: cutlass.cute.typing.Tiler,
+    num_multicast: int = 1,
+    *,
+    internal_type: Type[cutlass.cute.typing.Numeric] | None = None,
+    loc=None,
+    ip=None,
+
+) → Tuple[CopyAtom, cutlass.cute.typing.Tensor]
+
+    Makes a TMA Copy Atom in the .tile mode to copy tiles of a GMEM tensor to/from SMEM buffer with the given Layout.
+
+    Given
+
+        a GMEM tensor
+
+        a SMEM layout
+
+        a CTA-level Tiler
+
+    this function figures out the bulk tensor asynchronous copy instruction to use with the maximum “TMA vector length” to copy tiles of the GMEM tensor to/from an SMEM buffer with the provided layout and consistent with the provided Tiler.
+
+    This function returns two results:
+
+        the Copy Atom
+
+        the so-called TMA tensor used to map logical coordinates of the GMEM tensor to coordinates that the TMA unit can consume. TMA tensors have so-called basis stride elements so that the associated layout can output coordinates. Otherwise, TMA tensors can be partitioned similarly to any other CuTe tensors using the algebra.
+
+    Parameters:
+
+            op (Union[CopyBulkTensorTileG2SOp, CopyBulkTensorTileG2SMulticastOp, CopyBulkTensorTileS2GOp, CopyReduceBulkTensorTileS2GOp]) – The Copy Operation to construct an Atom for
+
+            gmem_tensor (Tensor) – The GMEM tensor involved in the Copy
+
+            smem_layout (Union[Layout, ComposedLayout]) – The SMEM layout to construct the Copy Atom for
+
+            cta_tiler (Tiler) – The CTA Tiler to use
+
+            num_multicast (int) – The multicast factor
+
+            internal_type (Type[Numeric]) – An optional parameter for the internal data type to use when the actual data type is not supported by the TMA unit
+
+    Returns:
+
+        A Copy Atom for this Operation and the associated TMA tensor
+    Return type:
+
+        Tuple[atom.CopyAtom, Tensor]
+
+cutlass.cute.nvgpu.cpasync.tma_partition(
+
+    atom: CopyAtom,
+    cta_coord: cutlass.cute.typing.Coord,
+    cta_layout: cutlass.cute.typing.Layout,
+    smem_tensor: cutlass.cute.typing.Tensor,
+    gmem_tensor: cutlass.cute.typing.Tensor,
+    *,
+    loc=None,
+    ip=None,
+
+) → Tuple[cutlass.cute.typing.Tensor, cutlass.cute.typing.Tensor]
+
+    Tiles the GMEM and SMEM tensors for the provided TMA Copy Atom.
+
+cutlass.cute.nvgpu.cpasync.create_tma_multicast_mask(
+
+    cta_layout_vmnk: cutlass.cute.typing.Layout,
+    cta_coord_vmnk: cutlass.cute.typing.Coord,
+    mcast_mode: int,
+    *,
+    loc=None,
+    ip=None,
+
+) → cutlass.cute.typing.Int16
+
+    Computes a multicast mask for a TMA load Copy.
+
+    Parameters:
+
+            cta_layout_vmnk (Layout) – The VMNK layout of the cluster
+
+            cta_coord_vmnk (Coord) – The VMNK coordinate of the current CTA
+
+            mcast_mode (int) – The tensor mode in which to multicast
+
+    Returns:
+
+        The resulting mask
+    Return type:
+
+        Int16
+
+cutlass.cute.nvgpu.cpasync.prefetch_descriptor(
+
+    tma_atom: CopyAtom,
+    *,
+    loc=None,
+    ip=None,
+
+) → None
+
+    Prefetches the TMA descriptor associated with the TMA Atom.
+
+cutlass.cute.nvgpu.cpasync.copy_tensormap(
+
+    tma_atom: CopyAtom,
+    tensormap_ptr: cutlass.cute.typing.Pointer,
+    *,
+    loc=None,
+    ip=None,
+
+) → None
+
+    Copies the tensormap held by a TMA Copy Atom to the memory location pointed to by the provided pointer.
+
+    Parameters:
+
+            tma_atom (CopyAtom) – The TMA Copy Atom
+
+            tensormap_ptr (Pointer) – The pointer to the memory location to copy the tensormap to
+
+cutlass.cute.nvgpu.cpasync.update_tma_descriptor(
+
+    tma_atom: CopyAtom,
+    gmem_tensor: cutlass.cute.typing.Tensor,
+    tma_desc_ptr: cutlass.cute.typing.Pointer,
+    *,
+    loc=None,
+    ip=None,
+
+) → None
+
+    Updates the TMA descriptor in the memory location pointed to by the provided pointer using information from a TMA Copy Atom and the provided GMEM tensor.
+
+    Specifically, the following fields of the TMA descriptor will be updated:
+
+        the GMEM tensor base address
+
+        the GMEM tensor shape
+
+        the GMEM tensor stride
+
+    Other fields of the TMA descriptor are left unchanged.
+
+    Parameters:
+
+            tma_atom (CopyAtom) – The TMA Copy Atom
+
+            gmem_tensor (Tensor) – The GMEM tensor
+
+            tensormap_ptr (Pointer) – The pointer to the memory location of the descriptor to udpate
+
+cutlass.cute.nvgpu.cpasync.fence_tma_desc_acquire(
+
+    tma_desc_ptr: cutlass.cute.typing.Pointer,
+    *,
+    loc=None,
+    ip=None,
+
+) → None
+
+    See the PTX documentation.
+
+cutlass.cute.nvgpu.cpasync.cp_fence_tma_desc_release(
+
+    tma_desc_global_ptr: cutlass.cute.typing.Pointer,
+    tma_desc_shared_ptr: cutlass.cute.typing.Pointer,
+    *,
+    loc=None,
+    ip=None,
+
+) → None
+
+    See the PTX documentation.
+
+cutlass.cute.nvgpu.cpasync.fence_tma_desc_release(*, loc=None, ip=None) → None
+
+    See the PTX documentation.
+
+tcgen05 submodule
+class cutlass.cute.nvgpu.tcgen05.Repetition(value)
+
+Bases: Enum
+
+An enumeration for the number of repetitions of a given TMEM copy within the instruction.
+
+x1 = 1
+
+x2 = 2
+
+x4 = 4
+
+x8 = 8
+
+x16 = 16
+
+x32 = 32
+
+x64 = 64
+
+x128 = 128
+
+class cutlass.cute.nvgpu.tcgen05.Pack(value)
+
+Bases: Enum
+
+An enumeration for the possible packing patterns for TMEM to RMEM copies.
+
+NONE = 1
+
+PACK_16b_IN_32b = 2
+
+class cutlass.cute.nvgpu.tcgen05.Unpack(value)
+
+Bases: Enum
+
+An enumeration for the possible unpacking patterns for RMEM to TMEM copies.
+
+NONE = 1
+
+UNPACK_32b_IN_16b = 2
+
+class cutlass.cute.nvgpu.tcgen05.Ld16x64bOp(
+
+    repeat: ~cutlass.cute.nvgpu.tcgen05.copy.Repetition = <Repetition.x1>,
+    pack: ~cutlass.cute.nvgpu.tcgen05.copy.Pack = <Pack.NONE>,
+
+)
+
+Bases: _LdBase
+
+16x64b TMEM load Operation.
+
+See the PTX documentation. This Operation corresponds to the .16x64b qualifier.
+
+__init__(
+
+    repeat: ~cutlass.cute.nvgpu.tcgen05.copy.Repetition = <Repetition.x1>,
+    pack: ~cutlass.cute.nvgpu.tcgen05.copy.Pack = <Pack.NONE>,
+
+) → None
+
+class cutlass.cute.nvgpu.tcgen05.Ld16x128bOp(
+
+    repeat: ~cutlass.cute.nvgpu.tcgen05.copy.Repetition = <Repetition.x1>,
+    pack: ~cutlass.cute.nvgpu.tcgen05.copy.Pack = <Pack.NONE>,
+
+)
+
+Bases: _LdBase
+
+16x128b TMEM load Operation.
+
+See the PTX documentation. This Operation corresponds to the .16x128b qualifier.
+
+__init__(
+
+    repeat: ~cutlass.cute.nvgpu.tcgen05.copy.Repetition = <Repetition.x1>,
+    pack: ~cutlass.cute.nvgpu.tcgen05.copy.Pack = <Pack.NONE>,
+
+) → None
+
+class cutlass.cute.nvgpu.tcgen05.Ld16x256bOp(
+
+    repeat: ~cutlass.cute.nvgpu.tcgen05.copy.Repetition = <Repetition.x1>,
+    pack: ~cutlass.cute.nvgpu.tcgen05.copy.Pack = <Pack.NONE>,
+
+)
+
+Bases: _LdBase
+
+16x256b TMEM load Operation.
+
+See the PTX documentation. This Operation corresponds to the .16x256b qualifier.
+
+__init__(
+
+    repeat: ~cutlass.cute.nvgpu.tcgen05.copy.Repetition = <Repetition.x1>,
+    pack: ~cutlass.cute.nvgpu.tcgen05.copy.Pack = <Pack.NONE>,
+
+) → None
+
+class cutlass.cute.nvgpu.tcgen05.Ld16x32bx2Op(
+
+    repeat: ~cutlass.cute.nvgpu.tcgen05.copy.Repetition = <Repetition.x1>,
+    pack: ~cutlass.cute.nvgpu.tcgen05.copy.Pack = <Pack.NONE>,
+
+)
+
+Bases: _LdBase
+
+16x32bx2 TMEM load Operation.
+
+See the PTX documentation. This Operation corresponds to the .16x32bx2 qualifier.
+
+__init__(
+
+    repeat: ~cutlass.cute.nvgpu.tcgen05.copy.Repetition = <Repetition.x1>,
+    pack: ~cutlass.cute.nvgpu.tcgen05.copy.Pack = <Pack.NONE>,
+
+) → None
+
+class cutlass.cute.nvgpu.tcgen05.Ld32x32bOp(
+
+    repeat: ~cutlass.cute.nvgpu.tcgen05.copy.Repetition = <Repetition.x1>,
+    pack: ~cutlass.cute.nvgpu.tcgen05.copy.Pack = <Pack.NONE>,
+
+)
+
+Bases: _LdBase
+
+32x32b TMEM load Operation.
+
+See the PTX documentation. This Operation corresponds to the .32x32 qualifier.
+
+__init__(
+
+    repeat: ~cutlass.cute.nvgpu.tcgen05.copy.Repetition = <Repetition.x1>,
+    pack: ~cutlass.cute.nvgpu.tcgen05.copy.Pack = <Pack.NONE>,
+
+) → None
+
+class cutlass.cute.nvgpu.tcgen05.St16x64bOp(
+
+    repeat: ~cutlass.cute.nvgpu.tcgen05.copy.Repetition,
+    unpack: ~cutlass.cute.nvgpu.tcgen05.copy.Unpack = <Unpack.NONE>,
+
+)
+
+Bases: _StBase
+
+16x64b TMEM store Operation.
+
+See the PTX documentation. This Operation corresponds to the .16x64 qualifier.
+
+__init__(
+
+    repeat: ~cutlass.cute.nvgpu.tcgen05.copy.Repetition,
+    unpack: ~cutlass.cute.nvgpu.tcgen05.copy.Unpack = <Unpack.NONE>,
+
+) → None
+
+class cutlass.cute.nvgpu.tcgen05.St16x128bOp(
+
+    repeat: ~cutlass.cute.nvgpu.tcgen05.copy.Repetition,
+    unpack: ~cutlass.cute.nvgpu.tcgen05.copy.Unpack = <Unpack.NONE>,
+
+)
+
+Bases: _StBase
+
+16x128b TMEM store Operation.
+
+See the PTX documentation. This Operation corresponds to the .16x128 qualifier.
+
+__init__(
+
+    repeat: ~cutlass.cute.nvgpu.tcgen05.copy.Repetition,
+    unpack: ~cutlass.cute.nvgpu.tcgen05.copy.Unpack = <Unpack.NONE>,
+
+) → None
+
+class cutlass.cute.nvgpu.tcgen05.St16x256bOp(
+
+    repeat: ~cutlass.cute.nvgpu.tcgen05.copy.Repetition,
+    unpack: ~cutlass.cute.nvgpu.tcgen05.copy.Unpack = <Unpack.NONE>,
+
+)
+
+Bases: _StBase
+
+16x256b TMEM store Operation.
+
+See the PTX documentation. This Operation corresponds to the .16x256 qualifier.
+
+__init__(
+
+    repeat: ~cutlass.cute.nvgpu.tcgen05.copy.Repetition,
+    unpack: ~cutlass.cute.nvgpu.tcgen05.copy.Unpack = <Unpack.NONE>,
+
+) → None
+
+class cutlass.cute.nvgpu.tcgen05.St16x32bx2Op(
+
+    repeat: ~cutlass.cute.nvgpu.tcgen05.copy.Repetition,
+    unpack: ~cutlass.cute.nvgpu.tcgen05.copy.Unpack = <Unpack.NONE>,
+
+)
+
+Bases: _StBase
+
+16x32x2b TMEM store Operation.
+
+See the PTX documentation. This Operation corresponds to the .16x32x2 qualifier.
+
+__init__(
+
+    repeat: ~cutlass.cute.nvgpu.tcgen05.copy.Repetition,
+    unpack: ~cutlass.cute.nvgpu.tcgen05.copy.Unpack = <Unpack.NONE>,
+
+) → None
+
+class cutlass.cute.nvgpu.tcgen05.St32x32bOp(
+
+    repeat: ~cutlass.cute.nvgpu.tcgen05.copy.Repetition,
+    unpack: ~cutlass.cute.nvgpu.tcgen05.copy.Unpack = <Unpack.NONE>,
+
+)
+
+Bases: _StBase
+
+32x32b TMEM store Operation.
+
+See the PTX documentation. This Operation corresponds to the .32x32 qualifier.
+
+__init__(
+
+    repeat: ~cutlass.cute.nvgpu.tcgen05.copy.Repetition,
+    unpack: ~cutlass.cute.nvgpu.tcgen05.copy.Unpack = <Unpack.NONE>,
+
+) → None
+
+class cutlass.cute.nvgpu.tcgen05.OperandMajorMode(value)
+
+    Bases: Enum
+
+    An enumeration for the majorness of the input operands of the MMA.
+
+class cutlass.cute.nvgpu.tcgen05.OperandSource(value)
+
+    Bases: Enum
+
+    An enumeration for the source memory location of the A input operand of the MMA.
+
+class cutlass.cute.nvgpu.tcgen05.CtaGroup(value)
+
+Bases: Enum
+
+An enumeration for the cta_group qualifier of the MMA.
+
+ONE = 1
+
+TWO = 2
+
+class cutlass.cute.nvgpu.tcgen05.Field(value)
+
+Bases: Enum
+
+An enumeration for the fields of the MMA Atom that can be modified at runtime.
+
+NEGATE_A = 'neg_a'
+
+NEGATE_B = 'neg_b'
+
+ACCUMULATE = 'accum_c'
+
+SFA = 'sf_a'
+
+SFB = 'sf_b'
+
+class cutlass.cute.nvgpu.tcgen05.MmaTF32Op(
+
+    instruction_shape: cutlass.cute.typing.Shape,
+    cta_group: CtaGroup,
+    a_src: OperandSource,
+    a_major_mode: OperandMajorMode,
+    b_major_mode: OperandMajorMode,
+
+)
+
+Bases: MmaOp
+
+TF32 tcgen05 MMA Operation.
+
+See the PTX documentation. This Operation corresponds to the .kind::tf32 qualifier.
+
+descriptive_name = 'tcgen05 TF32 MMA Operation'
+
+__init__(
+
+    instruction_shape: cutlass.cute.typing.Shape,
+    cta_group: CtaGroup,
+    a_src: OperandSource,
+    a_major_mode: OperandMajorMode,
+    b_major_mode: OperandMajorMode,
+
+) → None
+
+class cutlass.cute.nvgpu.tcgen05.MmaF16BF16Op(
+
+    ab_dtype: Type[cutlass.cute.typing.Numeric],
+    acc_dtype: Type[cutlass.cute.typing.Numeric],
+    instruction_shape: cutlass.cute.typing.Shape,
+    cta_group: CtaGroup,
+    a_src: OperandSource,
+    a_major_mode: OperandMajorMode,
+    b_major_mode: OperandMajorMode,
+
+)
+
+Bases: MmaOp
+
+F16/BF16 tcgen05 MMA Operation.
+
+See the PTX documentation. This Operation corresponds to the .kind::f16 qualifier.
+
+descriptive_name = 'tcgen05 F16/BF16 MMA Operation'
+
+__init__(
+
+    ab_dtype: Type[cutlass.cute.typing.Numeric],
+    acc_dtype: Type[cutlass.cute.typing.Numeric],
+    instruction_shape: cutlass.cute.typing.Shape,
+    cta_group: CtaGroup,
+    a_src: OperandSource,
+    a_major_mode: OperandMajorMode,
+    b_major_mode: OperandMajorMode,
+
+) → None
+
+class cutlass.cute.nvgpu.tcgen05.MmaF16BF16SparseOp(
+
+    ab_dtype: Type[cutlass.cute.typing.Numeric],
+    acc_dtype: Type[cutlass.cute.typing.Numeric],
+    instruction_shape: cutlass.cute.typing.Shape,
+    cta_group: CtaGroup,
+    a_src: OperandSource,
+    a_major_mode: OperandMajorMode,
+    b_major_mode: OperandMajorMode,
+    sparse_metadata_format: SparseMetadataFormat,
+
+)
+
+Bases: SparseMmaOp
+
+F16/BF16 tcgen05 Sparse MMA Operation.
+
+See the PTX documentation. This Operation corresponds to the .kind::f16 qualifier with sparse support.
+
+descriptive_name = 'tcgen05 F16/BF16 Sparse MMA Operation'
+
+__init__(
+
+    ab_dtype: Type[cutlass.cute.typing.Numeric],
+    acc_dtype: Type[cutlass.cute.typing.Numeric],
+    instruction_shape: cutlass.cute.typing.Shape,
+    cta_group: CtaGroup,
+    a_src: OperandSource,
+    a_major_mode: OperandMajorMode,
+    b_major_mode: OperandMajorMode,
+    sparse_metadata_format: SparseMetadataFormat,
+
+) → None
+
+class cutlass.cute.nvgpu.tcgen05.MmaI8Op(
+
+    ab_dtype: Type[cutlass.cute.typing.Numeric],
+    instruction_shape: cutlass.cute.typing.Shape,
+    cta_group: CtaGroup,
+    a_src: OperandSource,
+    a_major_mode: OperandMajorMode,
+    b_major_mode: OperandMajorMode,
+
+)
+
+Bases: MmaOp
+
+I8 tcgen05 MMA Operation.
+
+See the PTX documentation. This Operation corresponds to the .kind::i8 qualifier.
+
+descriptive_name = 'tcgen05 I8 MMA Operation'
+
+__init__(
+
+    ab_dtype: Type[cutlass.cute.typing.Numeric],
+    instruction_shape: cutlass.cute.typing.Shape,
+    cta_group: CtaGroup,
+    a_src: OperandSource,
+    a_major_mode: OperandMajorMode,
+    b_major_mode: OperandMajorMode,
+
+) → None
+
+class cutlass.cute.nvgpu.tcgen05.MmaFP8Op(
+
+    ab_dtype: Type[cutlass.cute.typing.Numeric],
+    acc_dtype: Type[cutlass.cute.typing.Numeric],
+    instruction_shape: cutlass.cute.typing.Shape,
+    cta_group: CtaGroup,
+    a_src: OperandSource,
+    a_major_mode: OperandMajorMode,
+    b_major_mode: OperandMajorMode,
+
+)
+
+Bases: MmaOp
+
+F8 tcgen05 MMA Operation.
+
+See the PTX documentation.
+
+descriptive_name = 'tcgen05 F8 MMA Operation'
+
+__init__(
+
+    ab_dtype: Type[cutlass.cute.typing.Numeric],
+    acc_dtype: Type[cutlass.cute.typing.Numeric],
+    instruction_shape: cutlass.cute.typing.Shape,
+    cta_group: CtaGroup,
+    a_src: OperandSource,
+    a_major_mode: OperandMajorMode,
+    b_major_mode: OperandMajorMode,
+
+) → None
+
+class cutlass.cute.nvgpu.tcgen05.MmaMXF8Op(
+
+    ab_dtype: Type[cutlass.cute.typing.Numeric],
+    instruction_shape: cutlass.cute.typing.Shape,
+    cta_group: CtaGroup,
+    a_src: OperandSource,
+    a_major_mode: OperandMajorMode,
+    b_major_mode: OperandMajorMode,
+
+)
+
+Bases: BlockScaledMmaOp
+
+MXF8 tcgen05 BlockScaled MMA Operation.
+
+See the PTX documentation. This Operation corresponds to the .kind::mxf8f6f4 qualifier.
+
+descriptive_name = 'tcgen05 MXF8 BlockScaled MMA Operation'
+
+__init__(
+
+    ab_dtype: Type[cutlass.cute.typing.Numeric],
+    instruction_shape: cutlass.cute.typing.Shape,
+    cta_group: CtaGroup,
+    a_src: OperandSource,
+    a_major_mode: OperandMajorMode,
+    b_major_mode: OperandMajorMode,
+
+) → None
+
+class cutlass.cute.nvgpu.tcgen05.MmaMXF4Op(
+
+    instruction_shape: cutlass.cute.typing.Shape,
+    cta_group: CtaGroup,
+    a_src: OperandSource,
+
+)
+
+Bases: BlockScaledMmaOp
+
+MXF4 tcgen05 BlockScaled MMA Operation.
+
+See the PTX documentation. This Operation corresponds to the .kind::mxf4 qualifier.
+
+descriptive_name = 'tcgen05 MXF4 BlockScaled MMA Operation'
+
+__init__(
+
+    instruction_shape: cutlass.cute.typing.Shape,
+    cta_group: CtaGroup,
+    a_src: OperandSource,
+
+) → None
+
+class cutlass.cute.nvgpu.tcgen05.MmaMXF4NVF4Op(
+
+    sf_dtype: Type[cutlass.cute.typing.Numeric],
+    instruction_shape: cutlass.cute.typing.Shape,
+    cta_group: CtaGroup,
+    a_src: OperandSource,
+
+)
+
+Bases: BlockScaledMmaOp
+
+MXF4NVF4 tcgen05 BlockScaled MMA Operation.
+
+See the PTX documentation. This Operation corresponds to the .kind::mxf4nvf4 qualifier.
+
+descriptive_name = 'tcgen05 MXF4NVF4 BlockScaled MMA Operation'
+
+__init__(
+
+    sf_dtype: Type[cutlass.cute.typing.Numeric],
+    instruction_shape: cutlass.cute.typing.Shape,
+    cta_group: CtaGroup,
+    a_src: OperandSource,
+
+) → None
+
+class cutlass.cute.nvgpu.tcgen05.SmemLayoutAtomKind(value)
+
+Bases: Enum
+
+Enum class for the kinds of SMEM layout atoms for SM100.
+
+Given a swizzle kind, an SMEM layout atom is the compact layout of smallest size that can be used to construct an SMEM layout using blocked product for operand A or B such that the resulting layout is legal for both TMA and UMMA.
+
+Note that there are other ways of creating legal layouts for operand A and B.
+
+MN_INTER = 1
+
+MN_SW32 = 2
+
+MN_SW64 = 3
+
+MN_SW128 = 4
+
+MN_SW128_32B = 5
+
+K_INTER = 6
+
+K_SW32 = 7
+
+K_SW64 = 8
+
+K_SW128 = 9
+
+cutlass.cute.nvgpu.tcgen05.make_smem_layout_atom(
+
+    kind: SmemLayoutAtomKind,
+    element_type: Type[cutlass.cute.typing.Numeric],
+    *,
+    loc=None,
+    ip=None,
+
+) → cutlass.cute.typing.ComposedLayout
+
+    Makes a SMEM layout Atom.
+
+    This function creates a composed layout in unit of elements consistent with the requested layout Atom kind and element data type.
+
+    Parameters:
+
+            kind (SmemLayoutAtomKind) – The kind of layout Atom
+
+            element_type (Type[Numeric]) – The element data type to construct the layout for
+
+    Returns:
+
+        The SMEM layout atom
+    Return type:
+
+        ComposedLayout
+
+cutlass.cute.nvgpu.tcgen05.tile_to_mma_shape(
+
+    atom,
+    mma_tile_shape: cutlass.cute.typing.Shape,
+    order: cutlass.cute.typing.IntTuple | None = None,
+    *,
+    loc=None,
+    ip=None,
+
+)
+
+    Tiles a layout to an MMA shape.
+
+cutlass.cute.nvgpu.tcgen05.commit(
+
+    mbar_ptr: cutlass.cute.typing.Pointer,
+    mask=None,
+    cta_group: ~cutlass.cute.nvgpu.tcgen05.mma.CtaGroup = <CtaGroup.ONE>,
+    *,
+    loc=None,
+    ip=None,
+
+) → None
+
+    Perform an arrive operation on a mbarrier upon completion of previous MMA operations.
+
+    Parameters:
+
+            mbar_ptr (Pointer) – A pointer to the mbarrier in SMEM
+
+            mask (Int) – An optional multicast mask for the CTAs in the cluster to signal arrival to
+
+cutlass.cute.nvgpu.tcgen05.is_tmem_load(atom: CopyAtom) → bool
+
+    Returns whether a CopyAtom instance is a TMEM load.
+
+cutlass.cute.nvgpu.tcgen05.is_tmem_store(atom: CopyAtom) → bool
+
+    Returns whether a CopyAtom instance is a TMEM store.
+
+cutlass.cute.nvgpu.tcgen05.get_tmem_copy_properties(
+
+    atom: CopyAtom,
+
+) → Tuple[int, int, int, Pack | Unpack]
+
+    Returns the properties of a TMEM copy atom (number of data paths, bits, repetitions, and whether packing/unpacking is used).
+
+cutlass.cute.nvgpu.tcgen05.find_tmem_tensor_col_offset(
+
+    tmem_tensor: cutlass.cute.typing.Tensor,
+    *,
+    loc=None,
+    ip=None,
+
+) → cutlass.cute.typing.Int
+
+    Computes the TMEM column offset given a TMEM tensor.
+
+    Parameters:
+
+        tmem_tensor (Tensor) – The TMEM tensor to use to compute the columns offset
+    Returns:
+
+        The columns offset
+    Return type:
+
+        Int
+
+cutlass.cute.nvgpu.tcgen05.make_tmem_copy(
+
+    atom: CopyAtom,
+    tmem_tensor: cutlass.cute.typing.Tensor,
+    *,
+    loc=None,
+    ip=None,
+
+) → TiledCopy
+
+    Makes a Tiled Copy instance from a TMEM Copy Atom and a TMEM tensor.
+
+cutlass.cute.nvgpu.tcgen05.make_s2t_copy(
+
+    atom: CopyAtom,
+    tmem_tensor: cutlass.cute.typing.Tensor,
+    *,
+    loc=None,
+    ip=None,
+
+) → TiledCopy
+
+    Makes a Tiled Copy instance from a TMEM Copy Atom and a TMEM tensor.
+
+cutlass.cute.nvgpu.tcgen05.get_s2t_smem_desc_tensor(
+
+    atom: CopyAtom,
+    smem_tensor: cutlass.cute.typing.Tensor,
+    *,
+    loc=None,
+    ip=None,
+
+) → cutlass.cute.typing.Tensor
+
+    Returns the SMEM descriptor tensor from a S2T copy atom and a SMEM tensor.
+
+
+
