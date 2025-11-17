@@ -1,6 +1,9 @@
 """
-Modal-based version for running CUTLASS kernels with PTX dumps.
-Runs submission_ref.py directly (no torch.compile) to capture CUTLASS PTX.
+Modal sync utility: Uploads submission_ref.py and dependencies to Modal workspace volume.
+Useful for setting up remote profiling with NCU.
+
+Usage:
+    modal run submission_modal_debug.py::sync_to_workspace
 """
 
 import os
@@ -12,12 +15,9 @@ except ImportError:
     print("Error: modal not installed. Install with: pip install modal")
     sys.exit(1)
 
-image = modal.Image.from_registry(
-    "pytorch/pytorch:2.9.0-cuda13.0-cudnn9-devel",
-    add_python="3.11",
-)
+app = modal.App("nvfp4-sync-workspace")
 
-app = modal.App("nvfp4-gemv-cutlass-ptx", image=image)
+workspace_volume = modal.Volume.from_name("workspace", create_if_missing=True)
 
 _TASK_PY_CONTENT = '''import torch
 from typing import TypedDict, TypeVar
@@ -137,128 +137,70 @@ def custom_kernel(data: input_t) -> output_t:
     return c_ref
 '''
 
+_RUN_KERNEL_PY = '''import sys
+sys.path.insert(0, "/workspace/files")
+from task import get_test_data
+from submission_ref import custom_kernel
+print("Loading test data...")
+test_data = get_test_data()
+print("Running kernel...")
+result = custom_kernel(test_data)
+print("✓ Kernel completed successfully!")
+'''
+
+image_pytorch = modal.Image.from_registry(
+    "pytorch/pytorch:2.9.0-cuda13.0-cudnn9-devel",
+)
+
 @app.function(
     gpu="B200",
-    timeout=600,
+    volumes={"/workspace": workspace_volume},
+    image=image_pytorch,
 )
-def run_cutlass_debug_remote():
+def shell_with_gpu():
     import os
-    import sys
+    os.system("bash")
+
+@app.function(
+    volumes={"/workspace": workspace_volume},
+)
+def sync_to_workspace():
     from pathlib import Path
-
-    work_dir = Path("/root/nvfp4_work")
-    work_dir.mkdir(parents=True, exist_ok=True)
-
-    task_file = work_dir / "task.py"
+    
+    files_dir = Path("/workspace/files")
+    files_dir.mkdir(parents=True, exist_ok=True)
+    
+    task_file = files_dir / "task.py"
     with open(task_file, "w") as f:
         f.write(_TASK_PY_CONTENT)
-    print(f"✓ Created task.py")
-
-    ref_file = work_dir / "submission_ref.py"
+    print(f"✓ Synced task.py to /workspace/files/task.py")
+    
+    ref_file = files_dir / "submission_ref.py"
     with open(ref_file, "w") as f:
         f.write(_SUBMISSION_REF_PY_CONTENT)
-    print(f"✓ Created submission_ref.py")
-
-    sys.path.insert(0, str(work_dir))
-    print(f"✓ Added {work_dir} to Python path")
-    print()
-
-    print("=" * 80)
-    print("REMOTE EXECUTION: Running CUTLASS kernels with PTX captures")
-    print("=" * 80)
-    print()
-
-    try:
-        import torch
-        print("✓ PyTorch imported successfully")
-        from task import get_test_data
-        print("✓ task module imported successfully")
-        from submission_ref import custom_kernel
-        print("✓ submission_ref module imported successfully")
-        print()
-
-        print("Executing kernel (direct CUTLASS call, no torch.compile)...")
-        print()
-        test_data = get_test_data()
-        result = custom_kernel(test_data)
-        print()
-        print("✓ Kernel execution completed successfully!")
-        print()
-
-    except Exception as e:
-        print(f"✗ Error during kernel execution: {e}")
-        import traceback
-        traceback.print_exc()
-        raise
-
-    print("=" * 80)
-    print("Searching for CUDA JIT cache (PTX and CUBIN files):")
-    print("=" * 80)
+    print(f"✓ Synced submission_ref.py to /workspace/files/submission_ref.py")
     
-    import glob
-    import subprocess
+    run_script = files_dir / "run_kernel.py"
+    with open(run_script, "w") as f:
+        f.write(_RUN_KERNEL_PY)
+    print(f"✓ Synced run_kernel.py to /workspace/files/run_kernel.py")
     
-    cuda_cache_dir = Path.home() / ".nv" / "ComputeCache"
-    if cuda_cache_dir.exists():
-        ptx_files = sorted(cuda_cache_dir.glob("**/*.ptx"))
-        cubin_files = sorted(cuda_cache_dir.glob("**/*.cubin"))
-        
-        print(f"\nFound {len(ptx_files)} PTX file(s) and {len(cubin_files)} CUBIN file(s)")
-        
-        if ptx_files:
-            print(f"\n{'='*80}")
-            print(f"PTX FILES (showing first 3):")
-            print(f"{'='*80}")
-            for ptx_file in ptx_files[:3]:
-                print(f"\n--- {ptx_file.name} ---")
-                try:
-                    with open(ptx_file, 'r') as f:
-                        content = f.read()
-                    lines = content.split('\n')
-                    print(f"Total lines: {len(lines)}")
-                    print("\nContent:")
-                    print('\n'.join(lines[:200]))
-                    if len(lines) > 200:
-                        print(f"\n... ({len(lines) - 200} more lines)")
-                except Exception as e:
-                    print(f"Error reading PTX: {e}")
-        else:
-            print("  (No PTX files found in cache)")
-        
-        if cubin_files:
-            print(f"\n{'='*80}")
-            print(f"CUBIN DISASSEMBLY (SASS - showing first CUBIN):")
-            print(f"{'='*80}")
-            for cubin_file in cubin_files[:1]:
-                print(f"\n--- {cubin_file.name} ---")
-                try:
-                    result = subprocess.run(
-                        ['nvdisasm', '--print-code', str(cubin_file)],
-                        capture_output=True,
-                        text=True,
-                        timeout=30
-                    )
-                    lines = result.stdout.split('\n')
-                    print(f"Total SASS lines: {len(lines)}")
-                    print("\nSASS Disassembly (first 200 lines):")
-                    for line in lines[:200]:
-                        if line.strip():
-                            print(line)
-                    if len(lines) > 200:
-                        print(f"\n... ({len(lines) - 200} more lines)")
-                except subprocess.TimeoutExpired:
-                    print("  Disassembly timeout")
-                except FileNotFoundError:
-                    print("  nvdisasm not found")
-                except Exception as e:
-                    print(f"  Error disassembling: {e}")
-        else:
-            print("  (No CUBIN files found)")
-    else:
-        print(f"  CUDA cache directory not found: {cuda_cache_dir}")
-        print("  PTX files may not have been cached")
-
+    workspace_volume.commit()
+    
     print()
     print("=" * 80)
-    print("Complete!")
+    print("✓ All files synced to Modal workspace volume!")
     print("=" * 80)
+    print()
+    print("Location: /workspace/files/")
+    print("Files:")
+    print("  - task.py (test data generation)")
+    print("  - submission_ref.py (CUTLASS kernel with torch._scaled_mm)")
+    print("  - run_kernel.py (simple runner script)")
+    print()
+    print("To profile with NCU on a GPU run:")
+    print("  modal run -q submission_modal_debug.py::profile_with_ncu")
+    print()
+    print("Or manually in a GPU container:")
+    print("  ncu --set full python /workspace/files/run_kernel.py")
+    print()
