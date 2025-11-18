@@ -48,6 +48,24 @@ enum class MmaKind {
 
 };
 
+struct MmaConfig {
+
+    MmaKind kind;
+
+    int m_size;
+
+    int n_size;
+
+    int k_size;
+
+    bool trans_a;
+
+    bool trans_b;
+
+    int scale_vec_size_log;  // 0:1X, 1:2X, 2:4X
+
+};
+
 /*
 
 make_shared_desc: Creates the 64-bit shared memory descriptor for matrices in SMEM.
@@ -88,23 +106,14 @@ For .kind::mxf4nvf4 as per Table 44.
 
 */
 
-struct MmaConfig {
-
-    MmaKind kind;
-
-    int m_size;
-
-    int n_size;
-
-    int k_size;
-
-    bool trans_a;
-
-    bool trans_b;
-
-    int scale_vec_size_log;  // 0:1X, 1:2X, 2:4X
-
-};
+__device__ uint32_t device_ctz(uint32_t x) {
+    uint32_t result = 0;
+    while ((x & 1) == 0 && result < 32) {
+        x >>= 1;
+        result++;
+    }
+    return result;
+}
 
 __device__ uint32_t make_instr_desc(const MmaConfig& config) {
 
@@ -112,15 +121,15 @@ __device__ uint32_t make_instr_desc(const MmaConfig& config) {
 
     desc |= (static_cast<uint32_t>(config.kind) & 0xF);  // Bits 0-3: kind
 
-    uint32_t m_log = __builtin_ctz(config.m_size / 8);  // log2(m/8)
+    uint32_t m_log = device_ctz(config.m_size / 8);  // log2(m/8)
 
     desc |= (m_log & 0xF) << 4;  // Bits 4-7
 
-    uint32_t n_log = __builtin_ctz(config.n_size / 8);
+    uint32_t n_log = device_ctz(config.n_size / 8);
 
     desc |= (n_log & 0xF) << 8;  // Bits 8-11
 
-    uint32_t k_log = __builtin_ctz(config.k_size / 8);
+    uint32_t k_log = device_ctz(config.k_size / 8);
 
     desc |= (k_log & 0x7) << 12;  // Bits 12-14 (3 bits?)
 
@@ -133,6 +142,48 @@ __device__ uint32_t make_instr_desc(const MmaConfig& config) {
     return desc;
 
 }
+
+struct SharedDescParams {
+
+    void* smem_ptr;
+
+    uint32_t leading_byte;
+
+    uint32_t stride_byte;
+
+    uint32_t swizzle;
+
+    bool k_major;
+
+};
+
+__device__ SharedDescParams get_default_shared_params(void* smem_ptr, uint32_t leading_byte, uint32_t stride_byte, uint32_t swizzle = 0, bool k_major = true) {
+
+    SharedDescParams params;
+
+    params.smem_ptr = smem_ptr;
+
+    params.leading_byte = leading_byte;
+
+    params.stride_byte = stride_byte;
+
+    params.swizzle = swizzle;
+
+    params.k_major = k_major;
+
+    return params;
+
+}
+
+__device__ const MmaConfig mma_config = {
+    MmaKind::Mxf4Nvf4,  // kind
+    128,                // m_size (ROWS_PER_CTA)
+    32,                 // n_size (MIN_N)
+    128,                // k_size (K_TILE)
+    false,              // trans_a
+    false,              // trans_b
+    1                   // scale_vec_size_log (2X scaling)
+};
 
 /*
 
@@ -311,15 +362,30 @@ __global__ void gemv_nvfp4_tc_kernel(
 
         // Execute MMA
         uint32_t instr_desc = make_instr_desc(mma_config);
-        bool enable_input_d = (k_block > 0);
+        uint32_t enable_input_d = (k_block > 0) ? 1 : 0;
         asm volatile("tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec::2X [%0], %1, %2, %3, [%4], [%5], %6;"
             : : "r"(accum_taddr), "l"(vector_desc), "l"(matrix_desc), "r"(instr_desc), "r"(vector_scale_taddr), "r"(matrix_scale_taddr), "r"(enable_input_d));
         __threadfence();
     }
 
-    // Store from TMEM
-    asm volatile("tcgen05.st.cta_group::1.kind::f32 %0, %1;" : : "r"(accum_shared), "r"(accum_taddr));
-    asm volatile("tcgen05.wait::st;");
+    // Load from TMEM to registers and sum for GEMV
+    // For 128x32 accumulation, load and sum values
+    for (int i = tid; i < rows_this_tile; i += THREADS_PER_CTA) {
+        float sum = 0.0f;
+        // Load and sum all values for this row across N dimension
+        // Use simple approach: load 32 individual values
+        for (int n = 0; n < MIN_N; n++) {
+            float temp_val;
+            // Use tcgen05.ld to load individual float values
+            // Note: TMEM addressing may need adjustment based on actual layout
+            uint32_t elem_addr = accum_taddr + (i * MIN_N + n) * 4;
+            asm volatile("tcgen05.ld.sync.aligned.32x32b.x1.b32 %0, [%1];"
+                : "=f"(temp_val) : "r"(elem_addr));
+            sum += temp_val;
+        }
+        accum_shared[i * MIN_N] = sum;
+    }
+    asm volatile("tcgen05.wait::ld;");
     __syncthreads();
 
     // Store to c
