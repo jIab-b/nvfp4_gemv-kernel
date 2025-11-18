@@ -1,5 +1,5 @@
 "**NVIDIA on GitHub ✅ success**
-> Workflow [19455344591](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19455344591>) completed
+> Workflow [19456515670](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19456515670>) completed
 > Downloading artifacts... done
 > ❌ Running benchmarks failed (internal error 1)
 
@@ -11,8 +11,8 @@ Running on:
 * Torch: `2.9.1+cu130`
 # Running failed
 Command ```bash
-python3 eval.py benchmark /tmp/tmpv2qg_k9k```
-exited with error code **1** after 21.73 seconds.
+python3 eval.py benchmark /tmp/tmpw5vf238d```
+exited with error code **1** after 22.22 seconds.
 
 ## Program stderr:
 ```
@@ -32,7 +32,7 @@ Traceback (most recent call last):
     result = (True, func(*args, **kwds))
   File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 208, in _run_single_benchmark
     from submission import custom_kernel
-  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 435, in <module>
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 452, in <module>
     module = load_inline(
   File \"/usr/local/lib/python3.10/dist-packages/torch/utils/cpp_extension.py\", line 2051, in load_inline
     return _jit_compile(
@@ -45,113 +45,7 @@ Traceback (most recent call last):
 RuntimeError: Error building extension 'batched_scaled_gemv_tc': [1/2] /usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output cuda.cuda.o.d -DTORCH_EXTENSION_NAME=batched_scaled_gemv_tc -DTORCH_API_INCLUDE_EXTENSION_H -isystem /usr/local/lib/python3.10/dist-packages/torch/include -isystem /usr/local/lib/python3.10/dist-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /usr/include/python3.10 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++17 -gencode=arch=compute_100a,code=sm_100a -c /home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv_tc/cuda.cu -o cuda.cuda.o 
 FAILED: [code=255] cuda.cuda.o 
 /usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output cuda.cuda.o.d -DTORCH_EXTENSION_NAME=batched_scaled_gemv_tc -DTORCH_API_INCLUDE_EXTENSION_H -isystem /usr/local/lib/python3.10/dist-packages/torch/include -isystem /usr/local/lib/python3.10/dist-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /usr/include/python3.10 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++17 -gencode=arch=compute_100a,code=sm_100a -c /home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv_tc/cuda.cu -o cuda.cuda.o 
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 109; error   : Unknown modifier '.cta_group'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 109; error   : Arguments mismatch for instruction 'tcgen05.alloc'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 112; error   : Unknown modifier '.cta_group'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 112; error   : Arguments mismatch for instruction 'tcgen05.alloc'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 115; error   : Unknown modifier '.cta_group'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 115; error   : Arguments mismatch for instruction 'tcgen05.alloc'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 118; error   : Unknown modifier '.cta_group'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 118; error   : Arguments mismatch for instruction 'tcgen05.alloc'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 121; error   : Unknown modifier '.cta_group'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 121; error   : Arguments mismatch for instruction 'tcgen05.alloc'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 135; error   : Unknown modifier '.kind::f32'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 135; error   : Illegal modifier '.cta_group::1' for instruction 'tcgen05.ld'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 138; error   : .aligned modifier required for instruction 'tcgen05.wait'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 138; error   : .sync modifier required for instruction 'tcgen05.wait'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 206; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 206; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 211; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 211; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 216; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 216; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 221; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 221; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 226; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 226; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 231; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 231; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 236; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 236; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 241; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 241; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 246; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 246; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 251; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 251; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 256; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 256; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 261; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 261; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 266; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 266; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 271; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 271; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 276; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 276; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 281; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 281; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 286; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 286; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 291; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 291; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 296; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 296; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 301; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 301; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 306; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 306; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 311; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 311; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 316; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 316; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 321; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 321; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 326; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 326; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 331; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 331; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 336; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 336; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 341; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 341; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 346; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 346; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 351; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 351; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 356; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 356; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 361; error   : Vector expected for argument 0
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 361; error   : Argument 0 of instruction 'tcgen05.ld': Argument vector size mismatch
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 370; error   : .aligned modifier required for instruction 'tcgen05.wait'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 370; error   : .sync modifier required for instruction 'tcgen05.wait'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 392; error   : Unknown modifier '.cta_group'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 392; error   : Unexpected instruction types specified for 'tcgen05.dealloc'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 395; error   : Unknown modifier '.cta_group'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 395; error   : Unexpected instruction types specified for 'tcgen05.dealloc'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 398; error   : Unknown modifier '.cta_group'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 398; error   : Unexpected instruction types specified for 'tcgen05.dealloc'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 401; error   : Unknown modifier '.cta_group'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 401; error   : Unexpected instruction types specified for 'tcgen05.dealloc'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 404; error   : Unknown modifier '.cta_group'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 404; error   : Unexpected instruction types specified for 'tcgen05.dealloc'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 425; error   : Unknown modifier '.kind::e2m1'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 425; error   : Illegal modifier '.cta_group::1' for instruction 'tcgen05.ld'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 428; error   : .aligned modifier required for instruction 'tcgen05.wait'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 428; error   : .sync modifier required for instruction 'tcgen05.wait'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 436; error   : Unknown modifier '.kind::ue4m3'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 436; error   : Illegal modifier '.cta_group::1' for instruction 'tcgen05.ld'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 439; error   : .aligned modifier required for instruction 'tcgen05.wait'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 439; error   : .sync modifier required for instruction 'tcgen05.wait'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 484; error   : Unknown modifier '.kind::e2m1'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 484; error   : Illegal modifier '.cta_group::1' for instruction 'tcgen05.ld'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 487; error   : .aligned modifier required for instruction 'tcgen05.wait'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 487; error   : .sync modifier required for instruction 'tcgen05.wait'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 490; error   : Unknown modifier '.kind::ue4m3'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 490; error   : Illegal modifier '.cta_group::1' for instruction 'tcgen05.ld'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 493; error   : .aligned modifier required for instruction 'tcgen05.wait'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 493; error   : .sync modifier required for instruction 'tcgen05.wait'
-ptxas /tmp/tmpxft_00006199_00000000-6_cuda.ptx, line 499; error   : Arguments mismatch for instruction 'tcgen05.mma'
+ptxas /tmp/tmpxft_00005faf_00000000-6_cuda.ptx, line 549; error   : Arguments mismatch for instruction 'tcgen05.mma'
 ptxas fatal   : Ptx assembly aborted due to errors
 ninja: build stopped: subcommand failed.
 
@@ -165,4 +59,16 @@ Traceback (most recent call last):
   File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 453, in main
     return run_benchmarking(logger, pool, tests)
   File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 306, in run_benchmarking
-[...] 121 lines omitted```"
+    run_single_benchmark(pool, tests[0], False, 200, 10e7)
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 291, in run_single_benchmark
+    return pool.apply(_run_single_benchmark, (test, recheck, max_repeats, max_time_ns))
+  File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 360, in apply
+    return self.apply_async(func, args, kwds).get()
+  File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 774, in get
+    raise self._value
+RuntimeError: Error building extension 'batched_scaled_gemv_tc': [1/2] /usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output cuda.cuda.o.d -DTORCH_EXTENSION_NAME=batched_scaled_gemv_tc -DTORCH_API_INCLUDE_EXTENSION_H -isystem /usr/local/lib/python3.10/dist-packages/torch/include -isystem /usr/local/lib/python3.10/dist-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /usr/include/python3.10 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++17 -gencode=arch=compute_100a,code=sm_100a -c /home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv_tc/cuda.cu -o cuda.cuda.o 
+FAILED: [code=255] cuda.cuda.o 
+/usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output cuda.cuda.o.d -DTORCH_EXTENSION_NAME=batched_scaled_gemv_tc -DTORCH_API_INCLUDE_EXTENSION_H -isystem /usr/local/lib/python3.10/dist-packages/torch/include -isystem /usr/local/lib/python3.10/dist-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /usr/include/python3.10 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++17 -gencode=arch=compute_100a,code=sm_100a -c /home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv_tc/cuda.cu -o cuda.cuda.o 
+ptxas /tmp/tmpxft_00005faf_00000000-6_cuda.ptx, line 549; error   : Arguments mismatch for instruction 'tcgen05.mma'
+ptxas fatal   : Ptx assembly aborted due to errors
+ninja: build stopped: subcommand failed.```"

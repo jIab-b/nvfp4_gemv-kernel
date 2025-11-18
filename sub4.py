@@ -266,34 +266,46 @@ __global__ void gemv_nvfp4_tc_kernel(
     __shared__ int8_t matrix_scale_smem[ROWS_PER_CTA * (K_TILE / 16)];
     __shared__ float accum_shared[ROWS_PER_CTA * MIN_N];
 
-    // TMEM allocation (nCols=1 for 128x32 e2m1, assuming 32 4-bit elems fit in 128-bit column)
-    uint32_t accum_taddr;
-    asm volatile("tcgen05.alloc.cta_group.sync.aligned.b32 %0, 1;" : "=r"(accum_taddr) : );
+    // TMEM allocation (nCols=32 for 128x32 e2m1, 32 columns minimum)
+    __shared__ uint32_t accum_taddr_smem;
+    __shared__ uint32_t vector_taddr_smem;
+    __shared__ uint32_t vector_scale_taddr_smem;
+    __shared__ uint32_t matrix_taddr_smem;
+    __shared__ uint32_t matrix_scale_taddr_smem;
 
-    uint32_t vector_taddr;
-    asm volatile("tcgen05.alloc.cta_group.sync.aligned.b32 %0, 1;" : "=r"(vector_taddr) : );
+    // Fix: Use correct tcgen05.alloc syntax
+    asm volatile("tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [%0], 32;" : : "r"((uint32_t)(uintptr_t)&accum_taddr_smem));
+    asm volatile("tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [%0], 32;" : : "r"((uint32_t)(uintptr_t)&vector_taddr_smem));
+    asm volatile("tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [%0], 32;" : : "r"((uint32_t)(uintptr_t)&vector_scale_taddr_smem));
+    asm volatile("tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [%0], 32;" : : "r"((uint32_t)(uintptr_t)&matrix_taddr_smem));
+    asm volatile("tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [%0], 32;" : : "r"((uint32_t)(uintptr_t)&matrix_scale_taddr_smem));
 
-    uint32_t vector_scale_taddr;
-    asm volatile("tcgen05.alloc.cta_group.sync.aligned.b32 %0, 1;" : "=r"(vector_scale_taddr) : );
+    uint32_t accum_taddr = accum_taddr_smem;
+    uint32_t vector_taddr = vector_taddr_smem;
+    uint32_t vector_scale_taddr = vector_scale_taddr_smem;
+    uint32_t matrix_taddr = matrix_taddr_smem;
+    uint32_t matrix_scale_taddr = matrix_scale_taddr_smem;
 
-    uint32_t matrix_taddr;
-    asm volatile("tcgen05.alloc.cta_group.sync.aligned.b32 %0, 1;" : "=r"(matrix_taddr) : );
-
-    uint32_t matrix_scale_taddr;
-    asm volatile("tcgen05.alloc.cta_group.sync.aligned.b32 %0, 1;" : "=r"(matrix_scale_taddr) : );
-
-    // Clear accum TMEM (load zero from shared zero buffer as placeholder)
-    __shared__ float zero_smem[1];
-    if (tid == 0) zero_smem[0] = 0.0f;
+    // Zero initialize accumulators in TMEM
+    __shared__ float zero_smem[32];  // 32 floats for zero initialization
+    for (int i = tid; i < 32; i += THREADS_PER_CTA) {
+        zero_smem[i] = 0.0f;
+    }
     __syncthreads();
-    uint64_t zero_desc = make_shared_desc(zero_smem, 0, 0, 0, true);
-    asm volatile("tcgen05.ld.cta_group::1.kind::f32 %0, %1;" : : "r"(accum_taddr), "l"(zero_desc));
-    asm volatile("tcgen05.wait::ld;");
+
+    // Create descriptor for zero initialization
+    SharedDescParams zero_params = get_default_shared_params(zero_smem, 0, 0);
+    uint64_t zero_desc = make_shared_desc(zero_params.smem_ptr, zero_params.leading_byte, zero_params.stride_byte, zero_params.swizzle, zero_params.k_major);
+
+    // Fix: Use correct format for zero initialization - single format specifier
+    asm volatile("tcgen05.cp.cta_group::1.128x128b [%0], %1;" : : "r"(accum_taddr), "l"(zero_desc));
+    asm volatile("tcgen05.wait::st.sync.aligned;");
 
     // Loop over K tiles
     for (int k_block = 0; k_block < (K + K_TILE - 1) / K_TILE; ++k_block) {
         int k_start = k_block * K_TILE;
         int tile_elems = min(K_TILE, K - k_start);
+        if (tile_elems <= 0) continue;
 
         // Load vector packed
         for (int i = tid; i < (tile_elems + 1) / 2; i += THREADS_PER_CTA) {  // +1 for odd
@@ -312,15 +324,16 @@ __global__ void gemv_nvfp4_tc_kernel(
         SharedDescParams vector_params = get_default_shared_params(vector_smem, 0, 0);
         uint64_t vector_desc = make_shared_desc(vector_params.smem_ptr, vector_params.leading_byte, vector_params.stride_byte, vector_params.swizzle, vector_params.k_major);
 
-        // Load to TMEM
-        asm volatile("tcgen05.ld.cta_group::1.kind::e2m1 %0, %1;" : : "r"(vector_taddr), "l"(vector_desc));
-        asm volatile("tcgen05.wait::ld;");
+        // Fix: Use correct format for vector FP4 data - single format specifier
+        asm volatile("tcgen05.cp.cta_group::1.128x128b.b8x16.b4x16_p64 [%0], %1;" : : "r"(vector_taddr), "l"(vector_desc));
+        asm volatile("tcgen05.wait::st.sync.aligned;");
 
-        // Vector scales desc (replication, FP8 ue4m3, 1 byte per scale, for 8 scales replicate to 32? Adjust shape)
+        // Vector scales desc (replication, FP8 ue4m3, 1 byte per scale)
         SharedDescParams vscale_params = get_default_shared_params(vector_scale_smem, 0, 0);
         uint64_t vscale_desc = make_shared_desc(vscale_params.smem_ptr, vscale_params.leading_byte, vscale_params.stride_byte, vscale_params.swizzle, vscale_params.k_major);
-        asm volatile("tcgen05.ld.cta_group::1.kind::ue4m3 %0, %1;" : : "r"(vector_scale_taddr), "l"(vscale_desc));
-        asm volatile("tcgen05.wait::ld;");
+        // Fix: Use correct format for vector scales (FP8) - single format specifier
+        asm volatile("tcgen05.cp.cta_group::1.128x128b [%0], %1;" : : "r"(vector_scale_taddr), "l"(vscale_desc));
+        asm volatile("tcgen05.wait::st.sync.aligned;");
 
         // Load matrix packed
         for (int i = tid; i < ROWS_PER_CTA * ((tile_elems + 1) / 2); i += THREADS_PER_CTA) {
@@ -351,20 +364,26 @@ __global__ void gemv_nvfp4_tc_kernel(
         SharedDescParams matrix_params = get_default_shared_params(matrix_smem, K_TILE / 2, 1);
         uint64_t matrix_desc = make_shared_desc(matrix_params.smem_ptr, matrix_params.leading_byte, matrix_params.stride_byte, matrix_params.swizzle, matrix_params.k_major);
 
-        asm volatile("tcgen05.ld.cta_group::1.kind::e2m1 %0, %1;" : : "r"(matrix_taddr), "l"(matrix_desc));
-        asm volatile("tcgen05.wait::ld;");
+        // Fix: Use correct format for matrix FP4 data - single format specifier
+        asm volatile("tcgen05.cp.cta_group::1.128x128b.b8x16.b4x16_p64 [%0], %1;" : : "r"(matrix_taddr), "l"(matrix_desc));
+        asm volatile("tcgen05.wait::st.sync.aligned;");
 
         // Matrix scales desc (leading = K_TILE / 16, stride=1)
         SharedDescParams mscale_params = get_default_shared_params(matrix_scale_smem, K_TILE / 16, 1);
         uint64_t mscale_desc = make_shared_desc(mscale_params.smem_ptr, mscale_params.leading_byte, mscale_params.stride_byte, mscale_params.swizzle, mscale_params.k_major);
-        asm volatile("tcgen05.ld.cta_group::1.kind::ue4m3 %0, %1;" : : "r"(matrix_scale_taddr), "l"(mscale_desc));
-        asm volatile("tcgen05.wait::ld;");
+        // Fix: Use correct format for matrix scales (FP8) - single format specifier
+        asm volatile("tcgen05.cp.cta_group::1.128x128b [%0], %1;" : : "r"(matrix_scale_taddr), "l"(mscale_desc));
+        asm volatile("tcgen05.wait::st.sync.aligned;");
 
         // Execute MMA
         uint32_t instr_desc = make_instr_desc(mma_config);
         uint32_t enable_input_d = (k_block > 0) ? 1 : 0;
-        asm volatile("tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec::2X [%0], %1, %2, %3, [%4], [%5], %6;"
-            : : "r"(accum_taddr), "l"(vector_desc), "l"(matrix_desc), "r"(instr_desc), "r"(vector_scale_taddr), "r"(matrix_scale_taddr), "r"(enable_input_d));
+        asm volatile("{\n"
+                     "  .reg .pred p;\n"
+                     "  setp.ne.b32 p, %6, 0;\n"
+                     "  tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec::2X [%0], %1, %2, %3, [%4], [%5], p;\n"
+                     "}"
+            : : "r"(accum_taddr), "l"(matrix_desc), "l"(vector_desc), "r"(instr_desc), "r"(matrix_scale_taddr), "r"(vector_scale_taddr), "r"(enable_input_d));
         __threadfence();
     }
 
@@ -376,16 +395,16 @@ __global__ void gemv_nvfp4_tc_kernel(
         // Use simple approach: load 32 individual values
         for (int n = 0; n < MIN_N; n++) {
             float temp_val;
-            // Use tcgen05.ld to load individual float values
+            // Fix: Use correct tcgen05.ld vector syntax
             // Note: TMEM addressing may need adjustment based on actual layout
             uint32_t elem_addr = accum_taddr + (i * MIN_N + n) * 4;
-            asm volatile("tcgen05.ld.sync.aligned.32x32b.x1.b32 %0, [%1];"
+            asm volatile("tcgen05.ld.sync.aligned.32x32b.x1.b32 {%0}, [%1];"
                 : "=f"(temp_val) : "r"(elem_addr));
             sum += temp_val;
         }
         accum_shared[i * MIN_N] = sum;
     }
-    asm volatile("tcgen05.wait::ld;");
+    asm volatile("tcgen05.wait::ld.sync.aligned;");
     __syncthreads();
 
     // Store to c
@@ -396,11 +415,12 @@ __global__ void gemv_nvfp4_tc_kernel(
     }
 
     // Dealloc TMEM
-    asm volatile("tcgen05.dealloc.cta_group.sync.aligned %0, 1;" : : "r"(accum_taddr));
-    asm volatile("tcgen05.dealloc.cta_group.sync.aligned %0, 1;" : : "r"(vector_taddr));
-    asm volatile("tcgen05.dealloc.cta_group.sync.aligned %0, 1;" : : "r"(vector_scale_taddr));
-    asm volatile("tcgen05.dealloc.cta_group.sync.aligned %0, 1;" : : "r"(matrix_taddr));
-    asm volatile("tcgen05.dealloc.cta_group.sync.aligned %0, 1;" : : "r"(matrix_scale_taddr));
+    // Fix: Use correct tcgen05.dealloc syntax
+    asm volatile("tcgen05.dealloc.cta_group::1.sync.aligned.b32 %0, 32;" : : "r"(accum_taddr));
+    asm volatile("tcgen05.dealloc.cta_group::1.sync.aligned.b32 %0, 32;" : : "r"(vector_taddr));
+    asm volatile("tcgen05.dealloc.cta_group::1.sync.aligned.b32 %0, 32;" : : "r"(vector_scale_taddr));
+    asm volatile("tcgen05.dealloc.cta_group::1.sync.aligned.b32 %0, 32;" : : "r"(matrix_taddr));
+    asm volatile("tcgen05.dealloc.cta_group::1.sync.aligned.b32 %0, 32;" : : "r"(matrix_scale_taddr));
 }
 
 torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::Tensor sfa, torch::Tensor sfb, torch::Tensor c) {
