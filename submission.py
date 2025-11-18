@@ -91,6 +91,7 @@ __global__ void gemv_nvfp4_kernel(
             uint8_t a_byte = row_a[byte_idx];
             uint8_t b_byte = batch_b[byte_idx];
 
+            // k = odd, take last 4 bits, k even, take first 4 bits
             uint8_t a_nib = (k & 1) ? (a_byte >> 4) : (a_byte & 0xF);
             uint8_t b_nib = (k & 1) ? (b_byte >> 4) : (b_byte & 0xF);
 

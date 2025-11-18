@@ -1,7 +1,7 @@
 "**NVIDIA on GitHub ✅ success**
-> Workflow [19448757023](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19448757023>) completed
+> Workflow [19454252828](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19454252828>) completed
 > Downloading artifacts... done
-> ❌ Running benchmarks failed (internal error 1)
+> ✅ Benchmarking successful
 
 Running on:
 * GPU: `NVIDIA B200`
@@ -9,42 +9,19 @@ Running on:
 * Runtime: `CUDA`
 * Platform: `Linux-6.8.0-51-generic-x86_64-with-glibc2.35`
 * Torch: `2.9.1+cu130`
-# Running failed
-Command ```bash
-python3 eval.py benchmark /tmp/tmpw1b1w5ki```
-exited with error code **1** after 2.77 seconds.
 
-## Program stderr:
+
+## Benchmarks:
 ```
-multiprocessing.pool.RemoteTraceback: 
-\"\"\"
-Traceback (most recent call last):
-  File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 125, in worker
-    result = (True, func(*args, **kwds))
-  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 217, in _run_single_benchmark
-    output = custom_kernel(_clone_data(data))
-  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 201, in custom_kernel
-    gemv_persistent_kernel(a, b, sfa, sfb, c).launch(
-  File \"/usr/local/lib/python3.10/dist-packages/nvidia_cutlass_dsl/python_packages/cutlass/cutlass_dsl/cutlass.py\", line 705, in launch
-    valueAttrDict=self.dsl._generate_kernel_attrs(config),
-  File \"/usr/local/lib/python3.10/dist-packages/nvidia_cutlass_dsl/python_packages/cutlass/cutlass_dsl/cutlass.py\", line 270, in _generate_kernel_attrs
-    ret[\"nvvm.reqntid\"] = ir.Attribute.parse(f\"array<i32 : {max_threads}>\")
-RuntimeError: An MLIR function requires a Context but none was provided in the call or from the surrounding environment. Either pass to the function with a 'context=' argument or establish a default using 'with Context():'
-\"\"\"
+k: 16384; l: 1; m: 7168; seed: 1111
+ ⏱ 6.30 ± 0.002 ms
+ ⚡ 6.29 ms 🐌 6.31 ms
 
-The above exception was the direct cause of the following exception:
+k: 7168; l: 8; m: 4096; seed: 1111
+ ⏱ 3.00 ± 0.001 ms
+ ⚡ 3.00 ms 🐌 3.01 ms
 
-Traceback (most recent call last):
-  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 485, in <module>
-    sys.exit(main())
-  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 453, in main
-    return run_benchmarking(logger, pool, tests)
-  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 306, in run_benchmarking
-    run_single_benchmark(pool, tests[0], False, 200, 10e7)
-  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 291, in run_single_benchmark
-    return pool.apply(_run_single_benchmark, (test, recheck, max_repeats, max_time_ns))
-  File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 360, in apply
-    return self.apply_async(func, args, kwds).get()
-  File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 774, in get
-    raise self._value
-RuntimeError: An MLIR function requires a Context but none was provided in the call or from the surrounding environment. Either pass to the function with a 'context=' argument or establish a default using 'with Context():'```"
+k: 2048; l: 4; m: 7168; seed: 1111
+ ⏱ 843 ± 0.4 µs
+ ⚡ 841 µs 🐌 847 µs
+```"
