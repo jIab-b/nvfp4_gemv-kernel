@@ -88,33 +88,81 @@ For .kind::mxf4nvf4 as per Table 44.
 
 */
 
-__device__ MmaConfig get_default_mma_config() {
+struct MmaConfig {
 
-    // Default for our task: FP4 e2m1 data, FP8 e4m3 scales, FP32 internal accum (output to FP16 via store)
+    MmaKind kind;
 
-    return {MmaKind::Mxf4Nvf4, 128, 32, 128, false, false, 1};  // 128(M)x32(N)x128(K), no trans, 2X scale
+    int m_size;
 
-}
+    int n_size;
 
-struct SharedDescParams {
+    int k_size;
 
-    void* smem_ptr;
+    bool trans_a;
 
-    uint32_t leading_byte;
+    bool trans_b;
 
-    uint32_t stride_byte;
-
-    uint32_t swizzle;
-
-    bool k_major;
+    int scale_vec_size_log;  // 0:1X, 1:2X, 2:4X
 
 };
 
-__device__ SharedDescParams get_default_shared_params(void* ptr, uint32_t leading, uint32_t stride) {
+__device__ uint32_t make_instr_desc(const MmaConfig& config) {
 
-    // Default swizzle=0, k_major=true for our task's layouts
+    uint32_t desc = 0;
 
-    return {ptr, leading, stride, 0, true};
+    desc |= (static_cast<uint32_t>(config.kind) & 0xF);  // Bits 0-3: kind
+
+    uint32_t m_log = __builtin_ctz(config.m_size / 8);  // log2(m/8)
+
+    desc |= (m_log & 0xF) << 4;  // Bits 4-7
+
+    uint32_t n_log = __builtin_ctz(config.n_size / 8);
+
+    desc |= (n_log & 0xF) << 8;  // Bits 8-11
+
+    uint32_t k_log = __builtin_ctz(config.k_size / 8);
+
+    desc |= (k_log & 0x7) << 12;  // Bits 12-14 (3 bits?)
+
+    desc |= (config.trans_a ? 1U : 0) << 15;  // Bit 15
+
+    desc |= (config.trans_b ? 1U : 0) << 16;  // Bit 16
+
+    desc |= (static_cast<uint32_t>(config.scale_vec_size_log & 0x3) << 17);  // Bits 17-18? Assume 2 bits
+
+    return desc;
+
+}
+
+/*
+
+make_zero_mask_desc: Creates the 64-bit zero-column mask descriptor.
+
+Specifies non-zero mask (0-255) and shift amount (0-31) to generate mask for zeroing B columns.
+
+Used optionally in tcgen05.mma to force zeros in B columns.
+
+*/
+
+struct ZeroMaskConfig {
+
+    uint32_t non_zero_mask;  // 0-255
+
+    uint32_t shift_amount;   // 0-31
+
+};
+
+__device__ uint64_t make_zero_mask_desc(const ZeroMaskConfig& config) {
+
+    uint64_t desc = 0;
+
+    desc |= (static_cast<uint64_t>(config.non_zero_mask & 0xFF));  // Bits 0-7
+
+    desc |= (static_cast<uint64_t>(config.shift_amount & 0x1F) << 8);  // Bits 8-12
+
+    // Bits 13-63 reserved 0
+
+    return desc;
 
 }
 
@@ -137,7 +185,8 @@ __global__ void gemv_nvfp4_tc_kernel(
     int l = blockIdx.y;
     int tid = threadIdx.x;
 
-    if (m_block * ROWS_PER_CTA >= M || l >= L) return;
+    int rows_this_tile = min(ROWS_PER_CTA, M - m_block * ROWS_PER_CTA);
+    if (rows_this_tile <= 0 || l >= L) return;
 
     const int K_sf = K / 16;
     const int K_half = K / 2;
@@ -159,102 +208,133 @@ __global__ void gemv_nvfp4_tc_kernel(
     const uint8_t* row_a = batch_a + static_cast<size_t>(m_block * ROWS_PER_CTA) * K_half;
     const uint8_t* row_sfa = batch_sfa + static_cast<size_t>(m_block * ROWS_PER_CTA) * K_sf;
 
-    // Allocate TMEM for accumulator (BM x 1, but padded to MIN_N)
-    // Use CuTe to allocate
-    // auto tmem_alloc = tcgen05.alloc(BM, MIN_N); // Removed CuTe
+    // Shared memory for packed data and scales
+    __shared__ uint8_t vector_smem[K_TILE / 2];
+    __shared__ int8_t vector_scale_smem[K_TILE / 16];
+    __shared__ uint8_t matrix_smem[ROWS_PER_CTA * (K_TILE / 2)];
+    __shared__ int8_t matrix_scale_smem[ROWS_PER_CTA * (K_TILE / 16)];
+    __shared__ float accum_shared[ROWS_PER_CTA * MIN_N];
 
-    // Clear accumulator
-    // Inline PTX for tcgen05.clear or equivalent
-    // (Assume clear via zero load or PTX)
+    // TMEM allocation (nCols=1 for 128x32 e2m1, assuming 32 4-bit elems fit in 128-bit column)
+    uint32_t accum_taddr;
+    asm volatile("tcgen05.alloc.cta_group.sync.aligned.b32 %0, 1;" : "=r"(accum_taddr) : );
+
+    uint32_t vector_taddr;
+    asm volatile("tcgen05.alloc.cta_group.sync.aligned.b32 %0, 1;" : "=r"(vector_taddr) : );
+
+    uint32_t vector_scale_taddr;
+    asm volatile("tcgen05.alloc.cta_group.sync.aligned.b32 %0, 1;" : "=r"(vector_scale_taddr) : );
+
+    uint32_t matrix_taddr;
+    asm volatile("tcgen05.alloc.cta_group.sync.aligned.b32 %0, 1;" : "=r"(matrix_taddr) : );
+
+    uint32_t matrix_scale_taddr;
+    asm volatile("tcgen05.alloc.cta_group.sync.aligned.b32 %0, 1;" : "=r"(matrix_scale_taddr) : );
+
+    // Clear accum TMEM (load zero from shared zero buffer as placeholder)
+    __shared__ float zero_smem[1];
+    if (tid == 0) zero_smem[0] = 0.0f;
+    __syncthreads();
+    uint64_t zero_desc = make_shared_desc(zero_smem, 0, 0, 0, true);
+    asm volatile("tcgen05.ld.cta_group::1.kind::f32 %0, %1;" : : "r"(accum_taddr), "l"(zero_desc));
+    asm volatile("tcgen05.wait::ld;");
 
     // Loop over K tiles
     for (int k_block = 0; k_block < (K + K_TILE - 1) / K_TILE; ++k_block) {
         int k_start = k_block * K_TILE;
-        int k_end = min(k_start + K_TILE, K);
+        int tile_elems = min(K_TILE, K - k_start);
 
-        // Load vector stretch to SMEM (persist for all M in block)
-        __shared__ float vector_smem[K_TILE];
-        __shared__ float vector_scale_smem[K_TILE / 16];
-
-        // Collaborative load
-        for (int i = tid; i < k_end - k_start; i += THREADS_PER_CTA) {
-            int k = k_start + i;
-            int byte_idx = k / 2;
-            uint8_t b_byte = batch_b[byte_idx];
-            uint8_t b_nib = (k & 1) ? (b_byte >> 4) : (b_byte & 0xF);
-            vector_smem[i] = decode_fp4(b_nib);
+        // Load vector packed
+        for (int i = tid; i < (tile_elems + 1) / 2; i += THREADS_PER_CTA) {  // +1 for odd
+            int byte_idx = k_start / 2 + i;
+            if (byte_idx < batch_stride_b) vector_smem[i] = batch_b[byte_idx];
         }
-        for (int i = tid; i < (k_end - k_start) / 16; i += THREADS_PER_CTA) {
-            int k_sf = k_start / 16 + i;
-            vector_scale_smem[i] = decode_fp8(static_cast<int8_t>(batch_sfb[k_sf]));
+
+        // Load vector scales
+        for (int i = tid; i < (tile_elems + 15) / 16; i += THREADS_PER_CTA) {
+            int sf_idx = k_start / 16 + i;
+            if (sf_idx < K_sf) vector_scale_smem[i] = batch_sfb[sf_idx];
         }
         __syncthreads();
 
-        // Load to TMEM for vector, replicate to MIN_N columns with stride 0 descriptor
-        uint64_t vector_desc = 0;  // Construct descriptor
-        // Set address, shape K_TILE x MIN_N, stride for N=0 to replicate
-        // (Bit packing as per ISA)
-        // ... (set bits for address, leading dim, stride=0 for N)
-
-        // Load vector to TMEM using tcgen05.ld
-        // Inline PTX
-        asm volatile("tcgen05.ld.cta_group::1.kind::e2m1 taddr, desc;" : : "r"(vector_desc), "r"(vector_desc) );  // Load with replication
-
-        // Load scales to TMEM, replicate
-        // Similar for scale TMEM
-
-        // Load matrix tile for this m_block
-        __shared__ float matrix_smem[ROWS_PER_CTA * K_TILE];
-        __shared__ float matrix_scale_smem[ROWS_PER_CTA * (K_TILE / 16)];
-
-        // Collaborative load for matrix and scales
-        for (int i = tid; i < ROWS_PER_CTA * (k_end - k_start); i += THREADS_PER_CTA) {
-            int m_local = i / (k_end - k_start);
-            int k_local = i % (k_end - k_start);
-            int k = k_start + k_local;
-            int byte_idx = k / 2;
-            uint8_t a_byte = row_a[m_local * K_half + byte_idx];
-            uint8_t a_nib = (k & 1) ? (a_byte >> 4) : (a_byte & 0xF);
-            matrix_smem[m_local * K_TILE + k_local] = decode_fp4(a_nib);
-        }
-        for (int i = tid; i < ROWS_PER_CTA * (k_end - k_start) / 16; i += THREADS_PER_CTA) {
-            int m_local = i / ((k_end - k_start) / 16);
-            int k_sf_local = i % ((k_end - k_start) / 16);
-            int k_sf = k_start / 16 + k_sf_local;
-            matrix_scale_smem[m_local * (K_TILE / 16) + k_sf_local] = decode_fp8(static_cast<int8_t>(row_sfa[m_local * K_sf + k_sf]));
-        }
-        __syncthreads();
-
-        // Load to TMEM for matrix
-        uint64_t matrix_desc = 0;  // Construct descriptor for ROWS_PER_CTA x K_TILE
+        // Vector desc with replication (leading=0, stride=0 for broadcast across N=32)
+        SharedDescParams vector_params = get_default_shared_params(vector_smem, 0, 0);
+        uint64_t vector_desc = make_shared_desc(vector_params.smem_ptr, vector_params.leading_byte, vector_params.stride_byte, vector_params.swizzle, vector_params.k_major);
 
         // Load to TMEM
-        asm volatile("tcgen05.ld.cta_group::1.kind::e2m1 taddr, desc;" : : "r"(matrix_desc), "r"(matrix_desc) );
+        asm volatile("tcgen05.ld.cta_group::1.kind::e2m1 %0, %1;" : : "r"(vector_taddr), "l"(vector_desc));
+        asm volatile("tcgen05.wait::ld;");
 
-        // Load matrix scales to TMEM
+        // Vector scales desc (replication, FP8 ue4m3, 1 byte per scale, for 8 scales replicate to 32? Adjust shape)
+        SharedDescParams vscale_params = get_default_shared_params(vector_scale_smem, 0, 0);
+        uint64_t vscale_desc = make_shared_desc(vscale_params.smem_ptr, vscale_params.leading_byte, vscale_params.stride_byte, vscale_params.swizzle, vscale_params.k_major);
+        asm volatile("tcgen05.ld.cta_group::1.kind::ue4m3 %0, %1;" : : "r"(vector_scale_taddr), "l"(vscale_desc));
+        asm volatile("tcgen05.wait::ld;");
+
+        // Load matrix packed
+        for (int i = tid; i < ROWS_PER_CTA * ((tile_elems + 1) / 2); i += THREADS_PER_CTA) {
+            int m_local = i / ((tile_elems + 1) / 2);
+            int byte_local = i % ((tile_elems + 1) / 2);
+            if (m_local < rows_this_tile) {
+                int byte_idx = k_start / 2 + byte_local;
+                matrix_smem[i] = row_a[m_local * K_half + byte_idx];
+            } else {
+                matrix_smem[i] = 0;  // Pad unused rows
+            }
+        }
+
+        // Load matrix scales
+        for (int i = tid; i < ROWS_PER_CTA * ((tile_elems + 15) / 16); i += THREADS_PER_CTA) {
+            int m_local = i / ((tile_elems + 15) / 16);
+            int sf_local = i % ((tile_elems + 15) / 16);
+            if (m_local < rows_this_tile) {
+                int sf_idx = k_start / 16 + sf_local;
+                matrix_scale_smem[i] = row_sfa[m_local * K_sf + sf_idx];
+            } else {
+                matrix_scale_smem[i] = 0;  // Pad
+            }
+        }
+        __syncthreads();
+
+        // Matrix desc (leading = K_TILE / 2 bytes per row, stride=1 for packed bytes)
+        SharedDescParams matrix_params = get_default_shared_params(matrix_smem, K_TILE / 2, 1);
+        uint64_t matrix_desc = make_shared_desc(matrix_params.smem_ptr, matrix_params.leading_byte, matrix_params.stride_byte, matrix_params.swizzle, matrix_params.k_major);
+
+        asm volatile("tcgen05.ld.cta_group::1.kind::e2m1 %0, %1;" : : "r"(matrix_taddr), "l"(matrix_desc));
+        asm volatile("tcgen05.wait::ld;");
+
+        // Matrix scales desc (leading = K_TILE / 16, stride=1)
+        SharedDescParams mscale_params = get_default_shared_params(matrix_scale_smem, K_TILE / 16, 1);
+        uint64_t mscale_desc = make_shared_desc(mscale_params.smem_ptr, mscale_params.leading_byte, mscale_params.stride_byte, mscale_params.swizzle, mscale_params.k_major);
+        asm volatile("tcgen05.ld.cta_group::1.kind::ue4m3 %0, %1;" : : "r"(matrix_scale_taddr), "l"(mscale_desc));
+        asm volatile("tcgen05.wait::ld;");
 
         // Execute MMA
-        uint32_t instr_desc = 0;  // Construct instruction descriptor for mxf4nvf4, scale_vec::2X, shapes
-        
-        // Set bits for kind, shapes, etc.
-
-        asm volatile("tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec_size::2X [%0], %1, %2, %3, %4;"
-            : : "r"(vector_desc), "r"(matrix_desc), "r"(instr_desc), "r"(params) );
-
-        __syncthreads();  // Wait for MMA
+        uint32_t instr_desc = make_instr_desc(mma_config);
+        bool enable_input_d = (k_block > 0);
+        asm volatile("tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec::2X [%0], %1, %2, %3, [%4], [%5], %6;"
+            : : "r"(accum_taddr), "l"(vector_desc), "l"(matrix_desc), "r"(instr_desc), "r"(vector_scale_taddr), "r"(matrix_scale_taddr), "r"(enable_input_d));
+        __threadfence();
     }
 
-    // Store from TMEM to c (take first column since replicated)
-    // Use tcgen05.cp to registers, then store
+    // Store from TMEM
+    asm volatile("tcgen05.st.cta_group::1.kind::f32 %0, %1;" : : "r"(accum_shared), "r"(accum_taddr));
+    asm volatile("tcgen05.wait::st;");
+    __syncthreads();
 
-    // For each m in 0 to ROWS_PER_CTA
-    for (int i = tid; i < ROWS_PER_CTA; i += THREADS_PER_CTA) {
+    // Store to c
+    for (int i = tid; i < rows_this_tile; i += THREADS_PER_CTA) {
         int m = m_block * ROWS_PER_CTA + i;
-        if (m < M) {
-            size_t c_idx = static_cast<size_t>(m) + static_cast<size_t>(l) * M;
-            c[c_idx] = /* extract from TMEM */ ;
-        }
+        size_t c_idx = static_cast<size_t>(m) + static_cast<size_t>(l) * M;
+        c[c_idx] = __float2half(accum_shared[i * MIN_N]);
     }
+
+    // Dealloc TMEM
+    asm volatile("tcgen05.dealloc.cta_group.sync.aligned %0, 1;" : : "r"(accum_taddr));
+    asm volatile("tcgen05.dealloc.cta_group.sync.aligned %0, 1;" : : "r"(vector_taddr));
+    asm volatile("tcgen05.dealloc.cta_group.sync.aligned %0, 1;" : : "r"(vector_scale_taddr));
+    asm volatile("tcgen05.dealloc.cta_group.sync.aligned %0, 1;" : : "r"(matrix_taddr));
+    asm volatile("tcgen05.dealloc.cta_group.sync.aligned %0, 1;" : : "r"(matrix_scale_taddr));
 }
 
 torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::Tensor sfa, torch::Tensor sfb, torch::Tensor c) {
