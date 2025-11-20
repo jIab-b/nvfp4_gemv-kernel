@@ -100,11 +100,9 @@ class CuteGEMVKernel:
         k: int,
         l: int,
     ):
-        n_rows = int(b.shape[0])
-        groups_per_batch = _ceil_div(n_rows, self.vec_tile)
-
         grid_x = _ceil_div(m, self.rows_per_cta)
-        grid_y = max(1, l * max(1, groups_per_batch))
+        k_super_blocks = _ceil_div(k, self.k_tile * self.vec_tile)
+        grid_y = max(1, l * k_super_blocks)
         block = [self.rows_per_cta, 1, 1]
 
         self.kernel(
@@ -116,10 +114,7 @@ class CuteGEMVKernel:
             m,
             k,
             l,
-            n_rows,
-            groups_per_batch,
-            grid_x,
-            grid_y,
+            k_super_blocks,
             rows_per_cta=self.rows_per_cta,
             cols_per_cta=self.cols_per_cta,
             vec_tile=self.vec_tile,
@@ -140,10 +135,7 @@ class CuteGEMVKernel:
         m,
         k,
         l,
-        n_rows,
-        groups_per_batch,
-        grid_x,
-        grid_y,
+        k_super_blocks,
         rows_per_cta: int,
         cols_per_cta: int,
         vec_tile: int,
@@ -153,28 +145,20 @@ class CuteGEMVKernel:
         block_m, block_batch, _ = cute.arch.block_idx()
         tidx, _, _ = cute.arch.thread_idx()
 
-        # Decode batch and vector group (K-major batches are contiguous in 'l')
-        batch_id = block_batch // groups_per_batch
-        vec_group = block_batch % groups_per_batch
-        if batch_id >= l:
-            return
-
-        vec_base = vec_group * vec_tile
-        vec_count = min(vec_tile, max(0, n_rows - vec_base))
-        if vec_count == 0:
-            return
+        # Decode batch and K super-tile (512-wide) index
+        batch_id = block_batch // k_super_blocks
+        super_k = block_batch - batch_id * k_super_blocks
 
         # How many valid rows remain for this tile
         global_row0 = block_m * rows_per_cta
         rows_left = max(0, m - global_row0)
         rows_this_tile = min(rows_per_cta, rows_left)
-        if rows_this_tile == 0:
-            return
 
         # K spans full columns of the matrix (nvfp4 packs 2 values per byte)
         k_bytes_per_row = k // 2
         k_scale_per_row = k // scale_group
-        k_tiles = _ceil_div(k, K_TILE)
+        k_byte_base = super_k * (K_TILE // 2) * vec_tile
+        k_scale_base = super_k * (K_TILE // scale_group) * vec_tile
 
         #
         # GMEM tensor views (already K-major)
@@ -217,11 +201,12 @@ class CuteGEMVKernel:
         # Zero accumulator TMEM
         cute.copy(cute.full_like(acc_tmem, 0), acc_tmem)
 
-        # Loop over K in 64-wide tiles
-        for kt in range(k_tiles):
-            stage = kt & 1
-            k_byte_offset = kt * (K_TILE // 2)
-            k_scale_offset = kt * (K_TILE // scale_group)
+        # Process the eight 64-wide slices within this 512-wide super tile
+        for col in cutlass.range_constexpr(vec_tile):
+            stage = col & 1
+            k_byte_offset = k_byte_base + col * (K_TILE // 2)
+            k_scale_offset = k_scale_base + col * (K_TILE // scale_group)
+            col_valid = (k_byte_offset * 2) < k  # still within total K
 
             # SMEM tensor views for this stage
             a_smem = cute.make_tensor(
@@ -244,12 +229,14 @@ class CuteGEMVKernel:
             # Clear B/SFB rows to avoid garbage in unused columns
             cute.copy(cute.full_like(b_smem, 0), b_smem)
             cute.copy(cute.full_like(sfb_smem, 0), sfb_smem)
+            cute.copy(cute.full_like(a_smem, 0), a_smem)
+            cute.copy(cute.full_like(sfa_smem, 0), sfa_smem)
 
             #
             # Cooperative GMEM -> SMEM copies (manual, simple)
             #
             # Copy A rows
-            if tidx < rows_this_tile:
+            if tidx < rows_this_tile and col_valid:
                 a_tile = cute.local_tile(
                     a_g,
                     cute.make_tile(1, K_TILE // 2, 1),
@@ -264,22 +251,21 @@ class CuteGEMVKernel:
                 )
                 cute.copy(sfa_tile, sfa_smem[tidx : tidx + 1, :])
 
-            # Copy B rows (vector tile)
-            for v in range(vec_count):
-                idx = vec_base + v
+            # Copy B rows (single vector, eight K-slices become columns)
+            if col_valid:
                 b_tile = cute.local_tile(
                     b_g,
                     cute.make_tile(1, K_TILE // 2, 1),
-                    cute.make_coord(idx, k_byte_offset, batch_id),
+                    cute.make_coord(0, k_byte_offset, batch_id),
                 )
-                cute.copy(b_tile, b_smem[v : v + 1, :])
+                cute.copy(b_tile, b_smem[col : col + 1, :])
 
                 sfb_tile = cute.local_tile(
                     sfb_g,
                     cute.make_tile(1, K_TILE // scale_group, 1),
-                    cute.make_coord(idx, k_scale_offset, batch_id),
+                    cute.make_coord(0, k_scale_offset, batch_id),
                 )
-                cute.copy(sfb_tile, sfb_smem[v : v + 1, :])
+                cute.copy(sfb_tile, sfb_smem[col : col + 1, :])
 
             cute.arch.sync_threads()
 
@@ -295,7 +281,7 @@ class CuteGEMVKernel:
             # MMA: A/B from SMEM, scales from TMEM, accumulate into TMEM
             #
             mma_atom = cute.make_mma_atom(self.mma_op)
-            mma_atom.set(tcgen05.Field.ACCUMULATE, kt > 0)
+            mma_atom.set(tcgen05.Field.ACCUMULATE, col > 0)
             mma_atom.set(tcgen05.Field.SFA, sfa_tmem.iterator)
             mma_atom.set(tcgen05.Field.SFB, sfb_tmem.iterator)
 
