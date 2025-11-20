@@ -115,10 +115,6 @@ class CuteGEMVKernel:
             k,
             l,
             k_super_blocks,
-            rows_per_cta=self.rows_per_cta,
-            cols_per_cta=self.cols_per_cta,
-            vec_tile=self.vec_tile,
-            scale_group=self.scale_group,
         ).launch(
             grid=(grid_x, grid_y, 1),
             block=block,
@@ -136,11 +132,12 @@ class CuteGEMVKernel:
         k,
         l,
         k_super_blocks,
-        rows_per_cta: int,
-        cols_per_cta: int,
-        vec_tile: int,
-        scale_group: int,
     ):
+        # Treat tiling constants as compile-time literals for SMEM alloc / loops
+        rows_per_cta = ROWS_PER_CTA
+        vec_tile = VEC_TILE
+        scale_group = SCALE_GROUP
+
         # Block / thread coordinates
         block_m, block_batch, _ = cute.arch.block_idx()
         tidx, _, _ = cute.arch.thread_idx()
@@ -172,37 +169,40 @@ class CuteGEMVKernel:
         #
         # Shared memory allocations (double buffer for A/B + scales)
         #
-        bytes_a_stage = rows_per_cta * (K_TILE // 2)
-        bytes_sfa_stage = rows_per_cta * (K_TILE // scale_group)
-        bytes_b_stage = vec_tile * (K_TILE // 2)
-        bytes_sfb_stage = vec_tile * (K_TILE // scale_group)
+        bytes_a_stage = ROWS_PER_CTA * (K_TILE // 2)
+        bytes_sfa_stage = ROWS_PER_CTA * (K_TILE // scale_group)
+        bytes_b_stage = VEC_TILE * (K_TILE // 2)
+        bytes_sfb_stage = VEC_TILE * (K_TILE // scale_group)
 
         smem_a_ptr = cute.arch.alloc_smem(cutlass.Int8, 2 * bytes_a_stage)
         smem_b_ptr = cute.arch.alloc_smem(cutlass.Int8, 2 * bytes_b_stage)
         smem_sfa_ptr = cute.arch.alloc_smem(cutlass.Int8, 2 * bytes_sfa_stage)
         smem_sfb_ptr = cute.arch.alloc_smem(cutlass.Int8, 2 * bytes_sfb_stage)
 
-        smem_layout_a = cute.make_layout((rows_per_cta, K_TILE // 2), (K_TILE // 2, 1))
-        smem_layout_b = cute.make_layout((vec_tile, K_TILE // 2), (K_TILE // 2, 1))
-        smem_layout_sfa = cute.make_layout((rows_per_cta, K_TILE // scale_group), (K_TILE // scale_group, 1))
-        smem_layout_sfb = cute.make_layout((vec_tile, K_TILE // scale_group), (K_TILE // scale_group, 1))
+        smem_layout_a = cute.make_layout((rows_per_cta, K_TILE // 2), stride=(K_TILE // 2, 1))
+        smem_layout_b = cute.make_layout((vec_tile, K_TILE // 2), stride=(K_TILE // 2, 1))
+        smem_layout_sfa = cute.make_layout((rows_per_cta, K_TILE // scale_group), stride=(K_TILE // scale_group, 1))
+        smem_layout_sfb = cute.make_layout((vec_tile, K_TILE // scale_group), stride=(K_TILE // scale_group, 1))
 
         #
         # TMEM allocations: accumulator (128x8) and scale tiles
         #
-        acc_tmem_ptr = cute.arch.alloc_tmem(num_columns=vec_tile, smem_ptr_to_write_address=None)
-        acc_tmem = cute.make_tensor(acc_tmem_ptr, cute.make_layout((rows_per_cta, vec_tile), (vec_tile, 1)))
+        # Small SMEM scratch to hold returned TMEM addresses
+        tmem_addr_smem = cute.arch.alloc_smem(cutlass.Int32, 4)
 
-        sfa_tmem_ptr = cute.arch.alloc_tmem(num_columns=K_TILE // scale_group, smem_ptr_to_write_address=None)
-        sfb_tmem_ptr = cute.arch.alloc_tmem(num_columns=K_TILE // scale_group, smem_ptr_to_write_address=None)
-        sfa_tmem = cute.make_tensor(sfa_tmem_ptr, cute.make_layout((rows_per_cta, K_TILE // scale_group), (K_TILE // scale_group, 1)))
-        sfb_tmem = cute.make_tensor(sfb_tmem_ptr, cute.make_layout((vec_tile, K_TILE // scale_group), (K_TILE // scale_group, 1)))
+        acc_tmem_ptr = cute.arch.alloc_tmem(num_columns=32, smem_ptr_to_write_address=tmem_addr_smem)
+        acc_tmem = cute.make_tensor(acc_tmem_ptr, cute.make_layout((rows_per_cta, VEC_TILE), stride=(VEC_TILE, 1)))
+
+        sfa_tmem_ptr = cute.arch.alloc_tmem(num_columns=32, smem_ptr_to_write_address=tmem_addr_smem)
+        sfb_tmem_ptr = cute.arch.alloc_tmem(num_columns=32, smem_ptr_to_write_address=tmem_addr_smem)
+        sfa_tmem = cute.make_tensor(sfa_tmem_ptr, cute.make_layout((rows_per_cta, K_TILE // scale_group), stride=(K_TILE // scale_group, 1)))
+        sfb_tmem = cute.make_tensor(sfb_tmem_ptr, cute.make_layout((vec_tile, K_TILE // scale_group), stride=(K_TILE // scale_group, 1)))
 
         # Zero accumulator TMEM
         cute.copy(cute.full_like(acc_tmem, 0), acc_tmem)
 
         # Process the eight 64-wide slices within this 512-wide super tile
-        for col in cutlass.range_constexpr(vec_tile):
+        for col in cutlass.range_constexpr(VEC_TILE):
             stage = col & 1
             k_byte_offset = k_byte_base + col * (K_TILE // 2)
             k_scale_offset = k_scale_base + col * (K_TILE // scale_group)
@@ -304,8 +304,7 @@ class CuteGEMVKernel:
         #
         # Epilogue: TMEM -> registers -> global
         #
-        # Load first column (or all vec_count) from TMEM
-        # Use TMEM load op to registers
+        # Load accumulator from TMEM to registers
         acc_regs = cute.make_fragment_like(acc_tmem)
         cute.copy(acc_tmem, acc_regs)
 
@@ -316,9 +315,9 @@ class CuteGEMVKernel:
                 cute.make_tile(1, 1, 1),
                 cute.make_coord(global_row0 + tidx, 0, batch_id),
             )
-            # Reduce over vec_tile columns into a single scalar
+            # Reduce over all vec_tile columns into a single scalar
             acc_sum = acc_regs[tidx, 0]
-            for v in range(1, vec_count):
+            for v in range(1, VEC_TILE):
                 acc_sum = acc_sum + acc_regs[tidx, v]
             acc_sum = cute.cast(cutlass.Float16, acc_sum)
             c_tile[0, 0, 0] = acc_sum
