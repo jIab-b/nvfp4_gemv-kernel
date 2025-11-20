@@ -187,19 +187,26 @@ class CuteGEMVKernel:
         #
         # TMEM allocations: accumulator (128x8) and scale tiles
         #
-        # Small SMEM scratch to hold returned TMEM addresses
-        tmem_addr_smem = cute.arch.alloc_smem(cutlass.Int32, 4)
+        # Allocate small SMEM buffers to receive TMEM addresses
+        tmem_addr_acc = cute.arch.alloc_smem(cutlass.Int32, 2)
+        tmem_addr_sfa = cute.arch.alloc_smem(cutlass.Int32, 2)
+        tmem_addr_sfb = cute.arch.alloc_smem(cutlass.Int32, 2)
 
-        acc_tmem_ptr = cute.arch.alloc_tmem(num_columns=32, smem_ptr_to_write_address=tmem_addr_smem)
+        cute.arch.alloc_tmem(num_columns=32, smem_ptr_to_write_address=tmem_addr_acc)
+        acc_tmem_ptr = cute.arch.retrieve_tmem_ptr(cutlass.Int8, 16, tmem_addr_acc)
         acc_tmem = cute.make_tensor(acc_tmem_ptr, cute.make_layout((rows_per_cta, VEC_TILE), stride=(VEC_TILE, 1)))
 
-        sfa_tmem_ptr = cute.arch.alloc_tmem(num_columns=32, smem_ptr_to_write_address=tmem_addr_smem)
-        sfb_tmem_ptr = cute.arch.alloc_tmem(num_columns=32, smem_ptr_to_write_address=tmem_addr_smem)
+        cute.arch.alloc_tmem(num_columns=32, smem_ptr_to_write_address=tmem_addr_sfa)
+        sfa_tmem_ptr = cute.arch.retrieve_tmem_ptr(cutlass.Int8, 16, tmem_addr_sfa)
+        cute.arch.alloc_tmem(num_columns=32, smem_ptr_to_write_address=tmem_addr_sfb)
+        sfb_tmem_ptr = cute.arch.retrieve_tmem_ptr(cutlass.Int8, 16, tmem_addr_sfb)
         sfa_tmem = cute.make_tensor(sfa_tmem_ptr, cute.make_layout((rows_per_cta, K_TILE // scale_group), stride=(K_TILE // scale_group, 1)))
         sfb_tmem = cute.make_tensor(sfb_tmem_ptr, cute.make_layout((vec_tile, K_TILE // scale_group), stride=(K_TILE // scale_group, 1)))
 
         # Zero accumulator TMEM
-        cute.copy(cute.full_like(acc_tmem, 0), acc_tmem)
+        acc_zero = cute.make_fragment_like(acc_tmem)
+        cute.copy(cute.full_like(acc_zero, 0), acc_zero)
+        cute.copy(acc_zero, acc_tmem)
 
         # Process the eight 64-wide slices within this 512-wide super tile
         for col in cutlass.range_constexpr(VEC_TILE):

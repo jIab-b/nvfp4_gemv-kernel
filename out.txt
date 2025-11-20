@@ -1,5 +1,5 @@
 "**NVIDIA on GitHub ✅ success**
-> Workflow [19527663320](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19527663320>) completed
+> Workflow [19527700725](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19527700725>) completed
 > Downloading artifacts... done
 > ❌ Running benchmarks failed (internal error 1)
 
@@ -11,8 +11,8 @@ Running on:
 * Torch: `2.9.1+cu130`
 # Running failed
 Command ```bash
-python3 eval.py benchmark /tmp/tmpm6n3s8rn```
-exited with error code **1** after 2.67 seconds.
+python3 eval.py benchmark /tmp/tmp5f5i0cx5```
+exited with error code **1** after 2.73 seconds.
 
 ## Program stderr:
 ```
@@ -23,9 +23,9 @@ Traceback (most recent call last):
     result = (True, func(*args, **kwds))
   File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 208, in _run_single_benchmark
     from submission import custom_kernel
-  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 342, in <module>
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 347, in <module>
     jit_warmup(_dummy_data)
-  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 332, in jit_warmup
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 337, in jit_warmup
     return cute_kernel(a, b, sfa_ref, sfb_ref, c)
   File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 77, in __call__
     self._launch(
@@ -51,13 +51,13 @@ Traceback (most recent call last):
     kernel_ret = funcBody(*ir_args, **ir_kwargs)
   File \"/usr/local/lib/python3.10/dist-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/dsl.py\", line 254, in __call__
     ret = self.__func__(*args, **kwargs)
-  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 194, in kernel
-    acc_tmem = cute.make_tensor(acc_tmem_ptr, cute.make_layout((rows_per_cta, VEC_TILE), stride=(VEC_TILE, 1)))
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 207, in kernel
+    cute.copy(cute.full_like(acc_tmem, 0), acc_tmem)
   File \"/usr/local/lib/python3.10/dist-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/_mlir_helpers/op.py\", line 60, in wrapper
     res_or_list = opFunc(*args, **kwargs, loc=loc)
-  File \"/usr/local/lib/python3.10/dist-packages/nvidia_cutlass_dsl/python_packages/cutlass/cute/tensor.py\", line 637, in make_tensor
-    raise TypeError(f\"unsupported iterator type, got {type(iterator)}\")
-TypeError: unsupported iterator type, got <class 'NoneType'>
+  File \"/usr/local/lib/python3.10/dist-packages/nvidia_cutlass_dsl/python_packages/cutlass/cute/tensor.py\", line 1837, in full_like
+    res_dtype = dtype if dtype is not None else a.dtype  # type: ignore
+AttributeError: '_Tensor' object has no attribute 'dtype'
 \"\"\"
 
 The above exception was the direct cause of the following exception:
@@ -75,4 +75,4 @@ Traceback (most recent call last):
     return self.apply_async(func, args, kwds).get()
   File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 774, in get
     raise self._value
-TypeError: unsupported iterator type, got <class 'NoneType'>```"
+AttributeError: '_Tensor' object has no attribute 'dtype'```"
