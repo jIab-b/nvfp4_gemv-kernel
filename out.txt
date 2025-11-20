@@ -1,0 +1,102 @@
+"**NVIDIA on GitHub ✅ success**
+> Workflow [19523047226](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19523047226>) completed
+> Downloading artifacts... done
+> ❌ Running benchmarks failed (internal error 1)
+
+Running on:
+* GPU: `NVIDIA B200`
+* CPU: `INTEL(R) XEON(R) PLATINUM 8570`
+* Runtime: `CUDA`
+* Platform: `Linux-6.8.0-51-generic-x86_64-with-glibc2.35`
+* Torch: `2.9.1+cu130`
+# Running failed
+Command ```bash
+python3 eval.py benchmark /tmp/tmp8nf1q5nv```
+exited with error code **1** after 2.94 seconds.
+
+## Program stderr:
+```
+multiprocessing.pool.RemoteTraceback: 
+\"\"\"
+Traceback (most recent call last):
+  File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 125, in worker
+    result = (True, func(*args, **kwds))
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 217, in _run_single_benchmark
+    output = custom_kernel(_clone_data(data))
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 217, in custom_kernel
+    return _cute_kernel(a, b, sfa_ref, sfb_ref, c)
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 87, in __call__
+    self._launch(
+  File \"/usr/local/lib/python3.10/dist-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/dsl.py\", line 481, in jit_wrapper
+    return getattr(func._dsl_object, executor_name)(
+  File \"/usr/local/lib/python3.10/dist-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/dsl.py\", line 1453, in _func
+    result = self.generate_mlir(
+  File \"/usr/local/lib/python3.10/dist-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/dsl.py\", line 1268, in generate_mlir
+    module, module_hash, result = self.generate_original_ir(
+  File \"/usr/local/lib/python3.10/dist-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/dsl.py\", line 1152, in generate_original_ir
+    module, result = profiler(build_ir_module)()
+  File \"/usr/local/lib/python3.10/dist-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/utils/timer.py\", line 29, in func_wrapper
+    return func(*args, **kwargs)
+  File \"/usr/local/lib/python3.10/dist-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/dsl.py\", line 1137, in build_ir_module
+    result = funcBody(*ir_args, **ir_kwargs)
+  File \"/usr/local/lib/python3.10/dist-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/dsl.py\", line 254, in __call__
+    ret = self.__func__(*args, **kwargs)
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 120, in _launch
+    self.kernel(
+  File \"/usr/local/lib/python3.10/dist-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/dsl.py\", line 480, in jit_wrapper
+    func_ptr = BaseDSL._preprocess_and_execute(func)
+  File \"/usr/local/lib/python3.10/dist-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/dsl.py\", line 448, in _preprocess_and_execute
+    func._transformed_ast = func._dsl_object.run_preprocessor(func)
+  File \"/usr/local/lib/python3.10/dist-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/dsl.py\", line 1320, in run_preprocessor
+    transformed_ast = self.preprocessor.transform(funcBody, exec_globals)
+  File \"/usr/local/lib/python3.10/dist-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/ast_preprocessor.py\", line 586, in transform
+    transformed_tree = self.transform_function(
+  File \"/usr/local/lib/python3.10/dist-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/ast_preprocessor.py\", line 461, in transform_function
+    transformed_tree = self.visit(tree)
+  File \"/usr/lib/python3.10/ast.py\", line 418, in visit
+    return visitor(node)
+  File \"/usr/lib/python3.10/ast.py\", line 494, in generic_visit
+    value = self.visit(value)
+  File \"/usr/lib/python3.10/ast.py\", line 418, in visit
+    return visitor(node)
+  File \"/usr/local/lib/python3.10/dist-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/ast_preprocessor.py\", line 1501, in visit_FunctionDef
+    self.generic_visit(node)
+  File \"/usr/lib/python3.10/ast.py\", line 494, in generic_visit
+    value = self.visit(value)
+  File \"/usr/lib/python3.10/ast.py\", line 418, in visit
+    return visitor(node)
+  File \"/usr/local/lib/python3.10/dist-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/ast_preprocessor.py\", line 1696, in visit_If
+    self.check_early_exit(node, \"if\")
+  File \"/usr/local/lib/python3.10/dist-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/ast_preprocessor.py\", line 533, in check_early_exit
+    raise DSLAstPreprocessorError(
+cutlass.base_dsl.common.DSLAstPreprocessorError: DSLAstPreprocessorError: Early exit (return) is not allowed in `kernel`
+  File: /home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py
+  Snippet: 
+ if row >= m:
+    return
+\u001b[92m💡 Suggestions:\u001b[0m
+ If predicates are constant expression, write like `if const_expr(...)` or `for ... in range_constexpr(...)`. In that case, early exit will be executed by Python interpreter, so it's supported.
+\"\"\"
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 485, in <module>
+    sys.exit(main())
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 453, in main
+    return run_benchmarking(logger, pool, tests)
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 306, in run_benchmarking
+    run_single_benchmark(pool, tests[0], False, 200, 10e7)
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 291, in run_single_benchmark
+    return pool.apply(_run_single_benchmark, (test, recheck, max_repeats, max_time_ns))
+  File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 360, in apply
+    return self.apply_async(func, args, kwds).get()
+  File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 774, in get
+    raise self._value
+cutlass.base_dsl.common.DSLAstPreprocessorError: DSLAstPreprocessorError: DSLAstPreprocessorError: Early exit (return) is not allowed in `kernel`
+  File: /home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py
+  Snippet: 
+ if row >= m:
+    return
+\u001b[92m💡 Suggestions:\u001b[0m
+ If predicates are constant expression, write like `if const_expr(...)` or `for ... in range_constexpr(...)`. In that case, early exit will be executed by Python interpreter, so it's supported.```"
