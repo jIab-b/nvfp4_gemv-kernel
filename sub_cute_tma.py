@@ -131,10 +131,10 @@ class CuteGEMVKernel:
         sfa: cute.Tensor,
         sfb: cute.Tensor,
         c: cute.Tensor,
-        m: int,
-        k: int,
-        grid_x: int,
-        grid_y: int,
+        m,
+        k,
+        grid_x,
+        grid_y,
         rows_per_cta: int,
         cols_per_cta: int,
         vec_tile: int,
@@ -143,8 +143,6 @@ class CuteGEMVKernel:
         tidx = cute.arch.thread_idx()[0]
         block_x, block_y, _ = cute.arch.block_idx()
         row = block_x * rows_per_cta + tidx
-        if row >= m:
-            return
 
         smem = utils.SmemAllocator()
         storage = smem.allocate(self.shared_storage, 64)
@@ -153,11 +151,11 @@ class CuteGEMVKernel:
         mbar_cp = storage.cp.data_ptr()
         mbar_mma = storage.mma.data_ptr()
 
-        if cute.arch.elect_one():
-            cute.arch.mbarrier_init(mbar_tma_a, cute.const_expr(1))
-            cute.arch.mbarrier_init(mbar_tma_b, cute.const_expr(1))
-            cute.arch.mbarrier_init(mbar_cp, cute.const_expr(1))
-            cute.arch.mbarrier_init(mbar_mma, cute.const_expr(1))
+        if tidx == 0:
+            cute.arch.mbarrier_init(mbar_tma_a, 1)
+            cute.arch.mbarrier_init(mbar_tma_b, 1)
+            cute.arch.mbarrier_init(mbar_cp, 1)
+            cute.arch.mbarrier_init(mbar_mma, 1)
         cute.arch.mbarrier_init_fence()
 
         # Allocate SMEM buffers for A, B, and scale factors
@@ -200,11 +198,11 @@ class CuteGEMVKernel:
         if tidx == 0:
             for i in cute.range(rows_per_cta):
                 for j in cute.range(cols_per_cta):
-                    accum_tmem[i, j] = cute.const_expr(0.0, dtype=cutlass.Float16)
+                    accum_tmem[i, j] = 0.0
 
         num_k_tiles = cute._ceil_div(k, self.k_tile)
-        load_phase = cute.const_expr(0)
-        cp_phase = cute.const_expr(0)
+        load_phase = 0
+        cp_phase = 0
 
         for tile_idx in cute.range(num_k_tiles):
             # Select ping-pong buffers based on phase
@@ -223,13 +221,13 @@ class CuteGEMVKernel:
                 # a layout is [M, K/2, L], we load [ROWS_PER_CTA, K_TILE/2] per iteration
                 # Implicit TMA load signaled via mbarrier
                 cute.arch.mbarrier_arrive_and_expect_tx(
-                    mbar_tma_a, cute.const_expr(1), cute.const_expr(self.k_tile * 2)
+                    mbar_tma_a, 1, self.k_tile * 2
                 )
 
                 # TMA load vector B: [k_tile_offset:k_tile_offset+K_TILE] -> SMEM
                 # b layout is [N, K/2, L], we load a [K_TILE/2] segment per iteration
                 cute.arch.mbarrier_arrive_and_expect_tx(
-                    mbar_tma_b, cute.const_expr(1), cute.const_expr(self.k_tile * 2)
+                    mbar_tma_b, 1, self.k_tile * 2
                 )
 
             # Wait for TMA loads to complete (all threads synchronize)
@@ -264,13 +262,13 @@ class CuteGEMVKernel:
 
             # Stage 3: tcgen05.mma - Block-scaled multiply-accumulate in TMEM
             # Create instruction descriptor for MMA (encodes shape, datatype, scale info)
-            instr_desc = cute.const_expr(0)  # Descriptor bits encoding M=128, N=8, K=64, mxf4nvf4, scale_vec::2X
+            instr_desc = 0  # Descriptor bits encoding M=128, N=8, K=64, mxf4nvf4, scale_vec::2X
 
             # Wait for prior MMA to complete (important for pipelined accumulation)
             cute.arch.mbarrier_wait(mbar_mma, cp_phase)
 
             # Only accumulate after first K-tile (first tile initializes, rest accumulate)
-            p_enable = cute.const_expr(1) if tile_idx > 0 else cute.const_expr(0)
+            p_enable = 1 if tile_idx > 0 else 0
 
             # Thread 0 executes the block-scaled MMA
             if tidx == 0:
@@ -298,28 +296,29 @@ class CuteGEMVKernel:
 
         # Stage 4: TMEM -> Registers -> Global Memory
         # Load accumulated results from TMEM and reduce to GEMV output
-        lane_id = cute.arch.lane_idx()
-        warp_id = tidx >> 5
+        if row < m:
+            lane_id = cute.arch.lane_idx()
+            warp_id = tidx >> 5
 
-        # Process results per thread: each thread owns one row
-        if tidx < rows_per_cta:
-            sum_val = cute.const_expr(0.0, dtype=cutlass.Float16)
+            # Process results per thread: each thread owns one row
+            if tidx < rows_per_cta:
+                sum_val = 0.0
 
-            # Sum across the 8 columns (N-dimension reduction for GEMV)
-            for col in cute.range(cols_per_cta):
-                # tcgen05.ld.sync: load from TMEM with synchronization (32x32b F16 format)
-                val = accum_tmem[tidx, col]
-                sum_val = sum_val + val
+                # Sum across the 8 columns (N-dimension reduction for GEMV)
+                for col in cute.range(cols_per_cta):
+                    # tcgen05.ld.sync: load from TMEM with synchronization (32x32b F16 format)
+                    val = accum_tmem[tidx, col]
+                    sum_val = sum_val + val
 
-            # Store reduced result to global output [M, 1, L]
-            c[row, 0, block_y] = sum_val
+                # Store reduced result to global output [M, 1, L]
+                c[row, 0, block_y] = sum_val
 
-        # Deallocate TMEM resources
-        utils.TmemAllocator().deallocate(accum_tmem)
-        utils.TmemAllocator().deallocate(matrix_a_tmem)
-        utils.TmemAllocator().deallocate(vector_b_tmem)
-        utils.TmemAllocator().deallocate(matrix_sfa_tmem)
-        utils.TmemAllocator().deallocate(vector_sfb_tmem)
+            # Deallocate TMEM resources
+            utils.TmemAllocator().deallocate(accum_tmem)
+            utils.TmemAllocator().deallocate(matrix_a_tmem)
+            utils.TmemAllocator().deallocate(vector_b_tmem)
+            utils.TmemAllocator().deallocate(matrix_sfa_tmem)
+            utils.TmemAllocator().deallocate(vector_sfb_tmem)
 
 
 cute_kernel = CuteGEMVKernel()
