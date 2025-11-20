@@ -100,8 +100,11 @@ class CuteGEMVKernel:
         k: int,
         l: int,
     ):
+        n_rows = int(b.shape[0])
+        groups_per_batch = _ceil_div(n_rows, self.vec_tile)
+
         grid_x = _ceil_div(m, self.rows_per_cta)
-        grid_y = max(1, l)
+        grid_y = max(1, l * max(1, groups_per_batch))
         block = [self.rows_per_cta, 1, 1]
 
         self.kernel(
@@ -112,6 +115,9 @@ class CuteGEMVKernel:
             c,
             m,
             k,
+            l,
+            n_rows,
+            groups_per_batch,
             grid_x,
             grid_y,
             rows_per_cta=self.rows_per_cta,
@@ -133,6 +139,9 @@ class CuteGEMVKernel:
         c: cute.Tensor,
         m,
         k,
+        l,
+        n_rows,
+        groups_per_batch,
         grid_x,
         grid_y,
         rows_per_cta: int,
@@ -140,186 +149,195 @@ class CuteGEMVKernel:
         vec_tile: int,
         scale_group: int,
     ):
-        tidx = cute.arch.thread_idx()[0]
-        block_x, block_y, _ = cute.arch.block_idx()
-        row = block_x * rows_per_cta + tidx
+        # Block / thread coordinates
+        block_m, block_batch, _ = cute.arch.block_idx()
+        tidx, _, _ = cute.arch.thread_idx()
 
-        smem = utils.SmemAllocator()
-        storage = smem.allocate(self.shared_storage, 64)
-        mbar_tma_a = storage.tma_a.data_ptr()
-        mbar_tma_b = storage.tma_b.data_ptr()
-        mbar_cp = storage.cp.data_ptr()
-        mbar_mma = storage.mma.data_ptr()
+        # Decode batch and vector group (K-major batches are contiguous in 'l')
+        batch_id = block_batch // groups_per_batch
+        vec_group = block_batch % groups_per_batch
+        if batch_id >= l:
+            return
 
-        if tidx == 0:
-            cute.arch.mbarrier_init(mbar_tma_a, 1)
-            cute.arch.mbarrier_init(mbar_tma_b, 1)
-            cute.arch.mbarrier_init(mbar_cp, 1)
-            cute.arch.mbarrier_init(mbar_mma, 1)
-        cute.arch.mbarrier_init_fence()
+        vec_base = vec_group * vec_tile
+        vec_count = min(vec_tile, max(0, n_rows - vec_base))
+        if vec_count == 0:
+            return
 
-        # Allocate SMEM buffers for A, B, and scale factors
-        # Double-buffered: 2 sets of (matrix_A, vector_B, scales_A, scales_B)
-        smem_a_0 = smem.allocate(shape=(rows_per_cta, self.k_tile // 2), dtype=cutlass.Int8)
-        smem_a_1 = smem.allocate(shape=(rows_per_cta, self.k_tile // 2), dtype=cutlass.Int8)
-        smem_b_0 = smem.allocate(shape=(self.k_tile // 2,), dtype=cutlass.Int8)
-        smem_b_1 = smem.allocate(shape=(self.k_tile // 2,), dtype=cutlass.Int8)
-        smem_sfa_0 = smem.allocate(shape=(rows_per_cta, self.k_tile // 16), dtype=cutlass.Int8)
-        smem_sfa_1 = smem.allocate(shape=(rows_per_cta, self.k_tile // 16), dtype=cutlass.Int8)
-        smem_sfb_0 = smem.allocate(shape=(self.k_tile // 16,), dtype=cutlass.Int8)
-        smem_sfb_1 = smem.allocate(shape=(self.k_tile // 16,), dtype=cutlass.Int8)
+        # How many valid rows remain for this tile
+        global_row0 = block_m * rows_per_cta
+        rows_left = max(0, m - global_row0)
+        rows_this_tile = min(rows_per_cta, rows_left)
+        if rows_this_tile == 0:
+            return
 
-        # Allocate TMEM for accumulator and operands
-        # Accumulator: [128, 8] float16 (128 rows, 8 columns for GEMV N-dimension)
-        accum_tmem = utils.TmemAllocator().allocate(
-            shape=(rows_per_cta, cols_per_cta),
-            dtype=cutlass.Float16,
-        )
+        # K spans full columns of the matrix (nvfp4 packs 2 values per byte)
+        k_bytes_per_row = k // 2
+        k_scale_per_row = k // scale_group
+        k_tiles = _ceil_div(k, K_TILE)
 
-        # TMEM for operands during computation
-        matrix_a_tmem = utils.TmemAllocator().allocate(
-            shape=(rows_per_cta, self.k_tile),
-            dtype=cutlass.Float16,
-        )
-        vector_b_tmem = utils.TmemAllocator().allocate(
-            shape=(self.k_tile,),
-            dtype=cutlass.Float16,
-        )
-        matrix_sfa_tmem = utils.TmemAllocator().allocate(
-            shape=(rows_per_cta, self.k_tile // 16),
-            dtype=cutlass.Float8E4M3FN,
-        )
-        vector_sfb_tmem = utils.TmemAllocator().allocate(
-            shape=(self.k_tile // 16,),
-            dtype=cutlass.Float8E4M3FN,
-        )
+        #
+        # GMEM tensor views (already K-major)
+        #
+        a_g = a
+        b_g = b
+        sfa_g = sfa
+        sfb_g = sfb
+        c_g = c
 
-        # Zero-initialize accumulator in TMEM
-        if tidx == 0:
-            for i in cute.range(rows_per_cta):
-                for j in cute.range(cols_per_cta):
-                    accum_tmem[i, j] = 0.0
+        #
+        # Shared memory allocations (double buffer for A/B + scales)
+        #
+        bytes_a_stage = rows_per_cta * (K_TILE // 2)
+        bytes_sfa_stage = rows_per_cta * (K_TILE // scale_group)
+        bytes_b_stage = vec_tile * (K_TILE // 2)
+        bytes_sfb_stage = vec_tile * (K_TILE // scale_group)
 
-        num_k_tiles = cute._ceil_div(k, self.k_tile)
-        load_phase = 0
-        cp_phase = 0
+        smem_a_ptr = cute.arch.alloc_smem(cutlass.Int8, 2 * bytes_a_stage)
+        smem_b_ptr = cute.arch.alloc_smem(cutlass.Int8, 2 * bytes_b_stage)
+        smem_sfa_ptr = cute.arch.alloc_smem(cutlass.Int8, 2 * bytes_sfa_stage)
+        smem_sfb_ptr = cute.arch.alloc_smem(cutlass.Int8, 2 * bytes_sfb_stage)
 
-        for tile_idx in cute.range(num_k_tiles):
-            # Select ping-pong buffers based on phase
-            smem_a_curr = smem_a_0 if load_phase == 0 else smem_a_1
-            smem_b_curr = smem_b_0 if load_phase == 0 else smem_b_1
-            smem_sfa_curr = smem_sfa_0 if load_phase == 0 else smem_sfa_1
-            smem_sfb_curr = smem_sfb_0 if load_phase == 0 else smem_sfb_1
+        smem_layout_a = cute.make_layout((rows_per_cta, K_TILE // 2), (K_TILE // 2, 1))
+        smem_layout_b = cute.make_layout((vec_tile, K_TILE // 2), (K_TILE // 2, 1))
+        smem_layout_sfa = cute.make_layout((rows_per_cta, K_TILE // scale_group), (K_TILE // scale_group, 1))
+        smem_layout_sfb = cute.make_layout((vec_tile, K_TILE // scale_group), (K_TILE // scale_group, 1))
 
-            # Stage 1: TMA Load GMEM -> SMEM (async, signaled via mbarrier)
-            # Thread 0 issues TMA load commands for matrix A, vector B, and scales
-            if tidx == 0:
-                # Compute tile coordinates
-                k_tile_offset = tile_idx * self.k_tile
+        #
+        # TMEM allocations: accumulator (128x8) and scale tiles
+        #
+        acc_tmem_ptr = cute.arch.alloc_tmem(num_columns=vec_tile, smem_ptr_to_write_address=None)
+        acc_tmem = cute.make_tensor(acc_tmem_ptr, cute.make_layout((rows_per_cta, vec_tile), (vec_tile, 1)))
 
-                # TMA load matrix A: [row:row+ROWS_PER_CTA, k_tile_offset:k_tile_offset+K_TILE] -> SMEM
-                # a layout is [M, K/2, L], we load [ROWS_PER_CTA, K_TILE/2] per iteration
-                # Implicit TMA load signaled via mbarrier
-                cute.arch.mbarrier_arrive_and_expect_tx(
-                    mbar_tma_a, 1, self.k_tile * 2
+        sfa_tmem_ptr = cute.arch.alloc_tmem(num_columns=K_TILE // scale_group, smem_ptr_to_write_address=None)
+        sfb_tmem_ptr = cute.arch.alloc_tmem(num_columns=K_TILE // scale_group, smem_ptr_to_write_address=None)
+        sfa_tmem = cute.make_tensor(sfa_tmem_ptr, cute.make_layout((rows_per_cta, K_TILE // scale_group), (K_TILE // scale_group, 1)))
+        sfb_tmem = cute.make_tensor(sfb_tmem_ptr, cute.make_layout((vec_tile, K_TILE // scale_group), (K_TILE // scale_group, 1)))
+
+        # Zero accumulator TMEM
+        cute.copy(cute.full_like(acc_tmem, 0), acc_tmem)
+
+        # Loop over K in 64-wide tiles
+        for kt in range(k_tiles):
+            stage = kt & 1
+            k_byte_offset = kt * (K_TILE // 2)
+            k_scale_offset = kt * (K_TILE // scale_group)
+
+            # SMEM tensor views for this stage
+            a_smem = cute.make_tensor(
+                smem_a_ptr + stage * bytes_a_stage,
+                smem_layout_a,
+            )
+            b_smem = cute.make_tensor(
+                smem_b_ptr + stage * bytes_b_stage,
+                smem_layout_b,
+            )
+            sfa_smem = cute.make_tensor(
+                smem_sfa_ptr + stage * bytes_sfa_stage,
+                smem_layout_sfa,
+            )
+            sfb_smem = cute.make_tensor(
+                smem_sfb_ptr + stage * bytes_sfb_stage,
+                smem_layout_sfb,
+            )
+
+            # Clear B/SFB rows to avoid garbage in unused columns
+            cute.copy(cute.full_like(b_smem, 0), b_smem)
+            cute.copy(cute.full_like(sfb_smem, 0), sfb_smem)
+
+            #
+            # Cooperative GMEM -> SMEM copies (manual, simple)
+            #
+            # Copy A rows
+            if tidx < rows_this_tile:
+                a_tile = cute.local_tile(
+                    a_g,
+                    cute.make_tile(1, K_TILE // 2, 1),
+                    cute.make_coord(global_row0 + tidx, k_byte_offset, batch_id),
                 )
+                cute.copy(a_tile, a_smem[tidx : tidx + 1, :])
 
-                # TMA load vector B: [k_tile_offset:k_tile_offset+K_TILE] -> SMEM
-                # b layout is [N, K/2, L], we load a [K_TILE/2] segment per iteration
-                cute.arch.mbarrier_arrive_and_expect_tx(
-                    mbar_tma_b, 1, self.k_tile * 2
+                sfa_tile = cute.local_tile(
+                    sfa_g,
+                    cute.make_tile(1, K_TILE // scale_group, 1),
+                    cute.make_coord(global_row0 + tidx, k_scale_offset, batch_id),
                 )
+                cute.copy(sfa_tile, sfa_smem[tidx : tidx + 1, :])
 
-            # Wait for TMA loads to complete (all threads synchronize)
-            cute.arch.mbarrier_wait(mbar_tma_a, load_phase)
-            cute.arch.mbarrier_wait(mbar_tma_b, load_phase)
-
-            # Stage 2: tcgen05.cp - SMEM -> TMEM copy with FP4 decompression
-            # Create SMEM descriptors (abstract layout info for tcgen05.cp)
-            smem_desc_a = cute.make_smem_desc(smem_a_curr)
-            smem_desc_b = cute.make_smem_desc(smem_b_curr)
-            smem_desc_sfa = cute.make_smem_desc(smem_sfa_curr)
-            smem_desc_sfb = cute.make_smem_desc(smem_sfb_curr)
-
-            # Thread 0 initiates copies to TMEM with decompression
-            if tidx == 0:
-                # Copy matrix A (FP4->FP8 decompression) SMEM -> TMEM
-                # tcgen05.cp handles the bit-unpacking: 2 FP4 nibbles -> 1 FP8 byte
-                tcgen05.copy(smem_desc_a, matrix_a_tmem)
-
-                # Copy vector B (FP4->FP8) SMEM -> TMEM
-                tcgen05.copy(smem_desc_b, vector_b_tmem)
-
-                # Copy scale factors (already FP8) SMEM -> TMEM
-                tcgen05.copy(smem_desc_sfa, matrix_sfa_tmem)
-                tcgen05.copy(smem_desc_sfb, vector_sfb_tmem)
-
-                # Signal copy completion
-                tcgen05.commit(mbar_cp)
-
-            # Wait for all copies to complete
-            cute.arch.mbarrier_wait(mbar_cp, cp_phase)
-
-            # Stage 3: tcgen05.mma - Block-scaled multiply-accumulate in TMEM
-            # Create instruction descriptor for MMA (encodes shape, datatype, scale info)
-            instr_desc = 0  # Descriptor bits encoding M=128, N=8, K=64, mxf4nvf4, scale_vec::2X
-
-            # Wait for prior MMA to complete (important for pipelined accumulation)
-            cute.arch.mbarrier_wait(mbar_mma, cp_phase)
-
-            # Only accumulate after first K-tile (first tile initializes, rest accumulate)
-            p_enable = 1 if tile_idx > 0 else 0
-
-            # Thread 0 executes the block-scaled MMA
-            if tidx == 0:
-                # tcgen05.mma: A[128×64] × B[64×8] -> Accum[128×8]
-                # Inputs: matrix_a_tmem, vector_b_tmem (FP8 decompressed data)
-                # Scales: matrix_sfa_tmem, vector_sfb_tmem (FP8 scale factors)
-                # Block-scaling: dequant(A[i,j]) = unquant(A_fp4[i,j]) * scale_a[i//16, j//16]
-                tcgen05.mma(
-                    accum=accum_tmem,
-                    a=matrix_a_tmem,
-                    b=vector_b_tmem,
-                    sfa=matrix_sfa_tmem,
-                    sfb=vector_sfb_tmem,
-                    instr_desc=instr_desc,
-                    p_enable=p_enable,
-                    cta_group=tcgen05.CtaGroup.ONE,
+            # Copy B rows (vector tile)
+            for v in range(vec_count):
+                idx = vec_base + v
+                b_tile = cute.local_tile(
+                    b_g,
+                    cute.make_tile(1, K_TILE // 2, 1),
+                    cute.make_coord(idx, k_byte_offset, batch_id),
                 )
+                cute.copy(b_tile, b_smem[v : v + 1, :])
 
-                # Signal MMA completion for next iteration
-                tcgen05.commit(mbar_mma)
+                sfb_tile = cute.local_tile(
+                    sfb_g,
+                    cute.make_tile(1, K_TILE // scale_group, 1),
+                    cute.make_coord(idx, k_scale_offset, batch_id),
+                )
+                cute.copy(sfb_tile, sfb_smem[v : v + 1, :])
 
-            # Toggle phases for double-buffering
-            load_phase = 1 - load_phase
-            cp_phase = 1 - cp_phase
+            cute.arch.sync_threads()
 
-        # Stage 4: TMEM -> Registers -> Global Memory
-        # Load accumulated results from TMEM and reduce to GEMV output
-        if row < m:
-            lane_id = cute.arch.lane_idx()
-            warp_id = tidx >> 5
+            #
+            # Move scales to TMEM (SMEM -> TMEM copy)
+            #
+            cute.copy(sfa_smem, sfa_tmem)
+            cute.copy(sfb_smem, sfb_tmem)
 
-            # Process results per thread: each thread owns one row
-            if tidx < rows_per_cta:
-                sum_val = 0.0
+            cute.arch.sync_threads()
 
-                # Sum across the 8 columns (N-dimension reduction for GEMV)
-                for col in cute.range(cols_per_cta):
-                    # tcgen05.ld.sync: load from TMEM with synchronization (32x32b F16 format)
-                    val = accum_tmem[tidx, col]
-                    sum_val = sum_val + val
+            #
+            # MMA: A/B from SMEM, scales from TMEM, accumulate into TMEM
+            #
+            mma_atom = cute.make_mma_atom(self.mma_op)
+            mma_atom.set(tcgen05.Field.ACCUMULATE, kt > 0)
+            mma_atom.set(tcgen05.Field.SFA, sfa_tmem.iterator)
+            mma_atom.set(tcgen05.Field.SFB, sfb_tmem.iterator)
 
-                # Store reduced result to global output [M, 1, L]
-                c[row, 0, block_y] = sum_val
+            # Tile A/B to match MMA expected shapes: [M, K] and [K, N]
+            tCrA = cute.local_tile(
+                a_smem,
+                mma_atom.tv_layout_A,
+                cute.make_coord(0, 0),
+            )
+            tCrB = cute.local_tile(
+                b_smem,
+                mma_atom.tv_layout_B,
+                cute.make_coord(0, 0),
+            )
 
-            # Deallocate TMEM resources
-            utils.TmemAllocator().deallocate(accum_tmem)
-            utils.TmemAllocator().deallocate(matrix_a_tmem)
-            utils.TmemAllocator().deallocate(vector_b_tmem)
-            utils.TmemAllocator().deallocate(matrix_sfa_tmem)
-            utils.TmemAllocator().deallocate(vector_sfb_tmem)
+            cute.gemm(mma_atom, acc_tmem, tCrA, tCrB, acc_tmem)
 
+            cute.arch.sync_threads()
+
+        #
+        # Epilogue: TMEM -> registers -> global
+        #
+        # Load first column (or all vec_count) from TMEM
+        # Use TMEM load op to registers
+        acc_regs = cute.make_fragment_like(acc_tmem)
+        cute.copy(acc_tmem, acc_regs)
+
+        # Store to global C (only first column used)
+        if tidx < rows_this_tile:
+            c_tile = cute.local_tile(
+                c_g,
+                cute.make_tile(1, 1, 1),
+                cute.make_coord(global_row0 + tidx, 0, batch_id),
+            )
+            # Reduce over vec_tile columns into a single scalar
+            acc_sum = acc_regs[tidx, 0]
+            for v in range(1, vec_count):
+                acc_sum = acc_sum + acc_regs[tidx, v]
+            acc_sum = cute.cast(cutlass.Float16, acc_sum)
+            c_tile[0, 0, 0] = acc_sum
+
+        cute.arch.sync_threads()
 
 cute_kernel = CuteGEMVKernel()
 
