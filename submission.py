@@ -190,7 +190,8 @@ __global__ void gemv_nvfp4_scalar_kernel(
                 float scaled_a_hi = a_hi * sfa;
                 float scaled_b_hi = b_hi * sfb;
 
-                // FMA: acc += (a * sfa) * (b * sfb)
+                // FMA: acc = (a * sfa) * (b * sfb) + acc
+                // Using PTX: fma.rn.f32 d, a, b, c; where d = a * b + c
                 asm volatile("fma.rn.f32 %0, %1, %2, %0;"
                     : "+f"(acc) : "f"(scaled_a_lo), "f"(scaled_b_lo));
                 asm volatile("fma.rn.f32 %0, %1, %2, %0;"
