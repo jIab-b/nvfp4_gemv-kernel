@@ -222,12 +222,12 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
     asm volatile("tcgen05.st.sync.aligned.16x256b.x8 [%0], %1;\n" :: "l"(sm_d), "r"(taddr_d));
     __syncthreads();
 
-    // SMEM -> GMEM stores (all warps), no cross-CTA reduction yet
+    // SMEM -> GMEM stores with cross-CTA accumulation (atomicAdd on half)
     for (int i = warpId * 32 + laneId; i < M_TILE; i += 128) {
         int g_row = m_base + i;
         if (g_row < M) {
             half val = sm_d[i * N_TILE]; // column 0
-            c[g_row * L + tile_l] = val;
+            atomicAdd(reinterpret_cast<half*>(&c[g_row * L + tile_l]), val);
         }
     }
 
