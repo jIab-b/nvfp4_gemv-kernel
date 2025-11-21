@@ -13,6 +13,10 @@ cuda_source = """
 #include <cuda_fp4.h>
 #include <cuda_fp8.h>
 
+// Kernel configuration
+#define THREADS_PER_CTA 128
+#define ROWS_PER_CTA 128
+#define K_TILE 128
 
 __device__ __forceinline__ float half_raw_to_float(const __half_raw& raw) {
     return __half2float(__ushort_as_half(raw.x));
@@ -47,6 +51,97 @@ __device__ __forceinline__ void cp_async_wait_group() {
     asm volatile("cp.async.wait_group %0;" :: "n"(N));
 }
 
+// Async load helper: issues cp.async loads for one K-tile
+__device__ __forceinline__ void issue_async_loads(
+    int k_tile,
+    int buffer_idx,
+    int tid,
+    int rows_this_tile,
+    int K,
+    int K_half,
+    int K_sf,
+    size_t batch_stride_b,
+    const uint8_t* batch_b,
+    const uint8_t* batch_sfb,
+    const uint8_t* row_a,
+    const uint8_t* row_sfa,
+    uint8_t vector_smem[][K_TILE / 2],
+    int8_t vector_scale_smem[][K_TILE / 16],
+    uint8_t matrix_smem[][ROWS_PER_CTA * (K_TILE / 2)],
+    int8_t matrix_scale_smem[][ROWS_PER_CTA * (K_TILE / 16)]
+) {
+    int k_start = k_tile * K_TILE;
+    int tile_elems = min(K_TILE, K - k_start);
+    if (tile_elems <= 0) return;
+
+    const int vector_bytes = (tile_elems + 1) / 2;
+    const int vector_scales = (tile_elems + 15) / 16;
+    const int matrix_bytes_per_row = (tile_elems + 1) / 2;
+    const int matrix_scales_per_row = (tile_elems + 15) / 16;
+
+    // Load vector data using cp.async (16-byte chunks)
+    for (int i = tid * 16; i < vector_bytes; i += THREADS_PER_CTA * 16) {
+        if (i + 16 <= vector_bytes && (k_start / 2 + i + 16) <= batch_stride_b) {
+            const void* src = batch_b + k_start / 2 + i;
+            void* dst = &vector_smem[buffer_idx][i];
+            cp_async_cg_shared_global_16B(dst, src);
+        } else {
+            // Handle non-aligned tail
+            for (int j = i; j < min(i + 16, vector_bytes); ++j) {
+                int byte_idx = k_start / 2 + j;
+                if (byte_idx < batch_stride_b) {
+                    vector_smem[buffer_idx][j] = batch_b[byte_idx];
+                }
+            }
+        }
+    }
+
+    // Load vector scales
+    for (int i = tid; i < vector_scales; i += THREADS_PER_CTA) {
+        int sf_idx = k_start / 16 + i;
+        if (sf_idx < K_sf) {
+            vector_scale_smem[buffer_idx][i] = batch_sfb[sf_idx];
+        }
+    }
+
+    // Load matrix data with vectorized access (each thread loads its row)
+    int row = tid;
+    while (row < rows_this_tile) {
+        const uint8_t* src_row = row_a + row * K_half + k_start / 2;
+        uint8_t* dst_row = matrix_smem[buffer_idx] + row * (K_TILE / 2);
+
+        int bytes_to_load = matrix_bytes_per_row;
+        int byte_offset = 0;
+
+        // Load 16-byte chunks using cp.async
+        while (byte_offset + 16 <= bytes_to_load && (k_start / 2 + byte_offset + 16) <= K_half) {
+            const void* src = src_row + byte_offset;
+            void* dst = dst_row + byte_offset;
+            cp_async_cg_shared_global_16B(dst, src);
+            byte_offset += 16;
+        }
+
+        // Handle tail bytes
+        while (byte_offset < bytes_to_load) {
+            dst_row[byte_offset] = (k_start / 2 + byte_offset < K_half) ? src_row[byte_offset] : 0;
+            byte_offset++;
+        }
+
+        row += THREADS_PER_CTA;
+    }
+
+    // Load matrix scales
+    row = tid;
+    while (row < rows_this_tile) {
+        const uint8_t* src_sf = row_sfa + row * K_sf + k_start / 16;
+        int8_t* dst_sf = matrix_scale_smem[buffer_idx] + row * (K_TILE / 16);
+        for (int sf = 0; sf < matrix_scales_per_row; ++sf) {
+            dst_sf[sf] = (k_start / 16 + sf < K_sf) ? src_sf[sf] : 0;
+        }
+        row += THREADS_PER_CTA;
+    }
+}
+
 __global__ void gemv_nvfp4_scalar_kernel(
     const int8_t* __restrict__ a,
     const int8_t* __restrict__ b,
@@ -56,11 +151,6 @@ __global__ void gemv_nvfp4_scalar_kernel(
     int M, int K, int L,
     int N_rows
 ) {
-    // Optimized async pipeline design with cp.async and vectorized loads
-    #define THREADS_PER_CTA 256
-    #define ROWS_PER_CTA 128
-    #define K_TILE 256
-
     int m_block = blockIdx.x;
     int l = blockIdx.y;
     int tid = threadIdx.x;
@@ -98,82 +188,6 @@ __global__ void gemv_nvfp4_scalar_kernel(
     float acc0 = 0.0f, acc1 = 0.0f, acc2 = 0.0f, acc3 = 0.0f;
 
     int num_k_tiles = (K + K_TILE - 1) / K_TILE;
-
-    // Helper lambda to issue async loads for a given k_tile into buffer_idx
-    auto issue_loads = [&](int k_tile, int buffer_idx) {
-        int k_start = k_tile * K_TILE;
-        int tile_elems = min(K_TILE, K - k_start);
-        if (tile_elems <= 0) return;
-
-        const int vector_bytes = (tile_elems + 1) / 2;
-        const int vector_scales = (tile_elems + 15) / 16;
-        const int matrix_bytes_per_row = (tile_elems + 1) / 2;
-        const int matrix_scales_per_row = (tile_elems + 15) / 16;
-
-        // Phase 2: Vectorized loads using uint4 (16 bytes at a time) with cp.async
-        // Load vector data using cp.async (16-byte aligned chunks)
-        for (int i = tid * 16; i < vector_bytes; i += THREADS_PER_CTA * 16) {
-            if (i + 16 <= vector_bytes && (k_start / 2 + i + 16) <= batch_stride_b) {
-                const void* src = batch_b + k_start / 2 + i;
-                void* dst = &vector_smem[buffer_idx][i];
-                cp_async_cg_shared_global_16B(dst, src);
-            } else {
-                // Handle non-aligned tail with smaller transfers
-                for (int j = i; j < min(i + 16, vector_bytes); ++j) {
-                    int byte_idx = k_start / 2 + j;
-                    if (byte_idx < batch_stride_b) {
-                        vector_smem[buffer_idx][j] = batch_b[byte_idx];
-                    }
-                }
-            }
-        }
-
-        // Load vector scales
-        for (int i = tid; i < vector_scales; i += THREADS_PER_CTA) {
-            int sf_idx = k_start / 16 + i;
-            if (sf_idx < K_sf) {
-                vector_scale_smem[buffer_idx][i] = batch_sfb[sf_idx];
-            }
-        }
-
-        // Load matrix data with vectorized access
-        int row = tid;
-        while (row < rows_this_tile) {
-            const uint8_t* src_row = row_a + row * K_half + k_start / 2;
-            uint8_t* dst_row = matrix_smem[buffer_idx] + row * (K_TILE / 2);
-
-            // Use uint4 for vectorized 16-byte loads where possible
-            int bytes_to_load = matrix_bytes_per_row;
-            int byte_offset = 0;
-
-            // Load 16-byte chunks using cp.async
-            while (byte_offset + 16 <= bytes_to_load && (k_start / 2 + byte_offset + 16) <= K_half) {
-                const void* src = src_row + byte_offset;
-                void* dst = dst_row + byte_offset;
-                cp_async_cg_shared_global_16B(dst, src);
-                byte_offset += 16;
-            }
-
-            // Handle tail bytes
-            while (byte_offset < bytes_to_load) {
-                dst_row[byte_offset] = (k_start / 2 + byte_offset < K_half) ? src_row[byte_offset] : 0;
-                byte_offset++;
-            }
-
-            row += THREADS_PER_CTA;
-        }
-
-        // Load matrix scales
-        row = tid;
-        while (row < rows_this_tile) {
-            const uint8_t* src_sf = row_sfa + row * K_sf + k_start / 16;
-            int8_t* dst_sf = matrix_scale_smem[buffer_idx] + row * (K_TILE / 16);
-            for (int sf = 0; sf < matrix_scales_per_row; ++sf) {
-                dst_sf[sf] = (k_start / 16 + sf < K_sf) ? src_sf[sf] : 0;
-            }
-            row += THREADS_PER_CTA;
-        }
-    };
 
     // Compute function for a given buffer
     auto compute_tile = [&](int buffer_idx, int tile_elems) {
@@ -248,7 +262,9 @@ __global__ void gemv_nvfp4_scalar_kernel(
 
     // SOFTWARE PIPELINING: Prologue - issue loads for first tile
     if (num_k_tiles > 0) {
-        issue_loads(0, 0);
+        issue_async_loads(0, 0, tid, rows_this_tile, K, K_half, K_sf, batch_stride_b,
+                          batch_b, batch_sfb, row_a, row_sfa,
+                          vector_smem, vector_scale_smem, matrix_smem, matrix_scale_smem);
         cp_async_commit_group();
     }
 
@@ -259,7 +275,9 @@ __global__ void gemv_nvfp4_scalar_kernel(
 
         // Issue loads for NEXT tile (if exists)
         if (k_tile + 1 < num_k_tiles) {
-            issue_loads(k_tile + 1, next_buffer);
+            issue_async_loads(k_tile + 1, next_buffer, tid, rows_this_tile, K, K_half, K_sf, batch_stride_b,
+                              batch_b, batch_sfb, row_a, row_sfa,
+                              vector_smem, vector_scale_smem, matrix_smem, matrix_scale_smem);
             cp_async_commit_group();
         }
 
@@ -296,7 +314,7 @@ torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::
     int N_rows = b.size(0);
 
     dim3 grid((M + 128 - 1) / 128, L);  // 128 = ROWS_PER_CTA
-    dim3 block(256);  // THREADS_PER_CTA = 256
+    dim3 block(128);  // THREADS_PER_CTA = 128
 
     auto* a_ptr = reinterpret_cast<const int8_t*>(a.data_ptr());
     auto* b_ptr = reinterpret_cast<const int8_t*>(b.data_ptr());
@@ -333,11 +351,11 @@ module = load_inline(
     verbose=False
 )
 
-THREADS_PER_CTA = 256
+THREADS_PER_CTA = 128
 
 ROWS_PER_CTA = 128
 
-K_TILE = 256
+K_TILE = 128
 
 def custom_kernel(data: input_t) -> output_t:
     a, b, sfa_ref, sfb_ref, _, _, c = data
