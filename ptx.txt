@@ -106,9 +106,11 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
                                     int M, int K, int L) {
     // Block coords
     int tile_m = blockIdx.x;
-    int tile_l = blockIdx.y;
+    int tile_k = blockIdx.y;
+    int tile_l = blockIdx.z;
     int m_base = tile_m * M_TILE;
-    if (m_base >= M || tile_l >= L) return;
+    int k_base = tile_k * K_TILE;
+    if (m_base >= M || k_base -> K || tile_l >= L) return;
 
     // Shared buffers to hold TMEM addresses (written by warp0)
     __shared__ uint32_t sm_taddr_a[2];
@@ -162,7 +164,11 @@ torch::Tensor gemv_tcgen05(torch::Tensor a, torch::Tensor b,
     int M = a.size(0);
     int K = a.size(1) * 2;
     int L = a.size(2);
-    dim3 grid((M + M_TILE - 1) / M_TILE, L, 1);
+    int m_tiles = (M + M_TILE - 1) / M_TILE;
+    int k_tiles = (K + K_TILE - 1) / K_TILE;
+    dim3 grid(m_tiles, k_tiles, L);
+
+
     dim3 block(128, 1, 1);  // 4 warps; warp0 owns tcgen05
     gemv_tcgen05_kernel<<<grid, block>>>(reinterpret_cast<int8_t*>(a.data_ptr()),
                                          reinterpret_cast<int8_t*>(b.data_ptr()),
