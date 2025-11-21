@@ -2,239 +2,109 @@ import torch
 from torch.utils.cpp_extension import load_inline
 from task import input_t, output_t
 
-# ---------------------------------------------------------------------------
-# PTX kernel sketch (not guaranteed to assemble). Kept as a raw string.
-# ---------------------------------------------------------------------------
-ptx_kernel = r"""
-.version 8.8
-.target sm_100a
-.address_size 64
+# CUDA extension built like submission.py, but kernel body is inline PTX asm.
 
-// M_TILE=128, N_TILE=8, K_TILE=64, .cta_group::1
-// Scaling: .kind::mxf4nvf4.block_scale.scale_vec::4X (1 scale per 16 FP4 values)
-
-.visible .entry gemv_tcgen05(
-    .param .u64 a_ptr,
-    .param .u64 b_ptr,
-    .param .u64 sfa_ptr,
-    .param .u64 sfb_ptr,
-    .param .u64 c_ptr,
-    .param .u32 M,
-    .param .u32 K,
-    .param .u32 L
-) {
-    .reg .b32  %r<32>;
-    .reg .b64  %rd<48>;
-    .reg .pred %p<8>;
-
-    .shared .align 4 .b32 sm_taddr_a[2];
-    .shared .align 4 .b32 sm_taddr_sfa[2];
-    .shared .align 4 .b32 sm_taddr_sfb[2];
-    .shared .align 4 .b32 sm_taddr_d[2];
-    .shared .align 8 .b64 mbar_g2s;
-    .shared .align 8 .b64 mbar_mma;
-
-    // warp0 alloc
-    mov.u32 %r0, %tid.x;
-    setp.ge.u32 %p0, %r0, 32;
-    @%p0 bra SKIP_ALLOC;
-    tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [sm_taddr_a],   128;
-    tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [sm_taddr_sfa], 32;
-    tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [sm_taddr_sfb], 32;
-    tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [sm_taddr_d],   128;
-    mbarrier.init.shared.b64 [mbar_g2s], 1;
-    mbarrier.init.shared.b64 [mbar_mma], 1;
-SKIP_ALLOC:
-
-    // tile coords
-    mov.u32 %r1, %ctaid.x;
-    mov.u32 %r2, %ctaid.y;
-    mul.lo.u32 %r3, %r1, 128;     // m_base
-    ld.param.u32 %r4, [M];
-    setp.ge.u32 %p1, %r3, %r4;
-    @%p1 bra EXIT;
-
-    // base pointers
-    ld.param.u64 %rd10, [a_ptr];
-    ld.param.u64 %rd11, [b_ptr];
-    ld.param.u64 %rd12, [sfa_ptr];
-    ld.param.u64 %rd13, [sfb_ptr];
-    ld.param.u64 %rd14, [c_ptr];
-    ld.param.u32 %rK, [K];
-    ld.param.u32 %rL, [L];
-
-    // Prologue load tile0 (warp0)
-    @%p0 bra SKIP_LOAD0;
-    cvta.to.shared.u64 %rd40, sm_taddr_a;  // reuse shared for temp base
-    cp.async.bulk.shared::cta.global.L2::128B [%rd40], %rd10, 4096, [mbar_g2s]; // A
-    add.s64 %rd41, %rd40, 4096;
-    cp.async.bulk.shared::cta.global.L2::128B [%rd41], %rd11, 256,  [mbar_g2s]; // B
-    add.s64 %rd42, %rd41, 512;
-    cp.async.bulk.shared::cta.global [%rd42], %rd12, 512, [mbar_g2s];           // sfa
-    add.s64 %rd43, %rd42, 512;
-    cp.async.bulk.shared::cta.global [%rd43], %rd13, 32,  [mbar_g2s];           // sfb
-    cp.async.bulk.commit_group;
-    cp.async.bulk.wait_group 0;
-SKIP_LOAD0:
-
-    // SMEM->TMEM
-    @%p0 bra SKIP_CP_TMEM;
-    ld.shared.u32 %r10, [sm_taddr_a];
-    ld.shared.u32 %r11, [sm_taddr_sfa];
-    ld.shared.u32 %r12, [sm_taddr_sfb];
-    ld.shared.u32 %r13, [sm_taddr_d];
-    mov.u64 %rd50, 0; // descriptors TBD
-    mov.u64 %rd51, 0;
-    mov.u64 %rd52, 0;
-    tcgen05.cp.cta_group::1.128x256b [%r10], %rd50;
-    tcgen05.cp.cta_group::1.4x256b   [%r11], %rd51;
-    tcgen05.cp.cta_group::1.4x256b   [%r12], %rd52;
-SKIP_CP_TMEM:
-
-    // MMA
-    @%p0 bra SKIP_MMA;
-    mov.u64 %rd60, 0;  // idesc placeholder
-    mov.u64 %rd61, 0;  // bdesc placeholder
-    tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec::4X
-        [%r13], [%r10], %rd61, %rd60, [%r11], [%r12], 1;
-    tcgen05.commit.cta_group::1.mbarrier::arrive::one.b64 [mbar_mma];
-WAIT_MMA:
-    mbarrier.try_wait.parity.b64 %p2, [mbar_mma], 0;
-    @!%p2 bra WAIT_MMA;
-    tcgen05.fence::after_thread_sync;
-SKIP_MMA:
-
-EXIT:
-    ret;
-}
-"""
-
-# ---------------------------------------------------------------------------
-# Inline extension scaffold (stub host entry; PTX kept for reference)
-# ---------------------------------------------------------------------------
-
-cpp_source = """
+cpp_source = r"""
 #include <torch/extension.h>
 torch::Tensor gemv_tcgen05(torch::Tensor a, torch::Tensor b,
                            torch::Tensor sfa, torch::Tensor sfb,
                            torch::Tensor c);
 """
 
-cuda_source = """
+cuda_source = r'''
 #include <torch/extension.h>
 #include <cuda.h>
 #include <cuda_fp16.h>
+#include <cuda_fp8.h>
 
-.version 8.8
-.target sm_100a
-.address_size 64
+// Kernel launch parameters
+constexpr int M_TILE = 128;
+constexpr int N_TILE = 8;    // padded N
+constexpr int K_TILE = 64;
 
-// M_TILE=128, N_TILE=8, K_TILE=64, .cta_group::1
-// Scaling: .kind::mxf4nvf4.block_scale.scale_vec::4X (1 scale per 16 FP4 values)
+// Inline-PTX tcgen05 skeleton. Real descriptors/offset math omitted.
+__global__ void gemv_tcgen05_kernel(const int8_t* a,
+                                    const int8_t* b,
+                                    const int8_t* sfa,
+                                    const int8_t* sfb,
+                                    half* c,
+                                    int M, int K, int L) {
+    // Block coords
+    int tile_m = blockIdx.x;
+    int tile_l = blockIdx.y;
+    int m_base = tile_m * M_TILE;
+    if (m_base >= M || tile_l >= L) return;
 
-.visible .entry gemv_tcgen05(
-    .param .u64 a_ptr,
-    .param .u64 b_ptr,
-    .param .u64 sfa_ptr,
-    .param .u64 sfb_ptr,
-    .param .u64 c_ptr,
-    .param .u32 M,
-    .param .u32 K,
-    .param .u32 L
-) {
-    .reg .b32  %r<32>;
-    .reg .b64  %rd<48>;
-    .reg .pred %p<8>;
+    // Shared buffers to hold TMEM addresses (written by warp0)
+    __shared__ uint32_t sm_taddr_a[2];
+    __shared__ uint32_t sm_taddr_sfa[2];
+    __shared__ uint32_t sm_taddr_sfb[2];
+    __shared__ uint32_t sm_taddr_d[2];
+    __shared__ uint64_t mbar_g2s;
+    __shared__ uint64_t mbar_mma;
 
-    .shared .align 4 .b32 sm_taddr_a[2];
-    .shared .align 4 .b32 sm_taddr_sfa[2];
-    .shared .align 4 .b32 sm_taddr_sfb[2];
-    .shared .align 4 .b32 sm_taddr_d[2];
-    .shared .align 8 .b64 mbar_g2s;
-    .shared .align 8 .b64 mbar_mma;
+    // Inline PTX: tcgen05 skeleton (commented instructions to avoid assembler issues)
+    asm volatile(R"ptx(
+        // ---- alloc TMEM (warp0) ----
+        // tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [sm_taddr_a], 128;
+        // tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [sm_taddr_sfa], 32;
+        // tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [sm_taddr_sfb], 32;
+        // tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [sm_taddr_d], 128;
+        // mbarrier.init.shared.b64 [mbar_g2s], 1;
+        // mbarrier.init.shared.b64 [mbar_mma], 1;
 
-    // warp0 alloc
-    mov.u32 %r0, %tid.x;
-    setp.ge.u32 %p0, %r0, 32;
-    @%p0 bra SKIP_ALLOC;
-    tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [sm_taddr_a],   128;
-    tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [sm_taddr_sfa], 32;
-    tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [sm_taddr_sfb], 32;
-    tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [sm_taddr_d],   128;
-    mbarrier.init.shared.b64 [mbar_g2s], 1;
-    mbarrier.init.shared.b64 [mbar_mma], 1;
-SKIP_ALLOC:
+        // ---- GMEM -> SMEM async stage (tile 0) ----
+        // cp.async.bulk.shared::cta.global.L2::128B [sm_a], [g_a], 4096, [mbar_g2s];
+        // cp.async.bulk.shared::cta.global.L2::128B [sm_b], [g_b], 256,  [mbar_g2s];
+        // cp.async.bulk.shared::cta.global [sm_sfa], [g_sfa], 512, [mbar_g2s];
+        // cp.async.bulk.shared::cta.global [sm_sfb], [g_sfb], 32,  [mbar_g2s];
+        // cp.async.bulk.commit_group;
+        // cp.async.bulk.wait_group 0;
 
-    // tile coords
-    mov.u32 %r1, %ctaid.x;
-    mov.u32 %r2, %ctaid.y;
-    mul.lo.u32 %r3, %r1, 128;     // m_base
-    ld.param.u32 %r4, [M];
-    setp.ge.u32 %p1, %r3, %r4;
-    @%p1 bra EXIT;
+        // ---- SMEM -> TMEM ----
+        // tcgen05.cp.cta_group::1.128x256b [tA], sdescA;
+        // tcgen05.cp.cta_group::1.4x256b   [tSFA], sdescSFA;
+        // tcgen05.cp.cta_group::1.4x256b   [tSFB], sdescSFB;
 
-    // base pointers
-    ld.param.u64 %rd10, [a_ptr];
-    ld.param.u64 %rd11, [b_ptr];
-    ld.param.u64 %rd12, [sfa_ptr];
-    ld.param.u64 %rd13, [sfb_ptr];
-    ld.param.u64 %rd14, [c_ptr];
-    ld.param.u32 %rK, [K];
-    ld.param.u32 %rL, [L];
+        // ---- MMA ----
+        // tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec::4X
+        //     [tD], [tA], bdesc, idesc, [tSFA], [tSFB], 1;
+        // tcgen05.commit.cta_group::1.mbarrier::arrive::one.b64 [mbar_mma];
+        // mbarrier.try_wait.parity.b64 p0, [mbar_mma], 0;
+        // tcgen05.fence::after_thread_sync;
 
-    // Prologue load tile0 (warp0)
-    @%p0 bra SKIP_LOAD0;
-    cvta.to.shared.u64 %rd40, sm_taddr_a;  // reuse shared for temp base
-    cp.async.bulk.shared::cta.global.L2::128B [%rd40], %rd10, 4096, [mbar_g2s]; // A
-    add.s64 %rd41, %rd40, 4096;
-    cp.async.bulk.shared::cta.global.L2::128B [%rd41], %rd11, 256,  [mbar_g2s]; // B
-    add.s64 %rd42, %rd41, 512;
-    cp.async.bulk.shared::cta.global [%rd42], %rd12, 512, [mbar_g2s];           // sfa
-    add.s64 %rd43, %rd42, 512;
-    cp.async.bulk.shared::cta.global [%rd43], %rd13, 32,  [mbar_g2s];           // sfb
-    cp.async.bulk.commit_group;
-    cp.async.bulk.wait_group 0;
-SKIP_LOAD0:
+        // ---- Writeback (TMEM -> SMEM -> GMEM) ----
+        // tcgen05.st [sm_d], [tD];
+        // ... ld.shared/st.global for column 0 ...
+    )ptx");
 
-    // SMEM->TMEM
-    @%p0 bra SKIP_CP_TMEM;
-    ld.shared.u32 %r10, [sm_taddr_a];
-    ld.shared.u32 %r11, [sm_taddr_sfa];
-    ld.shared.u32 %r12, [sm_taddr_sfb];
-    ld.shared.u32 %r13, [sm_taddr_d];
-    mov.u64 %rd50, 0; // descriptors TBD
-    mov.u64 %rd51, 0;
-    mov.u64 %rd52, 0;
-    tcgen05.cp.cta_group::1.128x256b [%r10], %rd50;
-    tcgen05.cp.cta_group::1.4x256b   [%r11], %rd51;
-    tcgen05.cp.cta_group::1.4x256b   [%r12], %rd52;
-SKIP_CP_TMEM:
-
-    // MMA
-    @%p0 bra SKIP_MMA;
-    mov.u64 %rd60, 0;  // idesc placeholder
-    mov.u64 %rd61, 0;  // bdesc placeholder
-    tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec::4X
-        [%r13], [%r10], %rd61, %rd60, [%r11], [%r12], 1;
-    tcgen05.commit.cta_group::1.mbarrier::arrive::one.b64 [mbar_mma];
-WAIT_MMA:
-    mbarrier.try_wait.parity.b64 %p2, [mbar_mma], 0;
-    @!%p2 bra WAIT_MMA;
-    tcgen05.fence::after_thread_sync;
-SKIP_MMA:
-
-EXIT:
-    ret;
+    // Placeholder: write zeros to output for now to keep correctness defined
+    if (threadIdx.x == 0) {
+        int idx = m_base + tile_l * M;
+        if (idx < M * L) c[idx] = __float2half(0.0f);
+    }
 }
 
-
-
-
-"""
-
+torch::Tensor gemv_tcgen05(torch::Tensor a, torch::Tensor b,
+                           torch::Tensor sfa, torch::Tensor sfb,
+                           torch::Tensor c) {
+    int M = a.size(0);
+    int K = a.size(1) * 2;
+    int L = a.size(2);
+    dim3 grid((M + M_TILE - 1) / M_TILE, L, 1);
+    dim3 block(128, 1, 1);  // 4 warps; warp0 owns tcgen05
+    gemv_tcgen05_kernel<<<grid, block>>>(reinterpret_cast<int8_t*>(a.data_ptr()),
+                                         reinterpret_cast<int8_t*>(b.data_ptr()),
+                                         reinterpret_cast<int8_t*>(sfa.data_ptr()),
+                                         reinterpret_cast<int8_t*>(sfb.data_ptr()),
+                                         reinterpret_cast<half*>(c.data_ptr()),
+                                         M, K, L);
+    return c;
+}
+'''
 
 module = load_inline(
-    name="gemv_tcgen05_stub",
+    name="gemv_tcgen05_inline",
     cpp_sources=cpp_source,
     cuda_sources=cuda_source,
     functions=["gemv_tcgen05"],
@@ -249,7 +119,7 @@ module = load_inline(
 
 
 def custom_kernel(data: input_t) -> output_t:
-    """Stub entry used by the harness; currently a no-op."""
+    """Entry used by the harness; kernel body is inline PTX skeleton."""
     a, b, sfa, sfb, _, _, c = data
     return module.gemv_tcgen05(
         a.view(torch.int8),
