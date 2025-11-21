@@ -85,80 +85,42 @@ __global__ void gemv_nvfp4_scalar_kernel(
 
     for (int k_block = 0; k_block < num_k_tiles; ++k_block) {
         int buffer_idx = k_block & 1;  // Ping-pong: 0, 1, 0, 1...
-        int next_buffer_idx = (k_block + 1) & 1;
-
         int k_start = k_block * K_TILE;
         int tile_elems = min(K_TILE, K - k_start);
         if (tile_elems <= 0) continue;
 
-        // Load next tile asynchronously (if not last iteration)
-        if (k_block < num_k_tiles - 1) {
-            int next_k_start = k_start + K_TILE;
-            int next_tile_elems = min(K_TILE, K - next_k_start);
-
-            // Load next vector (all threads help)
-            for (int i = tid; i < (next_tile_elems + 1) / 2; i += THREADS_PER_CTA) {
-                int byte_idx = next_k_start / 2 + i;
-                if (byte_idx < batch_stride_b) {
-                    vector_smem[next_buffer_idx][i] = batch_b[byte_idx];
-                }
+        // Load current tile into buffer_idx
+        // Load vector (all threads help)
+        for (int i = tid; i < (tile_elems + 1) / 2; i += THREADS_PER_CTA) {
+            int byte_idx = k_start / 2 + i;
+            if (byte_idx < batch_stride_b) {
+                vector_smem[buffer_idx][i] = batch_b[byte_idx];
             }
+        }
 
-            // Load next vector scales
-            for (int i = tid; i < (next_tile_elems + 15) / 16; i += THREADS_PER_CTA) {
-                int sf_idx = next_k_start / 16 + i;
-                if (sf_idx < K_sf) {
-                    vector_scale_smem[next_buffer_idx][i] = batch_sfb[sf_idx];
-                }
+        // Load vector scales
+        for (int i = tid; i < (tile_elems + 15) / 16; i += THREADS_PER_CTA) {
+            int sf_idx = k_start / 16 + i;
+            if (sf_idx < K_sf) {
+                vector_scale_smem[buffer_idx][i] = batch_sfb[sf_idx];
             }
+        }
 
-            // Load next matrix (each thread handles one row if tid < rows_this_tile)
-            for (int row = tid; row < rows_this_tile; row += THREADS_PER_CTA) {
-                const uint8_t* src = row_a + row * K_half + next_k_start / 2;
-                uint8_t* dst = matrix_smem[next_buffer_idx] + row * (K_TILE / 2);
-                for (int byte = 0; byte < (next_tile_elems + 1) / 2; ++byte) {
-                    dst[byte] = (next_k_start / 2 + byte < K_half) ? src[byte] : 0;
-                }
+        // Load matrix (each thread handles one row if tid < rows_this_tile)
+        for (int row = tid; row < rows_this_tile; row += THREADS_PER_CTA) {
+            const uint8_t* src = row_a + row * K_half + k_start / 2;
+            uint8_t* dst = matrix_smem[buffer_idx] + row * (K_TILE / 2);
+            for (int byte = 0; byte < (tile_elems + 1) / 2; ++byte) {
+                dst[byte] = (k_start / 2 + byte < K_half) ? src[byte] : 0;
             }
+        }
 
-            // Load next matrix scales
-            for (int row = tid; row < rows_this_tile; row += THREADS_PER_CTA) {
-                const uint8_t* src = row_sfa + row * K_sf + next_k_start / 16;
-                int8_t* dst = matrix_scale_smem[next_buffer_idx] + row * (K_TILE / 16);
-                for (int sf = 0; sf < (next_tile_elems + 15) / 16; ++sf) {
-                    dst[sf] = (next_k_start / 16 + sf < K_sf) ? src[sf] : 0;
-                }
-            }
-        } else if (k_block == 0) {
-            // First iteration: load current tile into buffer 0
-            for (int i = tid; i < (tile_elems + 1) / 2; i += THREADS_PER_CTA) {
-                int byte_idx = k_start / 2 + i;
-                if (byte_idx < batch_stride_b) {
-                    vector_smem[buffer_idx][i] = batch_b[byte_idx];
-                }
-            }
-
-            for (int i = tid; i < (tile_elems + 15) / 16; i += THREADS_PER_CTA) {
-                int sf_idx = k_start / 16 + i;
-                if (sf_idx < K_sf) {
-                    vector_scale_smem[buffer_idx][i] = batch_sfb[sf_idx];
-                }
-            }
-
-            for (int row = tid; row < rows_this_tile; row += THREADS_PER_CTA) {
-                const uint8_t* src = row_a + row * K_half + k_start / 2;
-                uint8_t* dst = matrix_smem[buffer_idx] + row * (K_TILE / 2);
-                for (int byte = 0; byte < (tile_elems + 1) / 2; ++byte) {
-                    dst[byte] = (k_start / 2 + byte < K_half) ? src[byte] : 0;
-                }
-            }
-
-            for (int row = tid; row < rows_this_tile; row += THREADS_PER_CTA) {
-                const uint8_t* src = row_sfa + row * K_sf + k_start / 16;
-                int8_t* dst = matrix_scale_smem[buffer_idx] + row * (K_TILE / 16);
-                for (int sf = 0; sf < (tile_elems + 15) / 16; ++sf) {
-                    dst[sf] = (k_start / 16 + sf < K_sf) ? src[sf] : 0;
-                }
+        // Load matrix scales
+        for (int row = tid; row < rows_this_tile; row += THREADS_PER_CTA) {
+            const uint8_t* src = row_sfa + row * K_sf + k_start / 16;
+            int8_t* dst = matrix_scale_smem[buffer_idx] + row * (K_TILE / 16);
+            for (int sf = 0; sf < (tile_elems + 15) / 16; ++sf) {
+                dst[sf] = (k_start / 16 + sf < K_sf) ? src[sf] : 0;
             }
         }
 
