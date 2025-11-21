@@ -30,6 +30,23 @@ __device__ __forceinline__ float decode_fp8(int8_t byte) {
     return half_raw_to_float(raw);
 }
 
+// Inline PTX helpers for cp.async operations
+__device__ __forceinline__ void cp_async_cg_shared_global_16B(
+    void* __restrict__ dst_smem,
+    const void* __restrict__ src_global
+) {
+    asm volatile("cp.async.cg.shared.global.L2::128B [%0], [%1], 16;" :: "r"(static_cast<uint32_t>(__cvta_generic_to_shared(dst_smem))), "l"(src_global));
+}
+
+__device__ __forceinline__ void cp_async_commit_group() {
+    asm volatile("cp.async.commit_group;" ::);
+}
+
+template<int N>
+__device__ __forceinline__ void cp_async_wait_group() {
+    asm volatile("cp.async.wait_group %0;" :: "n"(N));
+}
+
 __global__ void gemv_nvfp4_scalar_kernel(
     const int8_t* __restrict__ a,
     const int8_t* __restrict__ b,
@@ -39,10 +56,10 @@ __global__ void gemv_nvfp4_scalar_kernel(
     int M, int K, int L,
     int N_rows
 ) {
-    // Scalar CUDA core design: process ROWS_PER_CTA rows, reduce full K dimension
-    #define THREADS_PER_CTA 128
+    // Optimized async pipeline design with cp.async and vectorized loads
+    #define THREADS_PER_CTA 256
     #define ROWS_PER_CTA 128
-    #define K_TILE 128
+    #define K_TILE 256
 
     int m_block = blockIdx.x;
     int l = blockIdx.y;
@@ -71,104 +88,203 @@ __global__ void gemv_nvfp4_scalar_kernel(
     const uint8_t* row_a = batch_a + static_cast<size_t>(m_block * ROWS_PER_CTA) * K_half;
     const uint8_t* row_sfa = batch_sfa + static_cast<size_t>(m_block * ROWS_PER_CTA) * K_sf;
 
-    // Double-buffered shared memory for pipelined loads
+    // Double-buffered shared memory for async pipelined loads
     __shared__ uint8_t vector_smem[2][K_TILE / 2];
     __shared__ int8_t vector_scale_smem[2][K_TILE / 16];
     __shared__ uint8_t matrix_smem[2][ROWS_PER_CTA * (K_TILE / 2)];
     __shared__ int8_t matrix_scale_smem[2][ROWS_PER_CTA * (K_TILE / 16)];
 
-    // Each thread accumulates one row (ROWS_PER_CTA = 128 threads for 128 rows)
-    float acc = 0.0f;
+    // Accumulators with ILP
+    float acc0 = 0.0f, acc1 = 0.0f, acc2 = 0.0f, acc3 = 0.0f;
 
-    // Pipelined loop over K tiles with double buffering
     int num_k_tiles = (K + K_TILE - 1) / K_TILE;
 
-    for (int k_block = 0; k_block < num_k_tiles; ++k_block) {
-        int buffer_idx = k_block & 1;  // Ping-pong: 0, 1, 0, 1...
-        int k_start = k_block * K_TILE;
+    // Helper lambda to issue async loads for a given k_tile into buffer_idx
+    auto issue_loads = [&](int k_tile, int buffer_idx) {
+        int k_start = k_tile * K_TILE;
         int tile_elems = min(K_TILE, K - k_start);
-        if (tile_elems <= 0) continue;
+        if (tile_elems <= 0) return;
 
-        // Load current tile into buffer_idx
-        // Load vector (all threads help)
-        for (int i = tid; i < (tile_elems + 1) / 2; i += THREADS_PER_CTA) {
-            int byte_idx = k_start / 2 + i;
-            if (byte_idx < batch_stride_b) {
-                vector_smem[buffer_idx][i] = batch_b[byte_idx];
+        const int vector_bytes = (tile_elems + 1) / 2;
+        const int vector_scales = (tile_elems + 15) / 16;
+        const int matrix_bytes_per_row = (tile_elems + 1) / 2;
+        const int matrix_scales_per_row = (tile_elems + 15) / 16;
+
+        // Phase 2: Vectorized loads using uint4 (16 bytes at a time) with cp.async
+        // Load vector data using cp.async (16-byte aligned chunks)
+        for (int i = tid * 16; i < vector_bytes; i += THREADS_PER_CTA * 16) {
+            if (i + 16 <= vector_bytes && (k_start / 2 + i + 16) <= batch_stride_b) {
+                const void* src = batch_b + k_start / 2 + i;
+                void* dst = &vector_smem[buffer_idx][i];
+                cp_async_cg_shared_global_16B(dst, src);
+            } else {
+                // Handle non-aligned tail with smaller transfers
+                for (int j = i; j < min(i + 16, vector_bytes); ++j) {
+                    int byte_idx = k_start / 2 + j;
+                    if (byte_idx < batch_stride_b) {
+                        vector_smem[buffer_idx][j] = batch_b[byte_idx];
+                    }
+                }
             }
         }
 
         // Load vector scales
-        for (int i = tid; i < (tile_elems + 15) / 16; i += THREADS_PER_CTA) {
+        for (int i = tid; i < vector_scales; i += THREADS_PER_CTA) {
             int sf_idx = k_start / 16 + i;
             if (sf_idx < K_sf) {
                 vector_scale_smem[buffer_idx][i] = batch_sfb[sf_idx];
             }
         }
 
-        // Load matrix (each thread handles one row if tid < rows_this_tile)
-        for (int row = tid; row < rows_this_tile; row += THREADS_PER_CTA) {
-            const uint8_t* src = row_a + row * K_half + k_start / 2;
-            uint8_t* dst = matrix_smem[buffer_idx] + row * (K_TILE / 2);
-            for (int byte = 0; byte < (tile_elems + 1) / 2; ++byte) {
-                dst[byte] = (k_start / 2 + byte < K_half) ? src[byte] : 0;
+        // Load matrix data with vectorized access
+        int row = tid;
+        while (row < rows_this_tile) {
+            const uint8_t* src_row = row_a + row * K_half + k_start / 2;
+            uint8_t* dst_row = matrix_smem[buffer_idx] + row * (K_TILE / 2);
+
+            // Use uint4 for vectorized 16-byte loads where possible
+            int bytes_to_load = matrix_bytes_per_row;
+            int byte_offset = 0;
+
+            // Load 16-byte chunks using cp.async
+            while (byte_offset + 16 <= bytes_to_load && (k_start / 2 + byte_offset + 16) <= K_half) {
+                const void* src = src_row + byte_offset;
+                void* dst = dst_row + byte_offset;
+                cp_async_cg_shared_global_16B(dst, src);
+                byte_offset += 16;
             }
+
+            // Handle tail bytes
+            while (byte_offset < bytes_to_load) {
+                dst_row[byte_offset] = (k_start / 2 + byte_offset < K_half) ? src_row[byte_offset] : 0;
+                byte_offset++;
+            }
+
+            row += THREADS_PER_CTA;
         }
 
         // Load matrix scales
-        for (int row = tid; row < rows_this_tile; row += THREADS_PER_CTA) {
-            const uint8_t* src = row_sfa + row * K_sf + k_start / 16;
-            int8_t* dst = matrix_scale_smem[buffer_idx] + row * (K_TILE / 16);
-            for (int sf = 0; sf < (tile_elems + 15) / 16; ++sf) {
-                dst[sf] = (k_start / 16 + sf < K_sf) ? src[sf] : 0;
+        row = tid;
+        while (row < rows_this_tile) {
+            const uint8_t* src_sf = row_sfa + row * K_sf + k_start / 16;
+            int8_t* dst_sf = matrix_scale_smem[buffer_idx] + row * (K_TILE / 16);
+            for (int sf = 0; sf < matrix_scales_per_row; ++sf) {
+                dst_sf[sf] = (k_start / 16 + sf < K_sf) ? src_sf[sf] : 0;
             }
+            row += THREADS_PER_CTA;
         }
+    };
 
-        __syncthreads();
-
-        // Compute current tile using current buffer
-        // Each thread accumulates its assigned row
+    // Compute function for a given buffer
+    auto compute_tile = [&](int buffer_idx, int tile_elems) {
         int row = tid;
         if (row < rows_this_tile) {
-            for (int kb = 0; kb < (tile_elems + 1) / 2; ++kb) {
-                // Load FP4 nibble pairs from packed bytes
-                uint8_t matrix_byte = matrix_smem[buffer_idx][row * (K_TILE / 2) + kb];
-                uint8_t vector_byte = vector_smem[buffer_idx][kb];
+            const int tile_bytes = (tile_elems + 1) / 2;
 
-                // Decode FP4 values (2 per byte)
-                float a_lo = decode_fp4(matrix_byte & 0xF);
-                float a_hi = decode_fp4(matrix_byte >> 4);
-                float b_lo = decode_fp4(vector_byte & 0xF);
-                float b_hi = decode_fp4(vector_byte >> 4);
+            // Preload scales to reduce redundant decoding
+            for (int kb = 0; kb < tile_bytes; kb += 4) {
+                // Load scale for this block (scales repeat every 16 elements = 8 bytes)
+                int scale_idx0 = kb / 8;
+                int scale_idx1 = (kb + 1) / 8;
+                int scale_idx2 = (kb + 2) / 8;
+                int scale_idx3 = (kb + 3) / 8;
 
-                // FP8 scales (one per 16 FP4 elements = 8 bytes)
-                int scale_idx = kb / 8;
-                float sfa = decode_fp8(matrix_scale_smem[buffer_idx][row * (K_TILE / 16) + scale_idx]);
-                float sfb = decode_fp8(vector_scale_smem[buffer_idx][scale_idx]);
+                float sfa0 = decode_fp8(matrix_scale_smem[buffer_idx][row * (K_TILE / 16) + scale_idx0]);
+                float sfb0 = decode_fp8(vector_scale_smem[buffer_idx][scale_idx0]);
+                float sfa1 = (scale_idx1 != scale_idx0) ? decode_fp8(matrix_scale_smem[buffer_idx][row * (K_TILE / 16) + scale_idx1]) : sfa0;
+                float sfb1 = (scale_idx1 != scale_idx0) ? decode_fp8(vector_scale_smem[buffer_idx][scale_idx1]) : sfb0;
+                float sfa2 = (scale_idx2 != scale_idx1) ? decode_fp8(matrix_scale_smem[buffer_idx][row * (K_TILE / 16) + scale_idx2]) : sfa1;
+                float sfb2 = (scale_idx2 != scale_idx1) ? decode_fp8(vector_scale_smem[buffer_idx][scale_idx2]) : sfb1;
+                float sfa3 = (scale_idx3 != scale_idx2) ? decode_fp8(matrix_scale_smem[buffer_idx][row * (K_TILE / 16) + scale_idx3]) : sfa2;
+                float sfb3 = (scale_idx3 != scale_idx2) ? decode_fp8(vector_scale_smem[buffer_idx][scale_idx3]) : sfb2;
 
-                // Apply scales
-                float scaled_a_lo = a_lo * sfa;
-                float scaled_b_lo = b_lo * sfb;
-                float scaled_a_hi = a_hi * sfa;
-                float scaled_b_hi = b_hi * sfb;
+                // Process 4 bytes in parallel to 4 accumulators
+                if (kb < tile_bytes) {
+                    uint8_t matrix_byte = matrix_smem[buffer_idx][row * (K_TILE / 2) + kb];
+                    uint8_t vector_byte = vector_smem[buffer_idx][kb];
+                    float a_lo = decode_fp4(matrix_byte & 0xF);
+                    float a_hi = decode_fp4(matrix_byte >> 4);
+                    float b_lo = decode_fp4(vector_byte & 0xF);
+                    float b_hi = decode_fp4(vector_byte >> 4);
+                    acc0 += a_lo * sfa0 * b_lo * sfb0;
+                    acc0 += a_hi * sfa0 * b_hi * sfb0;
+                }
 
-                // FMA: acc = (a * sfa) * (b * sfb) + acc
-                // Using PTX: fma.rn.f32 d, a, b, c; where d = a * b + c
-                asm volatile("fma.rn.f32 %0, %1, %2, %0;"
-                    : "+f"(acc) : "f"(scaled_a_lo), "f"(scaled_b_lo));
-                asm volatile("fma.rn.f32 %0, %1, %2, %0;"
-                    : "+f"(acc) : "f"(scaled_a_hi), "f"(scaled_b_hi));
+                if (kb + 1 < tile_bytes) {
+                    uint8_t matrix_byte = matrix_smem[buffer_idx][row * (K_TILE / 2) + kb + 1];
+                    uint8_t vector_byte = vector_smem[buffer_idx][kb + 1];
+                    float a_lo = decode_fp4(matrix_byte & 0xF);
+                    float a_hi = decode_fp4(matrix_byte >> 4);
+                    float b_lo = decode_fp4(vector_byte & 0xF);
+                    float b_hi = decode_fp4(vector_byte >> 4);
+                    acc1 += a_lo * sfa1 * b_lo * sfb1;
+                    acc1 += a_hi * sfa1 * b_hi * sfb1;
+                }
+
+                if (kb + 2 < tile_bytes) {
+                    uint8_t matrix_byte = matrix_smem[buffer_idx][row * (K_TILE / 2) + kb + 2];
+                    uint8_t vector_byte = vector_smem[buffer_idx][kb + 2];
+                    float a_lo = decode_fp4(matrix_byte & 0xF);
+                    float a_hi = decode_fp4(matrix_byte >> 4);
+                    float b_lo = decode_fp4(vector_byte & 0xF);
+                    float b_hi = decode_fp4(vector_byte >> 4);
+                    acc2 += a_lo * sfa2 * b_lo * sfb2;
+                    acc2 += a_hi * sfa2 * b_hi * sfb2;
+                }
+
+                if (kb + 3 < tile_bytes) {
+                    uint8_t matrix_byte = matrix_smem[buffer_idx][row * (K_TILE / 2) + kb + 3];
+                    uint8_t vector_byte = vector_smem[buffer_idx][kb + 3];
+                    float a_lo = decode_fp4(matrix_byte & 0xF);
+                    float a_hi = decode_fp4(matrix_byte >> 4);
+                    float b_lo = decode_fp4(vector_byte & 0xF);
+                    float b_hi = decode_fp4(vector_byte >> 4);
+                    acc3 += a_lo * sfa3 * b_lo * sfb3;
+                    acc3 += a_hi * sfa3 * b_hi * sfb3;
+                }
             }
         }
+    };
+
+    // SOFTWARE PIPELINING: Prologue - issue loads for first tile
+    if (num_k_tiles > 0) {
+        issue_loads(0, 0);
+        cp_async_commit_group();
     }
 
-    __syncthreads();
+    // Main loop: overlap compute(k) with load(k+1)
+    for (int k_tile = 0; k_tile < num_k_tiles; ++k_tile) {
+        int curr_buffer = k_tile & 1;
+        int next_buffer = (k_tile + 1) & 1;
+
+        // Issue loads for NEXT tile (if exists)
+        if (k_tile + 1 < num_k_tiles) {
+            issue_loads(k_tile + 1, next_buffer);
+            cp_async_commit_group();
+        }
+
+        // Wait for CURRENT tile's loads to complete
+        // cp.async.wait_group<1> means: wait until only 1 most recent group is pending
+        // This allows overlap: we wait for k_tile while k_tile+1 is loading
+        if (k_tile + 1 < num_k_tiles) {
+            cp_async_wait_group<1>();
+        } else {
+            cp_async_wait_group<0>();  // Last iteration: wait for all
+        }
+        __syncthreads();
+
+        // Compute on CURRENT tile while NEXT tile loads in background
+        int tile_elems = min(K_TILE, K - k_tile * K_TILE);
+        compute_tile(curr_buffer, tile_elems);
+
+        __syncthreads();
+    }
 
     // Store result to output
-    // Each thread with tid < rows_this_tile stores its accumulated value
     if (tid < rows_this_tile) {
         int m = m_block * ROWS_PER_CTA + tid;
         size_t c_idx = static_cast<size_t>(m) + static_cast<size_t>(l) * M;
+        float acc = acc0 + acc1 + acc2 + acc3;
         c[c_idx] = __float2half(acc);
     }
 }
@@ -180,7 +296,7 @@ torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::
     int N_rows = b.size(0);
 
     dim3 grid((M + 128 - 1) / 128, L);  // 128 = ROWS_PER_CTA
-    dim3 block(128);  // THREADS_PER_CTA
+    dim3 block(256);  // THREADS_PER_CTA = 256
 
     auto* a_ptr = reinterpret_cast<const int8_t*>(a.data_ptr());
     auto* b_ptr = reinterpret_cast<const int8_t*>(b.data_ptr());
@@ -217,11 +333,11 @@ module = load_inline(
     verbose=False
 )
 
-THREADS_PER_CTA = 128
+THREADS_PER_CTA = 256
 
 ROWS_PER_CTA = 128
 
-K_TILE = 128
+K_TILE = 256
 
 def custom_kernel(data: input_t) -> output_t:
     a, b, sfa_ref, sfb_ref, _, _, c = data
