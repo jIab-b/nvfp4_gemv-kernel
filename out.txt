@@ -1,7 +1,7 @@
 "**NVIDIA on GitHub ✅ success**
-> Workflow [19595097674](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19595097674>) completed
+> Workflow [19595504583](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19595504583>) completed
 > Downloading artifacts... done
-> ❌ Running benchmarks failed (internal error 1)
+> ❌ Running benchmarks failed (timeout)
 
 Running on:
 * GPU: `NVIDIA B200`
@@ -11,43 +11,8 @@ Running on:
 * Torch: `2.9.1+cu130`
 # Running failed
 Command ```bash
-python3 eval.py benchmark /tmp/tmpzwdqcbx0```
-exited with error code **1** after 3.24 seconds.
-
-## Program stderr:
-```
-multiprocessing.pool.RemoteTraceback: 
-\"\"\"
-Traceback (most recent call last):
-  File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 125, in worker
-    result = (True, func(*args, **kwds))
-  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 220, in _run_single_benchmark
-    good, message = check_implementation(check_copy, output)
-  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/utils.py\", line 144, in wrapped
-    return match_reference(data, output, reference=reference, **kwargs)
-  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/utils.py\", line 133, in match_reference
-    expected = reference(data)
-  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/reference.py\", line 45, in ref_kernel
-    res = torch._scaled_mm(
-RuntimeError: CUDA error: CUBLAS_STATUS_INTERNAL_ERROR when calling `cublasCreate(handle)`
-\"\"\"
-
-The above exception was the direct cause of the following exception:
-
-Traceback (most recent call last):
-  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 485, in <module>
-    sys.exit(main())
-  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 453, in main
-    return run_benchmarking(logger, pool, tests)
-  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 306, in run_benchmarking
-    run_single_benchmark(pool, tests[0], False, 200, 10e7)
-  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 291, in run_single_benchmark
-    return pool.apply(_run_single_benchmark, (test, recheck, max_repeats, max_time_ns))
-  File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 360, in apply
-    return self.apply_async(func, args, kwds).get()
-  File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 774, in get
-    raise self._value
-RuntimeError: CUDA error: CUBLAS_STATUS_INTERNAL_ERROR when calling `cublasCreate(handle)````
+python3 eval.py benchmark /tmp/tmpoy4nuzlk```
+**timed out** after 180.00 seconds.
 
 ## Program stdout:
 ```
@@ -60,4 +25,12 @@ DEBUG after mbarrier.init tile(0,0,0)
 DEBUG after ld.shared taddr_a tile(0,0,0)
 DEBUG after ld.shared taddr_sfa tile(0,0,0)
 DEBUG after ld.shared taddr_sfb tile(0,0,0)
-DEBUG after ld.shared taddr_d tile(0,0,0)```"
+DEBUG after ld.shared taddr_d tile(0,0,0)
+DEBUG before cp A tile(0,0,0)
+DEBUG after cp A tile(0,0,0)
+DEBUG before cp SFA tile(0,0,0)
+DEBUG after cp SFA tile(0,0,0)
+DEBUG before cp SFB tile(0,0,0)
+DEBUG after cp SFB tile(0,0,0)
+DEBUG cp done tile(0,0,0): taddr_a=0x0 taddr_d=0x80
+DEBUG mma issued tile(0,0,0)```"

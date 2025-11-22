@@ -186,11 +186,11 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
     uint32_t addr_sfa = __cvta_generic_to_shared(sm_sfa);
     uint32_t addr_sfb = __cvta_generic_to_shared(sm_sfb);
     
-    uint64_t sdesc_a = make_smem_desc(addr_a, 32, 4096);
-    uint64_t sdesc_b = make_smem_desc(addr_b, 32, 256);
-    // Stride 16 required for alignment
-    uint64_t sdesc_sfa = make_smem_desc(addr_sfa, 16, 2048); 
-    uint64_t sdesc_sfb = make_smem_desc(addr_sfb, 16, 512);
+    // SMEM descriptors: leading and stride are per-row byte strides.
+    uint64_t sdesc_a   = make_smem_desc(addr_a, 32, 32);
+    uint64_t sdesc_b   = make_smem_desc(addr_b, 32, 32);   // single row, pitch 32B
+    uint64_t sdesc_sfa = make_smem_desc(addr_sfa, 16, 16); // 128 rows, 16B pitch
+    uint64_t sdesc_sfb = make_smem_desc(addr_sfb, 16, 16); // 4 rows, 16B pitch
 
 #if DEBUG_GEMV_PIPELINE
     if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
@@ -267,9 +267,10 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
     }
     __syncthreads(); // keep other warps aligned with warp 0 after handle loads
 
-    // SMEM -> TMEM (only warp 0 owns the tc core pipe)
+    // SMEM -> TMEM (warp 0 handles tc core cp)
+    __syncthreads(); // ensure SMEM filled before cp
     if (warpId == 0) {
-        // A: 4096B -> .128x256b (128 rows * 32B)
+        // A: 4096B -> .128x256b
 #if DEBUG_GEMV_PIPELINE
         if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
             printf("DEBUG before cp A tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
@@ -295,6 +296,7 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
         }
 #endif
         // sfb: Use .4x256b. Stride 16.
+        // tiny, leave on warp0
 #if DEBUG_GEMV_PIPELINE
         if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
             printf("DEBUG before cp SFB tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
