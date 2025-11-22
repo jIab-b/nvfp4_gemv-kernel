@@ -1,5 +1,5 @@
 "**NVIDIA on GitHub ✅ success**
-> Workflow [19594938175](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19594938175>) completed
+> Workflow [19595097674](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19595097674>) completed
 > Downloading artifacts... done
 > ❌ Running benchmarks failed (internal error 1)
 
@@ -11,8 +11,8 @@ Running on:
 * Torch: `2.9.1+cu130`
 # Running failed
 Command ```bash
-python3 eval.py benchmark /tmp/tmpobf41vaw```
-exited with error code **1** after 3.22 seconds.
+python3 eval.py benchmark /tmp/tmpzwdqcbx0```
+exited with error code **1** after 3.24 seconds.
 
 ## Program stderr:
 ```
@@ -59,4 +59,5 @@ DEBUG before mbarrier.init tile(0,0,0)
 DEBUG after mbarrier.init tile(0,0,0)
 DEBUG after ld.shared taddr_a tile(0,0,0)
 DEBUG after ld.shared taddr_sfa tile(0,0,0)
-DEBUG after ld.shared taddr_sfb tile(0,0,0)```"
+DEBUG after ld.shared taddr_sfb tile(0,0,0)
+DEBUG after ld.shared taddr_d tile(0,0,0)```"

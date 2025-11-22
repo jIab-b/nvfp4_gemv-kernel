@@ -233,35 +233,39 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
     }
     __syncthreads();
 
-    uint32_t sm_taddr_a_ptr = __cvta_generic_to_shared(&sm_taddr_a);
-    uint32_t sm_taddr_sfa_ptr = __cvta_generic_to_shared(&sm_taddr_sfa);
-    uint32_t sm_taddr_sfb_ptr = __cvta_generic_to_shared(&sm_taddr_sfb);
-    uint32_t sm_taddr_d_ptr = __cvta_generic_to_shared(&sm_taddr_d);
-    uint32_t taddr_a, taddr_sfa, taddr_sfb, taddr_d;
-    asm volatile("ld.shared.b32 %0, [%1];" : "=r"(taddr_a) : "r"(sm_taddr_a_ptr));
+    // Only warp 0 needs the TMEM handles; keep other warps out to avoid handle scope violations.
+    uint32_t taddr_a = 0, taddr_sfa = 0, taddr_sfb = 0, taddr_d = 0;
+    if (warpId == 0) {
+        uint32_t sm_taddr_a_ptr = __cvta_generic_to_shared(&sm_taddr_a);
+        uint32_t sm_taddr_sfa_ptr = __cvta_generic_to_shared(&sm_taddr_sfa);
+        uint32_t sm_taddr_sfb_ptr = __cvta_generic_to_shared(&sm_taddr_sfb);
+        uint32_t sm_taddr_d_ptr = __cvta_generic_to_shared(&sm_taddr_d);
+        asm volatile("ld.shared.b32 %0, [%1];" : "=r"(taddr_a)   : "r"(sm_taddr_a_ptr));
 #if DEBUG_GEMV_PIPELINE
-    if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
-        printf("DEBUG after ld.shared taddr_a tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
-    }
+        if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
+            printf("DEBUG after ld.shared taddr_a tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
+        }
 #endif
-    asm volatile("ld.shared.b32 %0, [%1];" : "=r"(taddr_sfa) : "r"(sm_taddr_sfa_ptr));
+        asm volatile("ld.shared.b32 %0, [%1];" : "=r"(taddr_sfa) : "r"(sm_taddr_sfa_ptr));
 #if DEBUG_GEMV_PIPELINE
-    if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
-        printf("DEBUG after ld.shared taddr_sfa tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
-    }
+        if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
+            printf("DEBUG after ld.shared taddr_sfa tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
+        }
 #endif
-    asm volatile("ld.shared.b32 %0, [%1];" : "=r"(taddr_sfb) : "r"(sm_taddr_sfb_ptr));
+        asm volatile("ld.shared.b32 %0, [%1];" : "=r"(taddr_sfb) : "r"(sm_taddr_sfb_ptr));
 #if DEBUG_GEMV_PIPELINE
-    if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
-        printf("DEBUG after ld.shared taddr_sfb tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
-    }
+        if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
+            printf("DEBUG after ld.shared taddr_sfb tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
+        }
 #endif
-    asm volatile("ld.shared.b32 %0, [%1];" : "=r"(taddr_d) : "r"(sm_taddr_d_ptr));
+        asm volatile("ld.shared.b32 %0, [%1];" : "=r"(taddr_d)   : "r"(sm_taddr_d_ptr));
 #if DEBUG_GEMV_PIPELINE
-    if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
-        printf("DEBUG after ld.shared taddr_d tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
-    }
+        if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
+            printf("DEBUG after ld.shared taddr_d tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
+        }
 #endif
+    }
+    __syncthreads(); // keep other warps aligned with warp 0 after handle loads
 
     // SMEM -> TMEM (only warp 0 owns the tc core pipe)
     if (warpId == 0) {
