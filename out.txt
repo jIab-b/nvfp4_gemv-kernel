@@ -1,7 +1,7 @@
 "**NVIDIA on GitHub ✅ success**
-> Workflow [19595504583](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19595504583>) completed
+> Workflow [19596611641](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19596611641>) completed
 > Downloading artifacts... done
-> ❌ Running benchmarks failed (timeout)
+> ❌ Benchmarking failed
 
 Running on:
 * GPU: `NVIDIA B200`
@@ -9,10 +9,22 @@ Running on:
 * Runtime: `CUDA`
 * Platform: `Linux-6.8.0-51-generic-x86_64-with-glibc2.35`
 * Torch: `2.9.1+cu130`
-# Running failed
-Command ```bash
-python3 eval.py benchmark /tmp/tmpoy4nuzlk```
-**timed out** after 180.00 seconds.
+
+
+## Benchmarks:
+```
+❌ k: 16384; l: 1; m: 7168; seed: 1111 failed testing:
+
+mismatch found! custom implementation doesn't match reference: Number of mismatched elements: 7168 ERROR AT (0, 0, 0): inf 4668.0 ERROR AT (1, 0, 0): inf 4840.0 ERROR AT (2, 0, 0): inf 4756.0 ERROR AT (3, 0, 0): inf 4532.0 ERROR AT (4, 0, 0): 0.0 4812.0 ... and 7163 more mismatched elements.
+
+❌ k: 7168; l: 8; m: 4096; seed: 1111 failed testing:
+
+mismatch found! custom implementation doesn't match reference: Number of mismatched elements: 32768 ERROR AT (0, 0, 0): inf 2244.0 ERROR AT (0, 0, 1): inf 2168.0 ERROR AT (0, 0, 2): inf 1782.0 ERROR AT (0, 0, 3): inf 1916.0 ERROR AT (0, 0, 4): inf 1786.0 ... and 32763 more mismatched elements.
+
+❌ k: 2048; l: 4; m: 7168; seed: 1111 failed testing:
+
+mismatch found! custom implementation doesn't match reference: Number of mismatched elements: 28672 ERROR AT (0, 0, 0): 0.0 504.75 ERROR AT (0, 0, 1): inf 642.0 ERROR AT (0, 0, 2): inf 513.0 ERROR AT (0, 0, 3): inf 555.5 ERROR AT (1, 0, 0): inf 660.5 ... and 28667 more mismatched elements.
+```
 
 ## Program stdout:
 ```
@@ -26,6 +38,7 @@ DEBUG after ld.shared taddr_a tile(0,0,0)
 DEBUG after ld.shared taddr_sfa tile(0,0,0)
 DEBUG after ld.shared taddr_sfb tile(0,0,0)
 DEBUG after ld.shared taddr_d tile(0,0,0)
+DEBUG taddrs tile(0,0,0): A=0x0 SFA=0x100 SFB=0x120 D=0x80 sm_taddr_a=0x0 sm_taddr_a_ptr=0x2f00
 DEBUG before cp A tile(0,0,0)
 DEBUG after cp A tile(0,0,0)
 DEBUG before cp SFA tile(0,0,0)
@@ -33,4 +46,101 @@ DEBUG after cp SFA tile(0,0,0)
 DEBUG before cp SFB tile(0,0,0)
 DEBUG after cp SFB tile(0,0,0)
 DEBUG cp done tile(0,0,0): taddr_a=0x0 taddr_d=0x80
-DEBUG mma issued tile(0,0,0)```"
+DEBUG mma issued tile(0,0,0)
+DEBUG tmem handles: A=0x0 SFA=0x100 SFB=0x120 D=0x80 sm_taddr_a=0x0 sm_taddr_a_ptr=0x2f00
+DEBUG desc: sdesc_a=0x400200020040 sdesc_sfa=0x400100010150 sdesc_sfb=0x4001000101d0 sdesc_b=0x400200020140 idesc=0x8020480
+DEBUG coords: m_base=0 k_base=0 tile_k=0 M=7168 K=16384 L=1
+DEBUG smem bytes: A0=03000003 A4=03010201 SFA0=40400040 SFB0=40404040
+DEBUG idesc fields: M7=1 N3=1 a_scale_id=0 b_scale_id=0 scale_type=0
+DEBUG mbar before wait: lo=0x3010302 hi=0x1020301
+DEBUG smem B0=00010103 sdesc_b=0x400200020140
+DEBUG mbarrier passed tile(0,0,0)
+DEBUG tmemory out tile(0,0,0): D[0]=0x41800000 D[1]=0x41200000
+DEBUG zero done tile(0,0,0)
+DEBUG load tile(0,0,0): A[0]=0x03000003 B[0]=0x00010103 SFA[0]=0x40400040 SFB[0]=0x40404040
+DEBUG desc tile(0,0,0): addr_a=0x400 addr_sfa=0x1500 addr_sfb=0x1d00
+DEBUG before alloc tile(0,0,0)
+DEBUG after alloc tile(0,0,0)
+DEBUG before mbarrier.init tile(0,0,0)
+DEBUG after mbarrier.init tile(0,0,0)
+DEBUG after ld.shared taddr_a tile(0,0,0)
+DEBUG after ld.shared taddr_sfa tile(0,0,0)
+DEBUG after ld.shared taddr_sfb tile(0,0,0)
+DEBUG after ld.shared taddr_d tile(0,0,0)
+DEBUG taddrs tile(0,0,0): A=0x0 SFA=0x100 SFB=0x120 D=0x80 sm_taddr_a=0x0 sm_taddr_a_ptr=0x2f00
+DEBUG before cp A tile(0,0,0)
+DEBUG after cp A tile(0,0,0)
+DEBUG before cp SFA tile(0,0,0)
+DEBUG after cp SFA tile(0,0,0)
+DEBUG before cp SFB tile(0,0,0)
+DEBUG after cp SFB tile(0,0,0)
+DEBUG cp done tile(0,0,0): taddr_a=0x0 taddr_d=0x80
+DEBUG mma issued tile(0,0,0)
+DEBUG tmem handles: A=0x0 SFA=0x100 SFB=0x120 D=0x80 sm_taddr_a=0x0 sm_taddr_a_ptr=0x2f00
+DEBUG desc: sdesc_a=0x400200020040 sdesc_sfa=0x400100010150 sdesc_sfb=0x4001000101d0 sdesc_b=0x400200020140 idesc=0x8020480
+DEBUG coords: m_base=0 k_base=0 tile_k=0 M=7168 K=16384 L=1
+DEBUG smem bytes: A0=03000003 A4=03010201 SFA0=40400040 SFB0=40404040
+DEBUG idesc fields: M7=1 N3=1 a_scale_id=0 b_scale_id=0 scale_type=0
+DEBUG mbar before wait: lo=0x1020203 hi=0x1010301
+DEBUG smem B0=00010103 sdesc_b=0x400200020140
+DEBUG mbarrier passed tile(0,0,0)
+DEBUG tmemory out tile(0,0,0): D[0]=0x41800000 D[1]=0x41200000
+DEBUG zero done tile(0,0,0)
+DEBUG load tile(0,0,0): A[0]=0x03000003 B[0]=0x02010303 SFA[0]=0x38000040 SFB[0]=0x38383838
+DEBUG desc tile(0,0,0): addr_a=0x400 addr_sfa=0x1500 addr_sfb=0x1d00
+DEBUG before alloc tile(0,0,0)
+DEBUG after alloc tile(0,0,0)
+DEBUG before mbarrier.init tile(0,0,0)
+DEBUG after mbarrier.init tile(0,0,0)
+DEBUG after ld.shared taddr_a tile(0,0,0)
+DEBUG after ld.shared taddr_sfa tile(0,0,0)
+DEBUG after ld.shared taddr_sfb tile(0,0,0)
+DEBUG after ld.shared taddr_d tile(0,0,0)
+DEBUG taddrs tile(0,0,0): A=0x0 SFA=0x100 SFB=0x120 D=0x80 sm_taddr_a=0x0 sm_taddr_a_ptr=0x2f00
+DEBUG before cp A tile(0,0,0)
+DEBUG after cp A tile(0,0,0)
+DEBUG before cp SFA tile(0,0,0)
+DEBUG after cp SFA tile(0,0,0)
+DEBUG before cp SFB tile(0,0,0)
+DEBUG after cp SFB tile(0,0,0)
+DEBUG cp done tile(0,0,0): taddr_a=0x0 taddr_d=0x80
+DEBUG mma issued tile(0,0,0)
+DEBUG tmem handles: A=0x0 SFA=0x100 SFB=0x120 D=0x80 sm_taddr_a=0x0 sm_taddr_a_ptr=0x2f00
+DEBUG desc: sdesc_a=0x400200020040 sdesc_sfa=0x400100010150 sdesc_sfb=0x4001000101d0 sdesc_b=0x400200020140 idesc=0x8020480
+DEBUG coords: m_base=0 k_base=0 tile_k=0 M=4096 K=7168 L=8
+DEBUG smem bytes: A0=03000003 A4=03010201 SFA0=38000040 SFB0=38383838
+DEBUG idesc fields: M7=1 N3=1 a_scale_id=0 b_scale_id=0 scale_type=0
+DEBUG mbar before wait: lo=0x3010103 hi=0x1000000
+DEBUG smem B0=02010303 sdesc_b=0x400200020140
+DEBUG mbarrier passed tile(0,0,0)
+DEBUG tmemory out tile(0,0,0): D[0]=0x41680000 D[1]=0x41700000
+DEBUG zero done tile(0,0,0)
+DEBUG load tile(0,0,0): A[0]=0x03000003 B[0]=0x01000103 SFA[0]=0x00380038 SFB[0]=0x00000000
+DEBUG desc tile(0,0,0): addr_a=0x400 addr_sfa=0x1500 addr_sfb=0x1d00
+DEBUG before alloc tile(0,0,0)
+DEBUG after alloc tile(0,0,0)
+DEBUG before mbarrier.init tile(0,0,0)
+DEBUG after mbarrier.init tile(0,0,0)
+DEBUG after ld.shared taddr_a tile(0,0,0)
+DEBUG after ld.shared taddr_sfa tile(0,0,0)
+DEBUG after ld.shared taddr_sfb tile(0,0,0)
+DEBUG after ld.shared taddr_d tile(0,0,0)
+DEBUG taddrs tile(0,0,0): A=0x0 SFA=0x100 SFB=0x120 D=0x80 sm_taddr_a=0x0 sm_taddr_a_ptr=0x2f00
+DEBUG before cp A tile(0,0,0)
+DEBUG after cp A tile(0,0,0)
+DEBUG before cp SFA tile(0,0,0)
+DEBUG after cp SFA tile(0,0,0)
+DEBUG before cp SFB tile(0,0,0)
+DEBUG after cp SFB tile(0,0,0)
+DEBUG cp done tile(0,0,0): taddr_a=0x0 taddr_d=0x80
+DEBUG mma issued tile(0,0,0)
+DEBUG tmem handles: A=0x0 SFA=0x100 SFB=0x120 D=0x80 sm_taddr_a=0x0 sm_taddr_a_ptr=0x2f00
+DEBUG desc: sdesc_a=0x400200020040 sdesc_sfa=0x400100010150 sdesc_sfb=0x4001000101d0 sdesc_b=0x400200020140 idesc=0x8020480
+DEBUG coords: m_base=0 k_base=0 tile_k=0 M=7168 K=2048 L=4
+DEBUG smem bytes: A0=03000003 A4=03010201 SFA0=00380038 SFB0=00000000
+DEBUG idesc fields: M7=1 N3=1 a_scale_id=0 b_scale_id=0 scale_type=0
+DEBUG mbar before wait: lo=0x10303 hi=0x3010003
+DEBUG smem B0=01000103 sdesc_b=0x400200020140
+DEBUG mbarrier passed tile(0,0,0)
+DEBUG tmemory out tile(0,0,0): D[0]=0x00000000 D[1]=0x00000000
+DEBUG zero done tile(0,0,0)```"

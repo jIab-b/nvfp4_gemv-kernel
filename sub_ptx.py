@@ -263,6 +263,10 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
         if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
             printf("DEBUG after ld.shared taddr_d tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
         }
+        if (laneId == 0 && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
+            printf("DEBUG taddrs tile(%d,%d,%d): A=0x%x SFA=0x%x SFB=0x%x D=0x%x sm_taddr_a=0x%x sm_taddr_a_ptr=0x%x\\n",
+                   tile_m, tile_k, tile_l, taddr_a, taddr_sfa, taddr_sfb, taddr_d, sm_taddr_a, sm_taddr_a_ptr);
+        }
 #endif
     }
     __syncthreads(); // keep other warps aligned with warp 0 after handle loads
@@ -332,13 +336,41 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
 #if DEBUG_GEMV_PIPELINE
         if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && laneId == 0) {
             printf("DEBUG mma issued tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
+            // Extra diagnostics to chase hang
+            uint32_t sm_taddr_a_ptr_dbg = __cvta_generic_to_shared(&sm_taddr_a);
+            printf("DEBUG tmem handles: A=0x%x SFA=0x%x SFB=0x%x D=0x%x sm_taddr_a=0x%x sm_taddr_a_ptr=0x%x\\n",
+                   taddr_a, taddr_sfa, taddr_sfb, taddr_d, sm_taddr_a, sm_taddr_a_ptr_dbg);
+            printf("DEBUG desc: sdesc_a=0x%llx sdesc_sfa=0x%llx sdesc_sfb=0x%llx sdesc_b=0x%llx idesc=0x%x\\n",
+                   (unsigned long long)sdesc_a, (unsigned long long)sdesc_sfa,
+                   (unsigned long long)sdesc_sfb, (unsigned long long)sdesc_b, idesc);
+            printf("DEBUG coords: m_base=%d k_base=%d tile_k=%d M=%d K=%d L=%d\\n",
+                   m_base, k_base, tile_k, M, K, L);
+            int a0 = *reinterpret_cast<int*>(sm_a + 0);
+            int a4 = *reinterpret_cast<int*>(sm_a + 4);
+            int sfa0 = *reinterpret_cast<int*>(sm_sfa + 0);
+            int sfb0 = *reinterpret_cast<int*>(sm_sfb + 0);
+            printf("DEBUG smem bytes: A0=%08x A4=%08x SFA0=%08x SFB0=%08x\\n", a0, a4, sfa0, sfb0);
+            // Decode idesc fields
+            int idesc_M7 = (idesc >> 27) & 0x3;
+            int idesc_N3 = (idesc >> 17) & 0x3F;
+            int idesc_b_scale = (idesc >> 4) & 0x3;
+            int idesc_a_scale = (idesc >> 29) & 0x3;
+            int idesc_scale_type = (idesc >> 23) & 0x1;
+            printf("DEBUG idesc fields: M7=%d N3=%d a_scale_id=%d b_scale_id=%d scale_type=%d\\n",
+                   idesc_M7, idesc_N3, idesc_a_scale, idesc_b_scale, idesc_scale_type);
+            // Barrier state snapshot
+            uint32_t *mbar_u32 = reinterpret_cast<uint32_t*>(&mbar_mma);
+            printf("DEBUG mbar before wait: lo=0x%x hi=0x%x\\n", mbar_u32[0], mbar_u32[1]);
+            // B sanity
+            int b0 = *reinterpret_cast<int*>(sm_b + 0);
+            printf("DEBUG smem B0=%08x sdesc_b=0x%llx\\n", b0, (unsigned long long)sdesc_b);
         }
 #endif
     }
 
     // wait for MMA
     asm volatile(
-        "{.reg .pred p; Lw%=: mbarrier.try_wait.parity.b64 p, [%0], 0; @!p bra Lw%=;}\\n"
+        "{.reg .pred p; Lw%=: mbarrier.try_wait.parity.b64 p, [%0], 1; @!p bra Lw%=;}\\n"
         :: "l"(&mbar_mma));
     asm volatile("tcgen05.fence::after_thread_sync;\\n");
 
