@@ -87,8 +87,10 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
     // SMEM buffers
     __shared__ alignas(128) int8_t sm_a[4096];    // 128x32B (128x64 FP4)
     __shared__ alignas(128) int8_t sm_b[256];     // 256B buffer for B
-    __shared__ alignas(128) int8_t sm_sfa[1024];  // 128x4B (512B used)
-    __shared__ alignas(128) int8_t sm_sfb[512];   // 4x8B (32B used)
+    // sfa: Need 16B stride. 128 rows * 16B = 2048B.
+    __shared__ alignas(128) int8_t sm_sfa[2048];  
+    // sfb: Need 16B stride. 4 rows * 16B = 64B. 512B is plenty.
+    __shared__ alignas(128) int8_t sm_sfb[512];   
     __shared__ alignas(128) half sm_d[1024];      // 128x8 fp16
 
     __shared__ uint32_t sm_taddr_a, sm_taddr_sfa, sm_taddr_sfb, sm_taddr_d;
@@ -114,7 +116,6 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
     }
     
     // B: Input is 1xK (64 elems) = 32 bytes.
-    // Load 32 bytes valid, zero the rest of sm_b (256B) to avoid OOB reads
     if (warpId == 0) {
         for (int i = laneId * 4; i < 32; i += 32 * 4) {
             if (i + 4 <= 32)
@@ -125,29 +126,33 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
         }
     }
     
-    // sfa: 512B total (128 rows * 4 bytes).
-    for (int i = laneId * 4; i < 128; i += 32 * 4) {
-        int idx = warpId * 128 + i;
-        if (idx + 4 <= 512)
-            *reinterpret_cast<int*>(sm_sfa + idx) = *reinterpret_cast<const int*>(g_sfa_tile + idx);
-    }
-    // Zero padding in sm_sfa (1024B)
-    if (warpId == 0) {
-        for (int i = laneId * 4 + 512; i < 1024; i += 32 * 4) {
-            *reinterpret_cast<int*>(sm_sfa + i) = 0;
-        }
+    // sfa: 128 rows. Each row is 4 bytes.
+    // We must scatter to 16-byte stride for alignment requirements.
+    // We use 4 warps to load.
+    // Total 128 rows.
+    for (int i = warpId * 32 + laneId; i < 128; i += 128) {
+        // Load 4 bytes
+        int val = *reinterpret_cast<const int*>(g_sfa_tile + i * 4);
+        // Store to sm_sfa with stride 16
+        *reinterpret_cast<int*>(sm_sfa + i * 16) = val;
+        // Zero pad the rest of the 16B stride? Not strictly necessary if we don't read it, 
+        // but for safety/cleanliness we can. tcgen05.cp reads 32B, so overlap happens.
+        // Overlap is fine.
     }
     
-    // sfb: Input is 1x4 bytes (4 bytes). 
-    // MMA expects 4xN (4x8 = 32 bytes).
-    // Load 4 bytes valid, zero the rest of sm_sfb
-    if (warpId == 0) {
-        for (int i = laneId * 4; i < 4; i += 32 * 4) {
-            if (i + 4 <= 4)
-                *reinterpret_cast<int*>(sm_sfb + i) = *reinterpret_cast<const int*>(g_sfb_tile + i);
-        }
-        for (int i = laneId * 4 + 4; i < 512; i += 32 * 4) {
-            *reinterpret_cast<int*>(sm_sfb + i) = 0;
+    // sfb: Input is 1x4 bytes (4 bytes total).
+    // We need 4 rows. Stride 16.
+    // Row 0: 8 copies of S0.
+    // Row 1: 8 copies of S1.
+    // Row 2: 8 copies of S2.
+    // Row 3: 8 copies of S3.
+    if (warpId == 0 && laneId == 0) {
+        int val = *reinterpret_cast<const int*>(g_sfb_tile);
+        for(int k=0; k<4; ++k) {
+            int8_t s = (val >> (k*8)) & 0xFF;
+            // Create 8 copies of s (64 bits)
+            uint64_t s8 = 0x0101010101010101ULL * (uint8_t)s;
+            *reinterpret_cast<uint64_t*>(sm_sfb + k * 16) = s8;
         }
     }
 
@@ -160,9 +165,10 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
     uint32_t addr_sfb = __cvta_generic_to_shared(sm_sfb);
     
     uint64_t sdesc_a = make_smem_desc(addr_a, 32, 4096);
-    uint64_t sdesc_b = make_smem_desc(addr_b, 4, 256);
-    uint64_t sdesc_sfa = make_smem_desc(addr_sfa, 4, 512); // 4 bytes leading dim
-    uint64_t sdesc_sfb = make_smem_desc(addr_sfb, 8, 512); // 8 bytes leading dim for N=8 (4x8 matrix)
+    uint64_t sdesc_b = make_smem_desc(addr_b, 32, 256);
+    // Stride 16 required for alignment
+    uint64_t sdesc_sfa = make_smem_desc(addr_sfa, 16, 2048); 
+    uint64_t sdesc_sfb = make_smem_desc(addr_sfb, 16, 512);
 
     // Pass true for UE4M3 (e4m3fnuz input)
     uint32_t idesc = make_idesc_mxf4nvf4(M_TILE, N_TILE, K_TILE, true, 0, 0);
@@ -189,10 +195,11 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
     // SMEM -> TMEM (all warps issue their stripe)
     // A: 4096B -> .128x256b (128 rows * 32B)
     asm volatile("tcgen05.cp.cta_group::1.128x256b [%0], %1;\\n" :: "r"(taddr_a), "l"(sdesc_a));
-    // sfa: 512B -> .16x256b (16 rows * 32B = 512B)
-    asm volatile("tcgen05.cp.cta_group::1.16x256b  [%0], %1;\\n" :: "r"(taddr_sfa), "l"(sdesc_sfa));
-    // sfb: 32B needed. .4x128b copies 64B. Safe since we zeroed.
-    asm volatile("tcgen05.cp.cta_group::1.4x128b  [%0], %1;\\n" :: "r"(taddr_sfb), "l"(sdesc_sfb));
+    // sfa: Use .128x256b. Stride 16 means we read overlapping 32B chunks.
+    // But only first 4B matter in TMEM.
+    asm volatile("tcgen05.cp.cta_group::1.128x256b [%0], %1;\\n" :: "r"(taddr_sfa), "l"(sdesc_sfa));
+    // sfb: Use .4x256b. Stride 16.
+    asm volatile("tcgen05.cp.cta_group::1.4x256b   [%0], %1;\\n" :: "r"(taddr_sfb), "l"(sdesc_sfb));
 
     // MMA single lane
     if (warpId == 0 && laneId == 0) {
