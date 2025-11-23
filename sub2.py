@@ -75,8 +75,8 @@ __global__ void gemv_ref_tile_kernel(
         if (global_row >= M) continue;
 
         float acc = 0.f;
-        const uint8_t* row_a = g_a_tile + row * (K_TILE / 2);
-        const uint8_t* row_sfa = g_sfa_tile + row * (K_TILE / 16);
+        const uint8_t* row_a = g_a_tile + row * (K / 2);
+        const uint8_t* row_sfa = g_sfa_tile + row * (K / 16);
 
         // Iterate over this K tile (64 elements) sequentially
         for (int kk = 0; kk < K_TILE; ++kk) {
@@ -107,6 +107,7 @@ torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::
     int M = a.size(0);
     int K = a.size(1) * 2;
     int L = a.size(2);
+    int N_rows = b.size(0);
     int m_tiles = (M + M_TILE - 1) / M_TILE;
     int k_tiles = (K + K_TILE - 1) / K_TILE;
 
@@ -115,8 +116,8 @@ torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::
 
     size_t stride_a_bytes   = static_cast<size_t>(M) * (K / 2);
     size_t stride_sfa_bytes = static_cast<size_t>(M) * (K / 16);
-    size_t stride_b_bytes   = (K / 2);
-    size_t stride_sfb_bytes = (K / 16);
+    size_t stride_b_bytes   = static_cast<size_t>(N_rows) * (K / 2);
+    size_t stride_sfb_bytes = static_cast<size_t>(N_rows) * (K / 16);
 
     gemv_ref_tile_kernel<<<grid, block>>>(
         reinterpret_cast<const int8_t*>(a.data_ptr()),
