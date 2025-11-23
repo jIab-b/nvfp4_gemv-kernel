@@ -1,0 +1,66 @@
+"**NVIDIA on GitHub ✅ success**
+> Workflow [19611190772](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19611190772>) completed
+> Downloading artifacts... done
+> ❌ Benchmarking failed
+
+Running on:
+* GPU: `NVIDIA B200`
+* CPU: `INTEL(R) XEON(R) PLATINUM 8570`
+* Runtime: `CUDA`
+* Platform: `Linux-6.8.0-51-generic-x86_64-with-glibc2.35`
+* Torch: `2.9.1+cu130`
+
+
+## Benchmarks:
+```
+❌ k: 16384; l: 1; m: 7168; seed: 1111 failed testing:
+
+mismatch found! custom implementation doesn't match reference: Number of mismatched elements: 7168 ERROR AT (0, 0, 0): 2700.0 4668.0 ERROR AT (1, 0, 0): 0.0 4840.0 ERROR AT (2, 0, 0): 0.0 4756.0 ERROR AT (3, 0, 0): 0.0 4532.0 ERROR AT (4, 0, 0): 2700.0 4812.0 ... and 7163 more mismatched elements.
+
+❌ k: 7168; l: 8; m: 4096; seed: 1111 failed testing:
+
+mismatch found! custom implementation doesn't match reference: Number of mismatched elements: 32768 ERROR AT (0, 0, 0): 1288.0 2244.0 ERROR AT (0, 0, 1): 1253.0 2168.0 ERROR AT (0, 0, 2): 1094.0 1782.0 ERROR AT (0, 0, 3): 1198.0 1916.0 ERROR AT (0, 0, 4): 1318.0 1786.0 ... and 32763 more mismatched elements.
+
+❌ k: 2048; l: 4; m: 7168; seed: 1111 failed testing:
+
+mismatch found! custom implementation doesn't match reference: Number of mismatched elements: 28672 ERROR AT (0, 0, 0): 260.25 504.75 ERROR AT (0, 0, 1): 276.0 642.0 ERROR AT (0, 0, 2): 246.75 513.0 ERROR AT (0, 0, 3): 274.25 555.5 ERROR AT (1, 0, 0): 240.5 660.5 ... and 28667 more mismatched elements.
+```
+
+## Program stdout:
+```
+DBG after cp.async A loop
+DBG after cp.async sfa loop
+DBG cp.async done: sm_a[0]=3 sm_a[1]=0 sm_sfa[0]=64 sm_sfa[1]=0
+DBG after tc.cp
+DBG after tc.mma
+DBG cp->mma issued: taddr_a=0 taddr_sfa=256 taddr_sfb=288 taddr_d=128 idesc=134349952
+DBG after tc.ld
+DBG after tc.dealloc
+DBG sm_d head: 16.000000 0.000000 0.000000 0.000000 | tail 0.000000 0.000000
+DBG after cp.async A loop
+DBG after cp.async sfa loop
+DBG cp.async done: sm_a[0]=3 sm_a[1]=0 sm_sfa[0]=64 sm_sfa[1]=0
+DBG after tc.cp
+DBG after tc.mma
+DBG cp->mma issued: taddr_a=0 taddr_sfa=256 taddr_sfb=288 taddr_d=128 idesc=134349952
+DBG after tc.ld
+DBG after tc.dealloc
+DBG sm_d head: 16.000000 0.000000 0.000000 0.000000 | tail 0.000000 0.000000
+DBG after cp.async A loop
+DBG after cp.async sfa loop
+DBG cp.async done: sm_a[0]=3 sm_a[1]=0 sm_sfa[0]=64 sm_sfa[1]=0
+DBG after tc.cp
+DBG after tc.mma
+DBG cp->mma issued: taddr_a=0 taddr_sfa=256 taddr_sfb=288 taddr_d=128 idesc=134349952
+DBG after tc.ld
+DBG after tc.dealloc
+DBG sm_d head: 14.500000 0.000000 0.000000 0.000000 | tail 0.000000 0.000000
+DBG after cp.async A loop
+DBG after cp.async sfa loop
+DBG cp.async done: sm_a[0]=3 sm_a[1]=0 sm_sfa[0]=56 sm_sfa[1]=0
+DBG after tc.cp
+DBG after tc.mma
+DBG cp->mma issued: taddr_a=0 taddr_sfa=256 taddr_sfb=288 taddr_d=128 idesc=134349952
+DBG after tc.ld
+DBG after tc.dealloc
+DBG sm_d head: 0.000000 0.000000 0.000000 0.000000 | tail 0.000000 0.000000```"

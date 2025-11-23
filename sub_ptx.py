@@ -58,7 +58,7 @@ __device__ __forceinline__ uint64_t make_smem_desc(uint32_t smem_addr, uint32_t 
     desc |= (1ULL << 46);                              // bits 46-48 = 0b001
     desc |= (0ULL << 49);                              // bits 49-51 = 0 (base offset)
     desc |= (0ULL << 52);                              // bit 52 = 0 (relative mode)
-    desc |= (0ULL << 53);                              // bits 53-60 = 0
+    desc |= (0xB0ULL << 53);                           // bits 53-60 fixed constant 0b1011_0000
     desc |= (((uint64_t)swizzle_mode) << 61);         // bits 61-63
 
     return desc;
@@ -114,9 +114,9 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
     __shared__ alignas(128) int8_t sm_b[256];     // 256B buffer for B
     // sfa: Need 16B stride. 128 rows * 16B = 2048B.
     __shared__ alignas(128) int8_t sm_sfa[2048];  
-    // sfb: Need 16B stride. 4 rows * 16B = 64B. 512B is plenty.
-    __shared__ alignas(128) int8_t sm_sfb[512];   
-    __shared__ alignas(128) float sm_d[1024];     // 128x8 accum in fp32 (4096B)
+// sfb: Need 16B stride. 4 rows * 16B = 64B. 512B is plenty.
+__shared__ alignas(128) int8_t sm_sfb[512];   
+__shared__ alignas(128) float sm_d[1024];     // 128x8 accum in fp32 (4096B)
 
     __shared__ uint32_t sm_taddr_a, sm_taddr_sfa, sm_taddr_sfb, sm_taddr_d;
     __shared__ uint64_t mbar_mma;
@@ -161,6 +161,8 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
     for (int i = warpId * 32 + laneId; i < 128; i += 128) {
         // Load 4 bytes
         int val = *reinterpret_cast<const int*>(g_sfa_tile + i * 4);
+        // Convert e4m3fnuz -> ue4m3 in-place (clear sign bit). Keeps value for non-negative scales.
+        val &= 0x7F7F7F7F;
         // Store to sm_sfa with stride 16
         *reinterpret_cast<int*>(sm_sfa + i * 16) = val;
         // Zero pad the rest of the 16B stride? Not strictly necessary if we don't read it, 
@@ -176,6 +178,8 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
     // Row 3: 8 copies of S3.
     if (warpId == 0 && laneId == 0) {
         int val = *reinterpret_cast<const int*>(g_sfb_tile);
+        // Convert e4m3fnuz -> ue4m3 for B scales.
+        val &= 0x7F7F7F7F;
         for(int k=0; k<4; ++k) {
             int8_t s = (val >> (k*8)) & 0xFF;
             // Create 8 copies of s (64 bits)
@@ -398,7 +402,18 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
         }
     }
 
-    if (warpId == 0) {
+    // Use an otherwise idle warp (warp3) to handle TMEM dealloc/relinquish so warp0 can exit earlier.
+    if (warpId == 3) {
+        // Reload TMEM handles from shared for this warp.
+        uint32_t sm_taddr_a_ptr = __cvta_generic_to_shared(&sm_taddr_a);
+        uint32_t sm_taddr_sfa_ptr = __cvta_generic_to_shared(&sm_taddr_sfa);
+        uint32_t sm_taddr_sfb_ptr = __cvta_generic_to_shared(&sm_taddr_sfb);
+        uint32_t sm_taddr_d_ptr = __cvta_generic_to_shared(&sm_taddr_d);
+        asm volatile("ld.shared.b32 %0, [%1];" : "=r"(taddr_a)   : "r"(sm_taddr_a_ptr));
+        asm volatile("ld.shared.b32 %0, [%1];" : "=r"(taddr_sfa) : "r"(sm_taddr_sfa_ptr));
+        asm volatile("ld.shared.b32 %0, [%1];" : "=r"(taddr_sfb) : "r"(sm_taddr_sfb_ptr));
+        asm volatile("ld.shared.b32 %0, [%1];" : "=r"(taddr_d)   : "r"(sm_taddr_d_ptr));
+
         asm volatile("tcgen05.dealloc.cta_group::1.sync.aligned.b32 %0, 128;\\n" :: "r"(taddr_a));
         asm volatile("tcgen05.dealloc.cta_group::1.sync.aligned.b32 %0, 32;\\n"  :: "r"(taddr_sfa));
         asm volatile("tcgen05.dealloc.cta_group::1.sync.aligned.b32 %0, 32;\\n"  :: "r"(taddr_sfb));
