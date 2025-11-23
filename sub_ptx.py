@@ -166,16 +166,7 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
 
     __syncthreads(); // SMEM ready
 
-#if DEBUG_GEMV_PIPELINE
-    if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
-        int a0 = *reinterpret_cast<int*>(sm_a + 0);
-        int b0 = *reinterpret_cast<int*>(sm_b + 0);
-        int sfa0 = *reinterpret_cast<int*>(sm_sfa + 0);
-        int sfb0 = *reinterpret_cast<int*>(sm_sfb + 0);
-        printf("DEBUG load tile(%d,%d,%d): A[0]=0x%08x B[0]=0x%08x SFA[0]=0x%08x SFB[0]=0x%08x\\n",
-               tile_m, tile_k, tile_l, a0, b0, sfa0, sfb0);
-    }
-#endif
+
 
     // ====================================================================================================
     // 2. Initialization & Allocation
@@ -192,12 +183,6 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
     uint64_t sdesc_sfa = make_smem_desc(addr_sfa, 16, 16); // 128 rows, 16B pitch
     uint64_t sdesc_sfb = make_smem_desc(addr_sfb, 16, 16); // 4 rows, 16B pitch
 
-#if DEBUG_GEMV_PIPELINE
-    if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
-        printf("DEBUG desc tile(%d,%d,%d): addr_a=0x%x addr_sfa=0x%x addr_sfb=0x%x\\n",
-               tile_m, tile_k, tile_l, addr_a, addr_sfa, addr_sfb);
-    }
-#endif
 
     // Pass true for UE4M3 (e4m3fnuz input)
     uint32_t idesc = make_idesc_mxf4nvf4(M_TILE, N_TILE, K_TILE, true, 0, 0);
@@ -228,12 +213,7 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
         asm volatile("ld.shared.b32 %0, [%1];" : "=r"(taddr_sfa) : "r"(sm_taddr_sfa_ptr));
         asm volatile("ld.shared.b32 %0, [%1];" : "=r"(taddr_sfb) : "r"(sm_taddr_sfb_ptr));
         asm volatile("ld.shared.b32 %0, [%1];" : "=r"(taddr_d)   : "r"(sm_taddr_d_ptr));
-#if DEBUG_GEMV_PIPELINE
-        if (laneId == 0 && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
-            printf("DEBUG taddrs tile(%d,%d,%d): A=0x%x SFA=0x%x SFB=0x%x D=0x%x sm_taddr_a=0x%x sm_taddr_a_ptr=0x%x\\n",
-                   tile_m, tile_k, tile_l, taddr_a, taddr_sfa, taddr_sfb, taddr_d, sm_taddr_a, sm_taddr_a_ptr);
-        }
-#endif
+
     }
     __syncthreads(); // keep other warps aligned with warp 0 after handle loads
 
@@ -250,12 +230,7 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
         asm volatile("tcgen05.cp.cta_group::1.4x256b   [%0], %1;\\n" :: "r"(taddr_sfb), "l"(sdesc_sfb));
     }
 
-#if DEBUG_GEMV_PIPELINE
-    if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
-        printf("DEBUG cp done tile(%d,%d,%d): taddr_a=0x%x taddr_d=0x%x\\n",
-               tile_m, tile_k, tile_l, taddr_a, taddr_d);
-    }
-#endif
+
 
     // ====================================================================================================
     // 3. Matrix Multiply & Accumulate (MMA + Reduction)
@@ -269,11 +244,7 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
                "r"(taddr_sfa), "r"(taddr_sfb)
         );
         asm volatile("tcgen05.commit.cta_group::1.mbarrier::arrive::one.b64 [%0];\\n" :: "l"(&mbar_mma));
-#if DEBUG_GEMV_PIPELINE
-        if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && laneId == 0) {
-            printf("DEBUG mma issued tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
-        }
-#endif
+
     }
 
     // wait for MMA
@@ -282,11 +253,7 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
         :: "l"(&mbar_mma));
     asm volatile("tcgen05.fence::after_thread_sync;\\n");
 
-#if DEBUG_GEMV_PIPELINE
-    if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
-        printf("DEBUG mbarrier passed tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
-    }
-#endif
+
 
     // TMEM -> SMEM writeback (warp 0 only; TMEM is warp-scoped)
     // Use tcgen05.ld to registers, then st.shared
@@ -340,24 +307,9 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
         float d1 = sm_d[N_TILE];
         printf("DEBUG tmemory out tile(%d,%d,%d): D0=%f D1=%f\\n",
                tile_m, tile_k, tile_l, d0, d1);
-    }
-#endif
-
-    // SMEM -> GMEM stores
-    // First K tile zeroes output to avoid stale data.
-    if (tile_k == 0) {
-        for (int i = warpId * 32 + laneId; i < M_TILE; i += 128) {
-            int g_row = m_base + i;
-            if (g_row < M) {
-                c[g_row * L + tile_l] = __float2half(0.0f);
-            }
-        }
-    }
-    __syncthreads();
-
-#if DEBUG_GEMV_PIPELINE
-    if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
-        printf("DEBUG zero done tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
+        printf("DEBUG sm_d slice: 0:%f 1:%f 2:%f 3:%f 4:%f 5:%f 6:%f 7:%f | 32:%f 33:%f 34:%f 35:%f 36:%f 37:%f 38:%f 39:%f\\n",
+               sm_d[0], sm_d[1], sm_d[2], sm_d[3], sm_d[4], sm_d[5], sm_d[6], sm_d[7],
+               sm_d[32], sm_d[33], sm_d[34], sm_d[35], sm_d[36], sm_d[37], sm_d[38], sm_d[39]);
     }
 #endif
 
@@ -365,6 +317,7 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
     for (int i = warpId * 32 + laneId; i < M_TILE; i += 128) {
         int g_row = m_base + i;
         if (g_row < M) {
+            // tmemory spill layout is row-major with N_TILE columns; take column 0
             half val = __float2half(sm_d[i * N_TILE]); // column 0 in fp32 -> fp16
             atomicAdd(reinterpret_cast<half*>(&c[g_row * L + tile_l]), val);
         }
@@ -420,6 +373,9 @@ module = load_inline(
 def custom_kernel(data: input_t) -> output_t:
     a, b, sfa_ref, sfb_ref, _, _, c = data
     device = a.device
+
+    # Ensure output starts at zero to avoid race with multi-tile accumulation.
+    c.zero_()
 
     a_i8 = a.view(torch.int8)
     b_i8 = b.view(torch.int8)
