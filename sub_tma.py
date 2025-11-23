@@ -176,16 +176,19 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
 
 #if DEBUG_GEMV_PIPELINE
     if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
-        printf("DBG cp.async done: sm_a[0]=%d sm_a[1]=%d sm_sfa[0]=%d sm_sfa[1]=%d\n",
-               sm_a[0], sm_a[1], sm_sfa[0], sm_sfa[1]);
+        printf("DBG cp.async done: sm_a[0]=%d sm_a[1]=%d sm_a[64]=%d sm_a[128]=%d sm_a[512]=%d sm_a[1024]=%d sm_sfa[0]=%d sm_sfa[1]=%d sm_sfa[64]=%d sm_sfa[65]=%d sm_sfa[256]=%d sm_sfa[257]=%d\n",
+               sm_a[0], sm_a[1], sm_a[64], sm_a[128], sm_a[512], sm_a[1024], sm_sfa[0], sm_sfa[1], sm_sfa[64], sm_sfa[65], sm_sfa[256], sm_sfa[257]);
     }
 #endif
 
-    // Post-process sfa in SMEM to clear sign bits (UE4M3 requirement)
+    // Post-process sfa in SMEM: clear sign bits and replicate across 16B stride
     for (int i = warpId * 32 + laneId; i < 128; i += 128) {
         int* row = reinterpret_cast<int*>(sm_sfa + i * 16);
         int val = row[0] & 0x7F7F7F7F;
         row[0] = val;
+        row[1] = val;
+        row[2] = val;
+        row[3] = val;
     }
 
     // B + sfb: tiny; load with warp0
@@ -199,8 +202,14 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
             for (int k = 0; k < 4; ++k) {
                 int8_t s = (val >> (k * 8)) & 0xFF;
                 uint64_t s8 = 0x0101010101010101ULL * static_cast<uint8_t>(s);
-                *reinterpret_cast<uint64_t*>(sm_sfb + k * 16) = s8;
+                // fill full 16B stride: two 8-byte writes
+                *reinterpret_cast<uint64_t*>(sm_sfb + k * 16 + 0) = s8;
+                *reinterpret_cast<uint64_t*>(sm_sfb + k * 16 + 8) = s8;
             }
+#if DEBUG_GEMV_PIPELINE
+            printf("DBG B/sfb loaded: b0=%d b1=%d b2=%d b3=%d b16=%d b24=%d sfb0=%d sfb8=%d sfa0=%d sfa16=%d sfa32=%d sfa48=%d\n",
+                   sm_b[0], sm_b[1], sm_b[2], sm_b[3], sm_b[16], sm_b[24], sm_sfb[0], sm_sfb[8], sm_sfa[0], sm_sfa[16], sm_sfa[32], sm_sfa[48]);
+#endif
         }
         // pad B tail with zeros
         if (laneId < 64) reinterpret_cast<int*>(sm_b)[8 + laneId] = 0;
@@ -243,6 +252,12 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
         asm volatile("ld.shared.b32 %0, [%1];" : "=r"(taddr_sfa) : "r"((uint32_t)__cvta_generic_to_shared(&sm_taddr_sfa)));
         asm volatile("ld.shared.b32 %0, [%1];" : "=r"(taddr_sfb) : "r"((uint32_t)__cvta_generic_to_shared(&sm_taddr_sfb)));
         asm volatile("ld.shared.b32 %0, [%1];" : "=r"(taddr_d)   : "r"((uint32_t)__cvta_generic_to_shared(&sm_taddr_d)));
+#if DEBUG_GEMV_PIPELINE
+        if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && laneId == 0) {
+            printf("DBG handles: taddr_a=%u taddr_sfa=%u taddr_sfb=%u taddr_d=%u\n",
+                   taddr_a, taddr_sfa, taddr_sfb, taddr_d);
+        }
+#endif
     }
     __syncthreads();
 
