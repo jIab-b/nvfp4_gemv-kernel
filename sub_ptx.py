@@ -96,7 +96,7 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
     __shared__ alignas(128) int8_t sm_sfa[2048];  
     // sfb: Need 16B stride. 4 rows * 16B = 64B. 512B is plenty.
     __shared__ alignas(128) int8_t sm_sfb[512];   
-    __shared__ alignas(128) int sm_d[1024];       // 128x8 fp16 unpacked to 32-bit (4096B)
+    __shared__ alignas(128) float sm_d[1024];     // 128x8 accum in fp32 (4096B)
 
     __shared__ uint32_t sm_taddr_a, sm_taddr_sfa, sm_taddr_sfb, sm_taddr_d;
     __shared__ uint64_t mbar_mma;
@@ -204,11 +204,6 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
 
     // TMEM alloc
     if (warpId == 0) {
-#if DEBUG_GEMV_PIPELINE
-        if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && laneId == 0) {
-            printf("DEBUG before alloc tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
-        }
-#endif
         asm volatile(
             "tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [%0], 128;\\n"
             "tcgen05.alloc.cta_group::1.sync.aligned.shared::cta.b32 [%1], 128;\\n"
@@ -217,18 +212,7 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
             :: "l"(&sm_taddr_a), "l"(&sm_taddr_d), "l"(&sm_taddr_sfa), "l"(&sm_taddr_sfb)
         );
         if (laneId == 0) {
-#if DEBUG_GEMV_PIPELINE
-            if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0) {
-                printf("DEBUG after alloc tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
-                printf("DEBUG before mbarrier.init tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
-            }
-#endif
             asm volatile("mbarrier.init.shared.b64 [%0], 1;\\n" :: "l"(&mbar_mma));
-#if DEBUG_GEMV_PIPELINE
-            if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0) {
-                printf("DEBUG after mbarrier.init tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
-            }
-#endif
         }
     }
     __syncthreads();
@@ -241,28 +225,10 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
         uint32_t sm_taddr_sfb_ptr = __cvta_generic_to_shared(&sm_taddr_sfb);
         uint32_t sm_taddr_d_ptr = __cvta_generic_to_shared(&sm_taddr_d);
         asm volatile("ld.shared.b32 %0, [%1];" : "=r"(taddr_a)   : "r"(sm_taddr_a_ptr));
-#if DEBUG_GEMV_PIPELINE
-        if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
-            printf("DEBUG after ld.shared taddr_a tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
-        }
-#endif
         asm volatile("ld.shared.b32 %0, [%1];" : "=r"(taddr_sfa) : "r"(sm_taddr_sfa_ptr));
-#if DEBUG_GEMV_PIPELINE
-        if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
-            printf("DEBUG after ld.shared taddr_sfa tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
-        }
-#endif
         asm volatile("ld.shared.b32 %0, [%1];" : "=r"(taddr_sfb) : "r"(sm_taddr_sfb_ptr));
-#if DEBUG_GEMV_PIPELINE
-        if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
-            printf("DEBUG after ld.shared taddr_sfb tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
-        }
-#endif
         asm volatile("ld.shared.b32 %0, [%1];" : "=r"(taddr_d)   : "r"(sm_taddr_d_ptr));
 #if DEBUG_GEMV_PIPELINE
-        if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
-            printf("DEBUG after ld.shared taddr_d tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
-        }
         if (laneId == 0 && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
             printf("DEBUG taddrs tile(%d,%d,%d): A=0x%x SFA=0x%x SFB=0x%x D=0x%x sm_taddr_a=0x%x sm_taddr_a_ptr=0x%x\\n",
                    tile_m, tile_k, tile_l, taddr_a, taddr_sfa, taddr_sfb, taddr_d, sm_taddr_a, sm_taddr_a_ptr);
@@ -275,43 +241,13 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
     __syncthreads(); // ensure SMEM filled before cp
     if (warpId == 0) {
         // A: 4096B -> .128x256b
-#if DEBUG_GEMV_PIPELINE
-        if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
-            printf("DEBUG before cp A tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
-        }
-#endif
         asm volatile("tcgen05.cp.cta_group::1.128x256b [%0], %1;\\n" :: "r"(taddr_a), "l"(sdesc_a));
-#if DEBUG_GEMV_PIPELINE
-        if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
-            printf("DEBUG after cp A tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
-        }
-#endif
         // sfa: Use .128x256b. Stride 16 means we read overlapping 32B chunks.
         // But only first 4B matter in TMEM.
-#if DEBUG_GEMV_PIPELINE
-        if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
-            printf("DEBUG before cp SFA tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
-        }
-#endif
         asm volatile("tcgen05.cp.cta_group::1.128x256b [%0], %1;\\n" :: "r"(taddr_sfa), "l"(sdesc_sfa));
-#if DEBUG_GEMV_PIPELINE
-        if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
-            printf("DEBUG after cp SFA tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
-        }
-#endif
         // sfb: Use .4x256b. Stride 16.
         // tiny, leave on warp0
-#if DEBUG_GEMV_PIPELINE
-        if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
-            printf("DEBUG before cp SFB tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
-        }
-#endif
         asm volatile("tcgen05.cp.cta_group::1.4x256b   [%0], %1;\\n" :: "r"(taddr_sfb), "l"(sdesc_sfb));
-#if DEBUG_GEMV_PIPELINE
-        if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
-            printf("DEBUG after cp SFB tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
-        }
-#endif
     }
 
 #if DEBUG_GEMV_PIPELINE
@@ -336,34 +272,6 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
 #if DEBUG_GEMV_PIPELINE
         if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && laneId == 0) {
             printf("DEBUG mma issued tile(%d,%d,%d)\\n", tile_m, tile_k, tile_l);
-            // Extra diagnostics to chase hang
-            uint32_t sm_taddr_a_ptr_dbg = __cvta_generic_to_shared(&sm_taddr_a);
-            printf("DEBUG tmem handles: A=0x%x SFA=0x%x SFB=0x%x D=0x%x sm_taddr_a=0x%x sm_taddr_a_ptr=0x%x\\n",
-                   taddr_a, taddr_sfa, taddr_sfb, taddr_d, sm_taddr_a, sm_taddr_a_ptr_dbg);
-            printf("DEBUG desc: sdesc_a=0x%llx sdesc_sfa=0x%llx sdesc_sfb=0x%llx sdesc_b=0x%llx idesc=0x%x\\n",
-                   (unsigned long long)sdesc_a, (unsigned long long)sdesc_sfa,
-                   (unsigned long long)sdesc_sfb, (unsigned long long)sdesc_b, idesc);
-            printf("DEBUG coords: m_base=%d k_base=%d tile_k=%d M=%d K=%d L=%d\\n",
-                   m_base, k_base, tile_k, M, K, L);
-            int a0 = *reinterpret_cast<int*>(sm_a + 0);
-            int a4 = *reinterpret_cast<int*>(sm_a + 4);
-            int sfa0 = *reinterpret_cast<int*>(sm_sfa + 0);
-            int sfb0 = *reinterpret_cast<int*>(sm_sfb + 0);
-            printf("DEBUG smem bytes: A0=%08x A4=%08x SFA0=%08x SFB0=%08x\\n", a0, a4, sfa0, sfb0);
-            // Decode idesc fields
-            int idesc_M7 = (idesc >> 27) & 0x3;
-            int idesc_N3 = (idesc >> 17) & 0x3F;
-            int idesc_b_scale = (idesc >> 4) & 0x3;
-            int idesc_a_scale = (idesc >> 29) & 0x3;
-            int idesc_scale_type = (idesc >> 23) & 0x1;
-            printf("DEBUG idesc fields: M7=%d N3=%d a_scale_id=%d b_scale_id=%d scale_type=%d\\n",
-                   idesc_M7, idesc_N3, idesc_a_scale, idesc_b_scale, idesc_scale_type);
-            // Barrier state snapshot
-            uint32_t *mbar_u32 = reinterpret_cast<uint32_t*>(&mbar_mma);
-            printf("DEBUG mbar before wait: lo=0x%x hi=0x%x\\n", mbar_u32[0], mbar_u32[1]);
-            // B sanity
-            int b0 = *reinterpret_cast<int*>(sm_b + 0);
-            printf("DEBUG smem B0=%08x sdesc_b=0x%llx\\n", b0, (unsigned long long)sdesc_b);
         }
 #endif
     }
@@ -428,9 +336,9 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
 
 #if DEBUG_GEMV_PIPELINE
     if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0) {
-        int d0 = sm_d[0];
-        int d1 = sm_d[N_TILE];
-        printf("DEBUG tmemory out tile(%d,%d,%d): D[0]=0x%08x D[1]=0x%08x\\n",
+        float d0 = sm_d[0];
+        float d1 = sm_d[N_TILE];
+        printf("DEBUG tmemory out tile(%d,%d,%d): D0=%f D1=%f\\n",
                tile_m, tile_k, tile_l, d0, d1);
     }
 #endif
@@ -457,7 +365,7 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
     for (int i = warpId * 32 + laneId; i < M_TILE; i += 128) {
         int g_row = m_base + i;
         if (g_row < M) {
-            half val = __int2half_rn(sm_d[i * N_TILE]); // column 0
+            half val = __float2half(sm_d[i * N_TILE]); // column 0 in fp32 -> fp16
             atomicAdd(reinterpret_cast<half*>(&c[g_row * L + tile_l]), val);
         }
     }
