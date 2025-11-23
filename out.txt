@@ -1,5 +1,5 @@
 "**NVIDIA on GitHub ✅ success**
-> Workflow [19605516431](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19605516431>) completed
+> Workflow [19606610431](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19606610431>) completed
 > Downloading artifacts... done
 > ❌ Benchmarking failed
 
@@ -15,7 +15,7 @@ Running on:
 ```
 ❌ k: 16384; l: 1; m: 7168; seed: 1111 failed testing:
 
-mismatch found! custom implementation doesn't match reference: Number of mismatched elements: 7168 ERROR AT (0, 0, 0): 2700.0 4668.0 ERROR AT (1, 0, 0): 2584.0 4840.0 ERROR AT (2, 0, 0): 2612.0 4756.0 ERROR AT (3, 0, 0): 2486.0 4532.0 ERROR AT (4, 0, 0): 0.0 4812.0 ... and 7163 more mismatched elements.
+mismatch found! custom implementation doesn't match reference: Number of mismatched elements: 7168 ERROR AT (0, 0, 0): 2704.0 4668.0 ERROR AT (1, 0, 0): 0.0 4840.0 ERROR AT (2, 0, 0): 0.0 4756.0 ERROR AT (3, 0, 0): 0.0 4532.0 ERROR AT (4, 0, 0): 2702.0 4812.0 ... and 7163 more mismatched elements.
 
 ❌ k: 7168; l: 8; m: 4096; seed: 1111 failed testing:
 
@@ -30,9 +30,185 @@ mismatch found! custom implementation doesn't match reference: Number of mismatc
 ```
 DEBUG tmemory out tile(0,0,0): D0=16.000000 D1=10.000000
 DEBUG sm_d slice: 0:16.000000 1:0.000000 2:0.000000 3:0.000000 4:10.000000 5:0.000000 6:0.000000 7:0.000000 | 32:0.000000 33:0.000000 34:0.000000 35:0.000000 36:0.000000 37:0.000000 38:0.000000 39:0.000000
+DEBUG accum preview row=0 stripe=0 lane=0 sm_idx=0 val=16.000000
+DEBUG accum preview row=1 stripe=0 lane=1 sm_idx=1 val=0.000000
+DEBUG accum preview row=2 stripe=0 lane=2 sm_idx=2 val=0.000000
+DEBUG accum preview row=3 stripe=0 lane=3 sm_idx=3 val=0.000000
+DEBUG accum preview row=4 stripe=0 lane=4 sm_idx=4 val=10.000000
+DEBUG accum preview row=5 stripe=0 lane=5 sm_idx=5 val=0.000000
+DEBUG accum preview row=6 stripe=0 lane=6 sm_idx=6 val=0.000000
+DEBUG accum preview row=7 stripe=0 lane=7 sm_idx=7 val=0.000000
+DEBUG lane stripe lane=0 stripe=0 sm_idx=0 val=16.000000
+DEBUG lane stripe lane=1 stripe=0 sm_idx=1 val=0.000000
+DEBUG lane stripe lane=2 stripe=0 sm_idx=2 val=0.000000
+DEBUG lane stripe lane=3 stripe=0 sm_idx=3 val=0.000000
+DEBUG lane stripe lane=0 stripe=1 sm_idx=256 val=0.000000
+DEBUG lane stripe lane=1 stripe=1 sm_idx=257 val=0.000000
+DEBUG lane stripe lane=2 stripe=1 sm_idx=258 val=0.000000
+DEBUG lane stripe lane=3 stripe=1 sm_idx=259 val=0.000000
+DEBUG lane stripe lane=0 stripe=2 sm_idx=512 val=0.000000
+DEBUG lane stripe lane=1 stripe=2 sm_idx=513 val=0.000000
+DEBUG lane stripe lane=2 stripe=2 sm_idx=514 val=0.000000
+DEBUG lane stripe lane=3 stripe=2 sm_idx=515 val=0.000000
+DEBUG lane stripe lane=0 stripe=3 sm_idx=768 val=0.000000
+DEBUG lane stripe lane=1 stripe=3 sm_idx=769 val=0.000000
+DEBUG lane stripe lane=2 stripe=3 sm_idx=770 val=0.000000
+DEBUG lane stripe lane=3 stripe=3 sm_idx=771 val=0.000000
+DEBUG ref row=0 ref=37.000000 mma=16.000000 diff=21.000000 sm_idx=0
+DEBUG ref row=1 ref=29.000000 mma=0.000000 diff=29.000000 sm_idx=1
+DEBUG ref row=2 ref=6.000000 mma=0.000000 diff=6.000000 sm_idx=2
+DEBUG ref row=3 ref=19.750000 mma=0.000000 diff=19.750000 sm_idx=3
+DEBUG sfa row=0 bytes=64 0 64 64
+DEBUG sfa row=1 bytes=0 64 64 56
+DEBUG sfa row=2 bytes=0 56 64 56
+DEBUG sfa row=3 bytes=56 56 56 0
+DEBUG sfb idx=0 byte=64
+DEBUG sfb idx=1 byte=56
+DEBUG sfb idx=2 byte=56
+DEBUG sfb idx=3 byte=0
+DEBUG b row0 k=0 val=1.500000
+DEBUG b row0 k=1 val=0.000000
+DEBUG b row0 k=2 val=0.500000
+DEBUG b row0 k=3 val=0.000000
+DEBUG b row0 k=4 val=0.500000
+DEBUG b row0 k=5 val=0.000000
+DEBUG b row0 k=6 val=0.000000
+DEBUG b row0 k=7 val=0.000000
 DEBUG tmemory out tile(0,0,0): D0=16.000000 D1=10.000000
 DEBUG sm_d slice: 0:16.000000 1:0.000000 2:0.000000 3:0.000000 4:10.000000 5:0.000000 6:0.000000 7:0.000000 | 32:0.000000 33:0.000000 34:0.000000 35:0.000000 36:0.000000 37:0.000000 38:0.000000 39:0.000000
+DEBUG accum preview row=0 stripe=0 lane=0 sm_idx=0 val=16.000000
+DEBUG accum preview row=1 stripe=0 lane=1 sm_idx=1 val=0.000000
+DEBUG accum preview row=2 stripe=0 lane=2 sm_idx=2 val=0.000000
+DEBUG accum preview row=3 stripe=0 lane=3 sm_idx=3 val=0.000000
+DEBUG accum preview row=4 stripe=0 lane=4 sm_idx=4 val=10.000000
+DEBUG accum preview row=5 stripe=0 lane=5 sm_idx=5 val=0.000000
+DEBUG accum preview row=6 stripe=0 lane=6 sm_idx=6 val=0.000000
+DEBUG accum preview row=7 stripe=0 lane=7 sm_idx=7 val=0.000000
+DEBUG lane stripe lane=0 stripe=0 sm_idx=0 val=16.000000
+DEBUG lane stripe lane=1 stripe=0 sm_idx=1 val=0.000000
+DEBUG lane stripe lane=2 stripe=0 sm_idx=2 val=0.000000
+DEBUG lane stripe lane=3 stripe=0 sm_idx=3 val=0.000000
+DEBUG lane stripe lane=0 stripe=1 sm_idx=256 val=0.000000
+DEBUG lane stripe lane=1 stripe=1 sm_idx=257 val=0.000000
+DEBUG lane stripe lane=2 stripe=1 sm_idx=258 val=0.000000
+DEBUG lane stripe lane=3 stripe=1 sm_idx=259 val=0.000000
+DEBUG lane stripe lane=0 stripe=2 sm_idx=512 val=0.000000
+DEBUG lane stripe lane=1 stripe=2 sm_idx=513 val=0.000000
+DEBUG lane stripe lane=2 stripe=2 sm_idx=514 val=0.000000
+DEBUG lane stripe lane=3 stripe=2 sm_idx=515 val=0.000000
+DEBUG lane stripe lane=0 stripe=3 sm_idx=768 val=0.000000
+DEBUG lane stripe lane=1 stripe=3 sm_idx=769 val=0.000000
+DEBUG lane stripe lane=2 stripe=3 sm_idx=770 val=0.000000
+DEBUG lane stripe lane=3 stripe=3 sm_idx=771 val=0.000000
+DEBUG ref row=0 ref=37.000000 mma=16.000000 diff=21.000000 sm_idx=0
+DEBUG ref row=1 ref=29.000000 mma=0.000000 diff=29.000000 sm_idx=1
+DEBUG ref row=2 ref=6.000000 mma=0.000000 diff=6.000000 sm_idx=2
+DEBUG ref row=3 ref=19.750000 mma=0.000000 diff=19.750000 sm_idx=3
+DEBUG sfa row=0 bytes=64 0 64 64
+DEBUG sfa row=1 bytes=0 64 64 56
+DEBUG sfa row=2 bytes=0 56 64 56
+DEBUG sfa row=3 bytes=56 56 56 0
+DEBUG sfb idx=0 byte=64
+DEBUG sfb idx=1 byte=56
+DEBUG sfb idx=2 byte=56
+DEBUG sfb idx=3 byte=0
+DEBUG b row0 k=0 val=1.500000
+DEBUG b row0 k=1 val=0.000000
+DEBUG b row0 k=2 val=0.500000
+DEBUG b row0 k=3 val=0.000000
+DEBUG b row0 k=4 val=0.500000
+DEBUG b row0 k=5 val=0.000000
+DEBUG b row0 k=6 val=0.000000
+DEBUG b row0 k=7 val=0.000000
 DEBUG tmemory out tile(0,0,0): D0=14.500000 D1=15.000000
 DEBUG sm_d slice: 0:14.500000 1:0.000000 2:0.000000 3:0.000000 4:0.000000 5:0.000000 6:0.000000 7:0.000000 | 32:0.000000 33:0.000000 34:0.000000 35:0.000000 36:0.000000 37:0.000000 38:0.000000 39:0.000000
+DEBUG accum preview row=0 stripe=0 lane=0 sm_idx=0 val=14.500000
+DEBUG accum preview row=1 stripe=0 lane=1 sm_idx=1 val=0.000000
+DEBUG accum preview row=2 stripe=0 lane=2 sm_idx=2 val=0.000000
+DEBUG accum preview row=3 stripe=0 lane=3 sm_idx=3 val=0.000000
+DEBUG accum preview row=4 stripe=0 lane=4 sm_idx=4 val=0.000000
+DEBUG accum preview row=5 stripe=0 lane=5 sm_idx=5 val=0.000000
+DEBUG accum preview row=6 stripe=0 lane=6 sm_idx=6 val=0.000000
+DEBUG accum preview row=7 stripe=0 lane=7 sm_idx=7 val=0.000000
+DEBUG lane stripe lane=0 stripe=0 sm_idx=0 val=14.500000
+DEBUG lane stripe lane=1 stripe=0 sm_idx=1 val=0.000000
+DEBUG lane stripe lane=2 stripe=0 sm_idx=2 val=0.000000
+DEBUG lane stripe lane=3 stripe=0 sm_idx=3 val=0.000000
+DEBUG lane stripe lane=0 stripe=1 sm_idx=256 val=0.000000
+DEBUG lane stripe lane=1 stripe=1 sm_idx=257 val=0.000000
+DEBUG lane stripe lane=2 stripe=1 sm_idx=258 val=0.000000
+DEBUG lane stripe lane=3 stripe=1 sm_idx=259 val=0.000000
+DEBUG lane stripe lane=0 stripe=2 sm_idx=512 val=0.000000
+DEBUG lane stripe lane=1 stripe=2 sm_idx=513 val=0.000000
+DEBUG lane stripe lane=2 stripe=2 sm_idx=514 val=0.000000
+DEBUG lane stripe lane=3 stripe=2 sm_idx=515 val=0.000000
+DEBUG lane stripe lane=0 stripe=3 sm_idx=768 val=0.000000
+DEBUG lane stripe lane=1 stripe=3 sm_idx=769 val=0.000000
+DEBUG lane stripe lane=2 stripe=3 sm_idx=770 val=0.000000
+DEBUG lane stripe lane=3 stripe=3 sm_idx=771 val=0.000000
+DEBUG ref row=0 ref=19.500000 mma=14.500000 diff=5.000000 sm_idx=0
+DEBUG ref row=1 ref=9.500000 mma=0.000000 diff=9.500000 sm_idx=1
+DEBUG ref row=2 ref=25.500000 mma=0.000000 diff=25.500000 sm_idx=2
+DEBUG ref row=3 ref=20.000000 mma=0.000000 diff=20.000000 sm_idx=3
+DEBUG sfa row=0 bytes=64 0 0 56
+DEBUG sfa row=1 bytes=0 0 56 0
+DEBUG sfa row=2 bytes=64 56 0 64
+DEBUG sfa row=3 bytes=56 56 64 0
+DEBUG sfb idx=0 byte=56
+DEBUG sfb idx=1 byte=0
+DEBUG sfb idx=2 byte=64
+DEBUG sfb idx=3 byte=56
+DEBUG b row0 k=0 val=1.500000
+DEBUG b row0 k=1 val=0.000000
+DEBUG b row0 k=2 val=1.500000
+DEBUG b row0 k=3 val=0.000000
+DEBUG b row0 k=4 val=0.500000
+DEBUG b row0 k=5 val=0.000000
+DEBUG b row0 k=6 val=1.000000
+DEBUG b row0 k=7 val=0.000000
 DEBUG tmemory out tile(0,0,0): D0=0.000000 D1=0.000000
-DEBUG sm_d slice: 0:0.000000 1:0.000000 2:0.000000 3:0.000000 4:0.000000 5:0.000000 6:0.000000 7:0.000000 | 32:0.000000 33:0.000000 34:0.000000 35:0.000000 36:0.000000 37:0.000000 38:0.000000 39:0.000000```"
+DEBUG sm_d slice: 0:0.000000 1:0.000000 2:0.000000 3:0.000000 4:0.000000 5:0.000000 6:0.000000 7:0.000000 | 32:0.000000 33:0.000000 34:0.000000 35:0.000000 36:0.000000 37:0.000000 38:0.000000 39:0.000000
+DEBUG accum preview row=0 stripe=0 lane=0 sm_idx=0 val=0.000000
+DEBUG accum preview row=1 stripe=0 lane=1 sm_idx=1 val=0.000000
+DEBUG accum preview row=2 stripe=0 lane=2 sm_idx=2 val=0.000000
+DEBUG accum preview row=3 stripe=0 lane=3 sm_idx=3 val=0.000000
+DEBUG accum preview row=4 stripe=0 lane=4 sm_idx=4 val=0.000000
+DEBUG accum preview row=5 stripe=0 lane=5 sm_idx=5 val=0.000000
+DEBUG accum preview row=6 stripe=0 lane=6 sm_idx=6 val=0.000000
+DEBUG accum preview row=7 stripe=0 lane=7 sm_idx=7 val=0.000000
+DEBUG lane stripe lane=0 stripe=0 sm_idx=0 val=0.000000
+DEBUG lane stripe lane=1 stripe=0 sm_idx=1 val=0.000000
+DEBUG lane stripe lane=2 stripe=0 sm_idx=2 val=0.000000
+DEBUG lane stripe lane=3 stripe=0 sm_idx=3 val=0.000000
+DEBUG lane stripe lane=0 stripe=1 sm_idx=256 val=0.000000
+DEBUG lane stripe lane=1 stripe=1 sm_idx=257 val=0.000000
+DEBUG lane stripe lane=2 stripe=1 sm_idx=258 val=0.000000
+DEBUG lane stripe lane=3 stripe=1 sm_idx=259 val=0.000000
+DEBUG lane stripe lane=0 stripe=2 sm_idx=512 val=0.000000
+DEBUG lane stripe lane=1 stripe=2 sm_idx=513 val=0.000000
+DEBUG lane stripe lane=2 stripe=2 sm_idx=514 val=0.000000
+DEBUG lane stripe lane=3 stripe=2 sm_idx=515 val=0.000000
+DEBUG lane stripe lane=0 stripe=3 sm_idx=768 val=0.000000
+DEBUG lane stripe lane=1 stripe=3 sm_idx=769 val=0.000000
+DEBUG lane stripe lane=2 stripe=3 sm_idx=770 val=0.000000
+DEBUG lane stripe lane=3 stripe=3 sm_idx=771 val=0.000000
+DEBUG ref row=0 ref=16.000000 mma=0.000000 diff=16.000000 sm_idx=0
+DEBUG ref row=1 ref=0.000000 mma=0.000000 diff=0.000000 sm_idx=1
+DEBUG ref row=2 ref=6.000000 mma=0.000000 diff=6.000000 sm_idx=2
+DEBUG ref row=3 ref=43.500000 mma=0.000000 diff=43.500000 sm_idx=3
+DEBUG sfa row=0 bytes=56 0 56 0
+DEBUG sfa row=1 bytes=0 0 0 64
+DEBUG sfa row=2 bytes=56 0 64 0
+DEBUG sfa row=3 bytes=0 56 64 64
+DEBUG sfb idx=0 byte=0
+DEBUG sfb idx=1 byte=64
+DEBUG sfb idx=2 byte=64
+DEBUG sfb idx=3 byte=0
+DEBUG b row0 k=0 val=1.500000
+DEBUG b row0 k=1 val=0.000000
+DEBUG b row0 k=2 val=0.500000
+DEBUG b row0 k=3 val=0.000000
+DEBUG b row0 k=4 val=0.000000
+DEBUG b row0 k=5 val=0.000000
+DEBUG b row0 k=6 val=0.500000
+DEBUG b row0 k=7 val=0.000000```"

@@ -15,6 +15,26 @@ cuda_source = """
 #include <cuda_fp8.h>
 #include <cstdio>
 
+__device__ __forceinline__ float decode_fp4_nibble(uint8_t nibble) {
+    __nv_fp4_storage_t storage = static_cast<__nv_fp4_storage_t>(nibble & 0xF);
+    __half_raw raw = __nv_cvt_fp4_to_halfraw(storage, __NV_E2M1);
+    return __half2float(__ushort_as_half(raw.x));
+}
+
+__device__ __forceinline__ float decode_fp8_byte(int8_t byte) {
+    __nv_fp8_storage_t storage = static_cast<__nv_fp8_storage_t>(static_cast<uint8_t>(byte));
+    __half_raw raw = __nv_cvt_fp8_to_halfraw(storage, __NV_E4M3);
+    return __half2float(__ushort_as_half(raw.x));
+}
+
+__device__ __forceinline__ float smem_decode_fp4(const int8_t* smem, int row_stride_bytes, int row, int k) {
+    const uint8_t* bytes = reinterpret_cast<const uint8_t*>(smem);
+    int byte_idx = row * row_stride_bytes + (k >> 1);
+    uint8_t packed = bytes[byte_idx];
+    uint8_t nib = (k & 1) ? (packed >> 4) : (packed & 0xF);
+    return decode_fp4_nibble(nib);
+}
+
 #ifndef DEBUG_GEMV_PIPELINE
 #define DEBUG_GEMV_PIPELINE 1
 #endif
@@ -222,8 +242,7 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
     if (warpId == 0) {
         // A: 4096B -> .128x256b
         asm volatile("tcgen05.cp.cta_group::1.128x256b [%0], %1;\\n" :: "r"(taddr_a), "l"(sdesc_a));
-        // sfa: Use .128x256b. Stride 16 means we read overlapping 32B chunks.
-        // But only first 4B matter in TMEM.
+        // sfa: copy 2048B via .128x128b shape.
         asm volatile("tcgen05.cp.cta_group::1.128x256b [%0], %1;\\n" :: "r"(taddr_sfa), "l"(sdesc_sfa));
         // sfb: Use .4x256b. Stride 16.
         // tiny, leave on warp0
@@ -310,15 +329,71 @@ __global__ void gemv_tcgen05_kernel(const int8_t* a,
         printf("DEBUG sm_d slice: 0:%f 1:%f 2:%f 3:%f 4:%f 5:%f 6:%f 7:%f | 32:%f 33:%f 34:%f 35:%f 36:%f 37:%f 38:%f 39:%f\\n",
                sm_d[0], sm_d[1], sm_d[2], sm_d[3], sm_d[4], sm_d[5], sm_d[6], sm_d[7],
                sm_d[32], sm_d[33], sm_d[34], sm_d[35], sm_d[36], sm_d[37], sm_d[38], sm_d[39]);
+        for (int preview_row = 0; preview_row < 8; ++preview_row) {
+            int stripe = preview_row >> 5;
+            int lane = preview_row & 31;
+            int sm_idx = lane + stripe * N_TILE * 32;
+            printf("DEBUG accum preview row=%d stripe=%d lane=%d sm_idx=%d val=%f\\n",
+                   preview_row, stripe, lane, sm_idx, sm_d[sm_idx]);
+        }
+    }
+    if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && warpId == 0 && laneId < 4) {
+        for (int stripe = 0; stripe < 4; ++stripe) {
+            int sm_idx = laneId + stripe * N_TILE * 32;
+            printf("DEBUG lane stripe lane=%d stripe=%d sm_idx=%d val=%f\\n",
+                   laneId, stripe, sm_idx, sm_d[sm_idx]);
+        }
+    }
+    if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && warpId == 0 && laneId == 0) {
+        constexpr int row_stride_fp4 = K_TILE / 2;
+        for (int test_row = 0; test_row < 4; ++test_row) {
+            float ref = 0.f;
+            for (int kk = 0; kk < K_TILE; ++kk) {
+                float aval = smem_decode_fp4(sm_a, row_stride_fp4, test_row, kk);
+                float bval = smem_decode_fp4(sm_b, row_stride_fp4, 0, kk);
+                int scale_idx = kk >> 4;
+                float sfa = decode_fp8_byte(sm_sfa[test_row * 16 + scale_idx]);
+                float sfb = decode_fp8_byte(sm_sfb[scale_idx * 16]);
+                ref += (aval * sfa) * (bval * sfb);
+            }
+            int stripe = test_row >> 5;
+            int lane = test_row & 31;
+            int sm_idx = lane + stripe * N_TILE * 32;
+            float mma_val = sm_d[sm_idx];
+            printf("DEBUG ref row=%d ref=%f mma=%f diff=%f sm_idx=%d\\n",
+                   test_row, ref, mma_val, ref - mma_val, sm_idx);
+        }
+        for (int sf_row = 0; sf_row < 4; ++sf_row) {
+            printf("DEBUG sfa row=%d bytes=%d %d %d %d\\n",
+                   sf_row,
+                   static_cast<int>(sm_sfa[sf_row * 16 + 0]),
+                   static_cast<int>(sm_sfa[sf_row * 16 + 1]),
+                   static_cast<int>(sm_sfa[sf_row * 16 + 2]),
+                   static_cast<int>(sm_sfa[sf_row * 16 + 3]));
+        }
+        for (int sf = 0; sf < 4; ++sf) {
+            printf("DEBUG sfb idx=%d byte=%d\\n",
+                   sf,
+                   static_cast<int>(sm_sfb[sf * 16]));
+        }
+        for (int kk = 0; kk < 8; ++kk) {
+            float bval = smem_decode_fp4(sm_b, row_stride_fp4, 0, kk);
+            printf("DEBUG b row0 k=%d val=%f\\n", kk, bval);
+        }
     }
 #endif
 
-    // Accumulate partial
+    // Accumulate partial: tmemory D layout is 16 x 64 (rows x cols) for M=128,N=8
+    // Row groups of 16 are interleaved across columns blocks of 8.
+    // For global row i: group = i>>4 selects which 16-row block, row16 = i&15.
+    // Column 0 for that row is at sm_d index = row16*64 + group*N_TILE.
     for (int i = warpId * 32 + laneId; i < M_TILE; i += 128) {
         int g_row = m_base + i;
         if (g_row < M) {
-            // tmemory spill layout is row-major with N_TILE columns; take column 0
-            half val = __float2half(sm_d[i * N_TILE]); // column 0 in fp32 -> fp16
+            int stripe = i >> 5;
+            int lane = i & 31;
+            int sm_idx = lane + stripe * N_TILE * 32;
+            half val = __float2half(sm_d[sm_idx]);
             atomicAdd(reinterpret_cast<half*>(&c[g_row * L + tile_l]), val);
         }
     }
