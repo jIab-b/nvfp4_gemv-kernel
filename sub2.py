@@ -98,7 +98,8 @@ __global__ void gemv_ref_tile_kernel(
         }
 
         // Atomic accumulate into C (same as tcgen05 path)
-        atomicAdd(reinterpret_cast<half*>(&c[global_row * L + tile_l]), __float2half(acc));
+        size_t c_idx = static_cast<size_t>(global_row) + static_cast<size_t>(tile_l) * M;
+        atomicAdd(reinterpret_cast<half*>(&c[c_idx]), __float2half(acc));
     }
 }
 
@@ -116,8 +117,8 @@ torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::
 
     size_t stride_a_bytes   = static_cast<size_t>(M) * (K / 2);
     size_t stride_sfa_bytes = static_cast<size_t>(M) * (K / 16);
-    size_t stride_b_bytes   = static_cast<size_t>(N_rows) * (K / 2);
-    size_t stride_sfb_bytes = static_cast<size_t>(N_rows) * (K / 16);
+    size_t stride_b_bytes   = (N_rows) * (K / 2);
+    size_t stride_sfb_bytes = (N_rows) * (K / 16);
 
     gemv_ref_tile_kernel<<<grid, block>>>(
         reinterpret_cast<const int8_t*>(a.data_ptr()),
