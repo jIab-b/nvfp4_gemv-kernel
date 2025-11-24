@@ -38,8 +38,6 @@ __device__ __forceinline__ float decode_fp8(int8_t byte) {
 
 
 
-
-
 __global__ void gemv_nvfp4_kernel(
     const int8_t* __restrict__ a,
     const int8_t* __restrict__ b,
@@ -62,6 +60,9 @@ __global__ void gemv_nvfp4_kernel(
 // ============================================================================
 // ===================== PER-CTA BASE POINTER SETUP ==========================
 // ============================================================================
+
+
+
     const int K_sf = K / 16;  // 16 elements per scale factor
     const int K_half = K / 2;
     const size_t batch_stride_a = static_cast<size_t>(M) * K_half;
@@ -82,8 +83,18 @@ __global__ void gemv_nvfp4_kernel(
     const uint8_t* row_a = batch_a + static_cast<size_t>(m) * K_half;
     const uint8_t* row_sfa = batch_sfa + static_cast<size_t>(m) * K_sf;
 
+    TILE_K = 256;
+    // 2 fp4 / uint8
+    __shared__ uint8 sh_a_pack[2][TILE_K/2];  __shared__uint8 sh_b_pack[2][TILE_K/2];
+
+    //  2 fp4 in one byte -> decodes to 2 fp16, one fp8 -> deocde to one fp16 
+    __shared__ half2 sh_decode_a[2][TILE_K/2]; __shared__ half2 sh_decode_a[2][TILE_K/2];
+    __shared__ half sh_scale_a[TILE_K/16]; __shared__ half sh_scale_b[TILE_K/16];
+
     __shared__ float smem_acc[128];
     float acc = 0.0f;
+
+
 
 // ============================================================================
 // ===================== MEMORY LOAD AND MAIN COMPUTE ========================
@@ -219,17 +230,14 @@ def custom_kernel(data: input_t) -> output_t:
     a, b, sfa_ref, sfb_ref, _, _, c = data
     device = a.device
 
-    a_i8 = a.view(torch.int8)
-    b_i8 = b.view(torch.int8)
-    sfa_i8 = sfa_ref.to(device=device, non_blocking=True).view(torch.int8)
-    sfb_i8 = sfb_ref.to(device=device, non_blocking=True).view(torch.int8)
-
-
 
     return module.batched_scaled_gemv_cuda(
-        a_i8,
-        b_i8,
-        sfa_i8,
-        sfb_i8,
+        a,
+        b,
+        sfa_ref,
+        sfb_ref,
         c
     )
+
+
+

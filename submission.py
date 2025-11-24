@@ -14,6 +14,11 @@ cuda_source = """
 #include <cuda_fp4.h>
 #include <cuda_fp8.h>
 
+// ============================================================================
+// ======================== INITIALIZATION HELPERS ===========================
+// ============================================================================
+// ======================== INITIALIZATION HELPERS ===========================
+// ============================================================================
 __device__ __forceinline__ float half_raw_to_float(const __half_raw& raw) {
     return __half2float(__ushort_as_half(raw.x));
 }
@@ -33,8 +38,6 @@ __device__ __forceinline__ float decode_fp8(int8_t byte) {
 
 
 
-
-
 __global__ void gemv_nvfp4_kernel(
     const int8_t* __restrict__ a,
     const int8_t* __restrict__ b,
@@ -51,6 +54,14 @@ __global__ void gemv_nvfp4_kernel(
     int tid = threadIdx.x;
 
     if (m >= M || l >= L) return;
+
+// ============================================================================
+// ===================== PER-CTA BASE POINTER SETUP ==========================
+// ============================================================================
+// ===================== PER-CTA BASE POINTER SETUP ==========================
+// ============================================================================
+
+
 
     const int K_sf = K / 16;  // 16 elements per scale factor
     const int K_half = K / 2;
@@ -72,12 +83,19 @@ __global__ void gemv_nvfp4_kernel(
     const uint8_t* row_a = batch_a + static_cast<size_t>(m) * K_half;
     const uint8_t* row_sfa = batch_sfa + static_cast<size_t>(m) * K_sf;
 
-    __shared__ float smem_acc[32];
+    __shared__ float smem_acc[128];
     float acc = 0.0f;
 
-    // Each thread processes K/32 elements
 
-    for (int k_block = tid; k_block < K_sf; k_block += 32) {
+
+// ============================================================================
+// ===================== MEMORY LOAD AND MAIN COMPUTE ========================
+// ============================================================================
+// ===================== MEMORY LOAD AND MAIN COMPUTE ========================
+// ============================================================================
+    // Each thread processes K/32 elements (stride == blockDim.x)
+
+    for (int k_block = tid; k_block < K_sf; k_block += 128) {
 
         // Load scale factors (FP8 E4M3 -> float)
 
@@ -115,16 +133,36 @@ __global__ void gemv_nvfp4_kernel(
 
     __syncthreads();
 
-    // Reduce
-    for (int s = 16; s > 0; s >>= 1) {
-        if (tid < s) smem_acc[tid] += smem_acc[tid + s];
-        __syncthreads();
+// ============================================================================
+// ================== ACCUMULATION AND BLOCK REDUCTION =======================
+// ============================================================================
+// ================== ACCUMULATION AND BLOCK REDUCTION =======================
+// ============================================================================
+    // Phase 1: warp-level reduce in registers (no barriers).
+    float warp_sum = acc;
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        warp_sum += __shfl_down_sync(0xffffffff, warp_sum, offset);
     }
 
-    if (tid == 0) {
-        size_t c_idx = static_cast<size_t>(m) + static_cast<size_t>(l) * M;
-        c[c_idx] = __float2half(smem_acc[0]);
+    // Phase 2: one partial per warp to shared, one barrier, final warp reduce.
+    int warp_id = tid >> 5;
+    int lane = tid & 31;
+    if (lane == 0) smem_acc[warp_id] = warp_sum;
+
+    __syncthreads();
+
+    if (warp_id == 0) {
+        float block_sum = (lane < (blockDim.x >> 5)) ? smem_acc[lane] : 0.0f;
+        for (int offset = 16; offset > 0; offset >>= 1) {
+            block_sum += __shfl_down_sync(0xffffffff, block_sum, offset);
+        }
+        if (lane == 0) {
+            size_t c_idx = static_cast<size_t>(m) + static_cast<size_t>(l) * M;
+            c[c_idx] = __float2half(block_sum);
+        }
     }
+
+
 
 }
 
@@ -137,7 +175,7 @@ torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::
     int N_rows = b.size(0);
 
     dim3 grid(M, L);
-    dim3 block(32);
+    dim3 block(128);
 
     auto* a_ptr = reinterpret_cast<const int8_t*>(a.data_ptr());
     auto* b_ptr = reinterpret_cast<const int8_t*>(b.data_ptr());
@@ -184,17 +222,12 @@ def custom_kernel(data: input_t) -> output_t:
     a, b, sfa_ref, sfb_ref, _, _, c = data
     device = a.device
 
-    a_i8 = a.view(torch.int8)
-    b_i8 = b.view(torch.int8)
-    sfa_i8 = sfa_ref.to(device=device, non_blocking=True).view(torch.int8)
-    sfb_i8 = sfb_ref.to(device=device, non_blocking=True).view(torch.int8)
-
-
 
     return module.batched_scaled_gemv_cuda(
-        a_i8,
-        b_i8,
-        sfa_i8,
-        sfb_i8,
+        a,
+        b,
+        sfa_ref,
+        sfb_ref,
         c
     )
+
