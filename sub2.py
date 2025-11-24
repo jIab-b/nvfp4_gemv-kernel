@@ -2,23 +2,27 @@ import torch
 from torch.utils.cpp_extension import load_inline
 from task import input_t, output_t
 
-
-cpp_source = r'''
+cpp_source = """
 #include <torch/extension.h>
 
 torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::Tensor sfa, torch::Tensor sfb, torch::Tensor c);
-'''
+"""
 
-
-cuda_source = r'''
+cuda_source = """
 #include <torch/extension.h>
 #include <cuda_fp16.h>
 #include <cuda_fp4.h>
 #include <cuda_fp8.h>
 
+// ============================================================================
+// ======================== INITIALIZATION HELPERS ===========================
+// ============================================================================
+// ======================== INITIALIZATION HELPERS ===========================
+// ============================================================================
 __device__ __forceinline__ float half_raw_to_float(const __half_raw& raw) {
     return __half2float(__ushort_as_half(raw.x));
 }
+
 
 __device__ __forceinline__ float decode_fp4(uint8_t nibble) {
     __nv_fp4_storage_t storage = static_cast<__nv_fp4_storage_t>(nibble & 0xF);
@@ -33,75 +37,132 @@ __device__ __forceinline__ float decode_fp8(int8_t byte) {
 }
 
 
-// CUDA-core reference using the same launch geometry as sub_tma: grid(m_tiles, k_tiles, L), block(128)
-// Each block handles one M-tile (128 rows) and one K-tile (64 cols) for a given L slice.
-// We compute a partial sum over that K-tile and atomic add to output.
 
-constexpr int M_TILE = 128;
-constexpr int K_TILE = 64;
 
-__global__ void gemv_ref_tile_kernel(
+
+__global__ void gemv_nvfp4_kernel(
     const int8_t* __restrict__ a,
     const int8_t* __restrict__ b,
     const int8_t* __restrict__ sfa,
     const int8_t* __restrict__ sfb,
     half* __restrict__ c,
     int M, int K, int L,
-    size_t stride_a_bytes,
-    size_t stride_sfa_bytes,
-    size_t stride_b_bytes,
-    size_t stride_sfb_bytes
+    int N_rows
 ) {
-    int tile_m = blockIdx.x;
-    int tile_k = blockIdx.y;
-    int tile_l = blockIdx.z;
 
-    int m_base = tile_m * M_TILE;
-    int k_base = tile_k * K_TILE;
-    if (m_base >= M || k_base >= K || tile_l >= L) return;
+    // Parallelize: blockIdx.x -> M, blockIdx.y -> L, threads -> K reduction
+    int m = blockIdx.x;
+    int l = blockIdx.y;
+    int tid = threadIdx.x;
 
-    int lane = threadIdx.x & 31;
-    int warp = threadIdx.x >> 5; // 0..3
+    if (m >= M || l >= L) return;
 
-    // Pointers to start of tile
-    const uint8_t* g_a_tile   = reinterpret_cast<const uint8_t*>(a)   + tile_l * stride_a_bytes   + (m_base * K + k_base) / 2;
-    const uint8_t* g_sfa_tile = reinterpret_cast<const uint8_t*>(sfa) + tile_l * stride_sfa_bytes + m_base * (K / 16) + k_base / 16;
-    const uint8_t* g_b_tile   = reinterpret_cast<const uint8_t*>(b)   + tile_l * stride_b_bytes   + k_base / 2;
-    const uint8_t* g_sfb_tile = reinterpret_cast<const uint8_t*>(sfb) + tile_l * stride_sfb_bytes + k_base / 16;
+// ============================================================================
+// ===================== PER-CTA BASE POINTER SETUP ==========================
+// ============================================================================
+// ===================== PER-CTA BASE POINTER SETUP ==========================
+// ============================================================================
+    const int K_sf = K / 16;  // 16 elements per scale factor
+    const int K_half = K / 2;
+    const size_t batch_stride_a = static_cast<size_t>(M) * K_half;
+    const size_t batch_stride_b = static_cast<size_t>(N_rows) * K_half;
+    const size_t batch_stride_sfa = static_cast<size_t>(M) * K_sf;
+    const size_t batch_stride_sfb = static_cast<size_t>(N_rows) * K_sf;
 
-    // Each warp handles a subset of rows; we’ll map warp 0..3 across 128 rows
-    for (int row = warp * 32 + lane; row < M_TILE; row += 128) {
-        int global_row = m_base + row;
-        if (global_row >= M) continue;
+    const uint8_t* base_a = reinterpret_cast<const uint8_t*>(a);
+    const uint8_t* base_b = reinterpret_cast<const uint8_t*>(b);
+    const uint8_t* base_sfa = reinterpret_cast<const uint8_t*>(sfa);
+    const uint8_t* base_sfb = reinterpret_cast<const uint8_t*>(sfb);
 
-        float acc = 0.f;
-        const uint8_t* row_a = g_a_tile + row * (K / 2);
-        const uint8_t* row_sfa = g_sfa_tile + row * (K / 16);
+    const uint8_t* batch_a = base_a + l * batch_stride_a;
+    const uint8_t* batch_b = base_b + l * batch_stride_b;
+    const uint8_t* batch_sfa = base_sfa + l * batch_stride_sfa;
+    const uint8_t* batch_sfb = base_sfb + l * batch_stride_sfb;
 
-        // Iterate over this K tile (64 elements) sequentially
-        for (int kk = 0; kk < K_TILE; ++kk) {
-            int byte_idx = kk >> 1;
+    const uint8_t* row_a = batch_a + static_cast<size_t>(m) * K_half;
+    const uint8_t* row_sfa = batch_sfa + static_cast<size_t>(m) * K_sf;
+
+    __shared__ float smem_acc[128];
+    float acc = 0.0f;
+
+// ============================================================================
+// ===================== MEMORY LOAD AND MAIN COMPUTE ========================
+// ============================================================================
+// ===================== MEMORY LOAD AND MAIN COMPUTE ========================
+// ============================================================================
+    // Each thread processes K/32 elements (stride == blockDim.x)
+
+    for (int k_block = tid; k_block < K_sf; k_block += 128) {
+
+        // Load scale factors (FP8 E4M3 -> float)
+
+        float scale_a = decode_fp8(static_cast<int8_t>(row_sfa[k_block]));
+
+        float scale_b = decode_fp8(static_cast<int8_t>(batch_sfb[k_block]));
+
+
+
+        // Process 16 FP4 elements
+        for (int i = 0; i < 16; i++) {
+            int k = k_block * 16 + i;
+            if (k >= K) break;
+
+            int byte_idx = k / 2;
             uint8_t a_byte = row_a[byte_idx];
-            uint8_t b_byte = g_b_tile[byte_idx];
+            uint8_t b_byte = batch_b[byte_idx];
 
-            uint8_t a_nib = (kk & 1) ? (a_byte >> 4) : (a_byte & 0xF);
-            uint8_t b_nib = (kk & 1) ? (b_byte >> 4) : (b_byte & 0xF);
+            // k = odd, take last 4 bits, k even, take first 4 bits
+            uint8_t a_nib = (k & 1) ? (a_byte >> 4) : (a_byte & 0xF);
+            uint8_t b_nib = (k & 1) ? (b_byte >> 4) : (b_byte & 0xF);
 
             float a_val = decode_fp4(a_nib);
             float b_val = decode_fp4(b_nib);
 
-            int sf_idx = kk >> 4;
-            float sf_a = decode_fp8(static_cast<int8_t>(row_sfa[sf_idx]));
-            float sf_b = decode_fp8(static_cast<int8_t>(g_sfb_tile[sf_idx]));
+            acc += (a_val * scale_a) * (b_val * scale_b);
 
-            acc += (a_val * sf_a) * (b_val * sf_b);
         }
 
-        // Atomic accumulate into C (same as tcgen05 path)
-        size_t c_idx = static_cast<size_t>(global_row) + static_cast<size_t>(tile_l) * M;
-        atomicAdd(reinterpret_cast<half*>(&c[c_idx]), __float2half(acc));
     }
+
+
+
+    smem_acc[tid] = acc;
+
+    __syncthreads();
+
+// ============================================================================
+// ================== ACCUMULATION AND BLOCK REDUCTION =======================
+// ============================================================================
+// ================== ACCUMULATION AND BLOCK REDUCTION =======================
+// ============================================================================
+    // Phase 1: warp-level reduce in registers (no barriers).
+    float warp_sum = acc;
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        warp_sum += __shfl_down_sync(0xffffffff, warp_sum, offset);
+    }
+
+    // Phase 2: one partial per warp to shared, one barrier, final warp reduce.
+    int warp_id = tid >> 5;
+    int lane = tid & 31;
+    if (lane == 0) smem_acc[warp_id] = warp_sum;
+
+    __syncthreads();
+
+    if (warp_id == 0) {
+        float block_sum = (lane < (blockDim.x >> 5)) ? smem_acc[lane] : 0.0f;
+        for (int offset = 16; offset > 0; offset >>= 1) {
+            block_sum += __shfl_down_sync(0xffffffff, block_sum, offset);
+        }
+        if (lane == 0) {
+            size_t c_idx = static_cast<size_t>(m) + static_cast<size_t>(l) * M;
+            c[c_idx] = __float2half(block_sum);
+        }
+    }
+
+
+
 }
+
 
 
 torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::Tensor sfa, torch::Tensor sfb, torch::Tensor c) {
@@ -109,37 +170,38 @@ torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::
     int K = a.size(1) * 2;
     int L = a.size(2);
     int N_rows = b.size(0);
-    int m_tiles = (M + M_TILE - 1) / M_TILE;
-    int k_tiles = (K + K_TILE - 1) / K_TILE;
 
-    dim3 grid(m_tiles, k_tiles, L);
-    dim3 block(128, 1, 1); // match sub_tma geometry
+    dim3 grid(M, L);
+    dim3 block(128);
 
-    size_t stride_a_bytes   = static_cast<size_t>(M) * (K / 2);
-    size_t stride_sfa_bytes = static_cast<size_t>(M) * (K / 16);
-    size_t stride_b_bytes   = (N_rows) * (K / 2);
-    size_t stride_sfb_bytes = (N_rows) * (K / 16);
+    auto* a_ptr = reinterpret_cast<const int8_t*>(a.data_ptr());
+    auto* b_ptr = reinterpret_cast<const int8_t*>(b.data_ptr());
+    auto* sfa_ptr = reinterpret_cast<const int8_t*>(sfa.data_ptr());
+    auto* sfb_ptr = reinterpret_cast<const int8_t*>(sfb.data_ptr());
+    auto* c_ptr = reinterpret_cast<half*>(c.data_ptr());
 
-    gemv_ref_tile_kernel<<<grid, block>>>(
-        reinterpret_cast<const int8_t*>(a.data_ptr()),
-        reinterpret_cast<const int8_t*>(b.data_ptr()),
-        reinterpret_cast<const int8_t*>(sfa.data_ptr()),
-        reinterpret_cast<const int8_t*>(sfb.data_ptr()),
-        reinterpret_cast<half*>(c.data_ptr()),
+    gemv_nvfp4_kernel<<<grid, block>>>(
+        a_ptr,
+        b_ptr,
+        sfa_ptr,
+        sfb_ptr,
+        c_ptr,
         M, K, L,
-        stride_a_bytes,
-        stride_sfa_bytes,
-        stride_b_bytes,
-        stride_sfb_bytes
+
+        N_rows
+
     );
 
-    return c;
-}
-'''
 
+
+    return c;
+
+}
+
+"""
 
 module = load_inline(
-    name='batched_scaled_gemv_ref_tiled',
+    name='batched_scaled_gemv',
     cpp_sources=cpp_source,
     cuda_sources=cuda_source,
     functions=['batched_scaled_gemv_cuda'],
@@ -153,16 +215,21 @@ module = load_inline(
     verbose=False
 )
 
-
 def custom_kernel(data: input_t) -> output_t:
     a, b, sfa_ref, sfb_ref, _, _, c = data
     device = a.device
-
-    c.zero_()
 
     a_i8 = a.view(torch.int8)
     b_i8 = b.view(torch.int8)
     sfa_i8 = sfa_ref.to(device=device, non_blocking=True).view(torch.int8)
     sfb_i8 = sfb_ref.to(device=device, non_blocking=True).view(torch.int8)
 
-    return module.batched_scaled_gemv_cuda(a_i8, b_i8, sfa_i8, sfb_i8, c)
+
+
+    return module.batched_scaled_gemv_cuda(
+        a_i8,
+        b_i8,
+        sfa_i8,
+        sfb_i8,
+        c
+    )
