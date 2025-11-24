@@ -2,13 +2,13 @@ import torch
 from torch.utils.cpp_extension import load_inline
 from task import input_t, output_t
 
-cpp_source = r"""
+cpp_source = """
 #include <torch/extension.h>
 
 torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::Tensor sfa, torch::Tensor sfb, torch::Tensor c);
 """
 
-cuda_source = r"""
+cuda_source = """
 #include <torch/extension.h>
 #include <cuda_fp16.h>
 #include <cuda_fp4.h>
@@ -17,28 +17,35 @@ cuda_source = r"""
 // ============================================================================
 // ======================== INITIALIZATION HELPERS ===========================
 // ============================================================================
-__device__ __forceinline__ half decode_fp4_half(uint8_t nibble) {
+// ======================== INITIALIZATION HELPERS ===========================
+// ============================================================================
+__device__ __forceinline__ float half_raw_to_float(const __half_raw& raw) {
+    return __half2float(__ushort_as_half(raw.x));
+}
+
+// Decode two FP4 (E2M1) values packed in one byte into a half2
+__device__ __forceinline__ __half2 decode_fp4x2(uint8_t byte) {
+    __half2_raw raw = __nv_cvt_fp4x2_to_halfraw2(
+        static_cast<__nv_fp4x2_storage_t>(byte),
+        __NV_E2M1
+    );
+    return *reinterpret_cast<__half2*>(&raw);
+}
+
+
+__device__ __forceinline__ float decode_fp4(uint8_t nibble) {
     __nv_fp4_storage_t storage = static_cast<__nv_fp4_storage_t>(nibble & 0xF);
     __half_raw raw = __nv_cvt_fp4_to_halfraw(storage, __NV_E2M1);
-    half h; reinterpret_cast<__half_raw&>(h) = raw; return h;
+    return half_raw_to_float(raw);
 }
 
-__device__ __forceinline__ half decode_fp8_half(int8_t byte) {
+__device__ __forceinline__ float decode_fp8(int8_t byte) {
     __nv_fp8_storage_t storage = static_cast<__nv_fp8_storage_t>(byte);
     __half_raw raw = __nv_cvt_fp8_to_halfraw(storage, __NV_E4M3);
-    half h; reinterpret_cast<__half_raw&>(h) = raw; return h;
+    return half_raw_to_float(raw);
 }
 
-// Only cp.async uses inline PTX for now; other PTX-level tuning can be added later.
-__device__ __forceinline__ void cp_async_16(void* dst, const void* src, int valid_bytes) {
-    // cp.async expects a 32-bit shared address, so convert explicitly.
-    unsigned smem_addr = static_cast<unsigned>(__cvta_generic_to_shared(dst));
-    if (valid_bytes == 16) {
-        asm volatile("cp.async.cg.shared.global [%0], [%1], 16;\n" :: "r"(smem_addr), "l"(src));
-    } else {
-        asm volatile("cp.async.cg.shared.global [%0], [%1], 16, %2;\n" :: "r"(smem_addr), "l"(src), "r"(valid_bytes));
-    }
-}
+
 
 __global__ void gemv_nvfp4_kernel(
     const int8_t* __restrict__ a,
@@ -49,137 +56,104 @@ __global__ void gemv_nvfp4_kernel(
     int M, int K, int L,
     int N_rows
 ) {
-    // blockIdx.x -> row (m), blockIdx.y -> batch (l)
-    const int m = blockIdx.x;
-    const int l = blockIdx.y;
-    const int tid = threadIdx.x;
+
+    // Parallelize: blockIdx.x -> M, blockIdx.y -> L, threads -> K reduction
+    int m = blockIdx.x;
+    int l = blockIdx.y;
+    int tid = threadIdx.x;
+
     if (m >= M || l >= L) return;
 
-    // =========================================================================
-    // Perf hooks to add later (commented for now):
-    // - cp.async.bulk / prefetch
-    // - ldmatrix / tensor-core mma
-    // - warp-specialized roles
-    // =========================================================================
+// ============================================================================
+// ===================== PER-CTA BASE POINTER SETUP ==========================
+// ============================================================================
+// ===================== PER-CTA BASE POINTER SETUP ==========================
+// ============================================================================
 
-    const int K_half = K / 2;          // packed FP4 bytes per row
-    const int K_sf   = K / 16;         // scale factors per row
-    const size_t batch_stride_a   = static_cast<size_t>(M) * K_half;
-    const size_t batch_stride_b   = static_cast<size_t>(N_rows) * K_half;
+
+
+    const int K_sf = K / 16;  // 16 elements per scale factor
+    const int K_half = K / 2;
+    const size_t batch_stride_a = static_cast<size_t>(M) * K_half;
+    const size_t batch_stride_b = static_cast<size_t>(N_rows) * K_half;
     const size_t batch_stride_sfa = static_cast<size_t>(M) * K_sf;
     const size_t batch_stride_sfb = static_cast<size_t>(N_rows) * K_sf;
 
-    const uint8_t* base_a   = reinterpret_cast<const uint8_t*>(a);
-    const uint8_t* base_b   = reinterpret_cast<const uint8_t*>(b);
+    const uint8_t* base_a = reinterpret_cast<const uint8_t*>(a);
+    const uint8_t* base_b = reinterpret_cast<const uint8_t*>(b);
     const uint8_t* base_sfa = reinterpret_cast<const uint8_t*>(sfa);
     const uint8_t* base_sfb = reinterpret_cast<const uint8_t*>(sfb);
 
-    const uint8_t* batch_a   = base_a + l * batch_stride_a;
-    const uint8_t* batch_b   = base_b + l * batch_stride_b;
+    const uint8_t* batch_a = base_a + l * batch_stride_a;
+    const uint8_t* batch_b = base_b + l * batch_stride_b;
     const uint8_t* batch_sfa = base_sfa + l * batch_stride_sfa;
     const uint8_t* batch_sfb = base_sfb + l * batch_stride_sfb;
 
-    const uint8_t* row_a   = batch_a + static_cast<size_t>(m) * K_half;
+    const uint8_t* row_a = batch_a + static_cast<size_t>(m) * K_half;
     const uint8_t* row_sfa = batch_sfa + static_cast<size_t>(m) * K_sf;
 
-    constexpr int TILE_K = 1024;                       // elements
-    constexpr int BYTES_PER_TILE = TILE_K / 2;        // packed FP4 bytes
-    constexpr int SCALES_PER_TILE = TILE_K / 16;      // FP8 scale bytes
+    __shared__ float smem_acc[128];
+    float acc = 0.0f;
 
-    __shared__ uint8_t sh_a[2][BYTES_PER_TILE];
-    __shared__ uint8_t sh_b[2][BYTES_PER_TILE];
-    __shared__ half2   sh_dec_a[2][BYTES_PER_TILE];
-    __shared__ half2   sh_dec_b[2][BYTES_PER_TILE];
-    __shared__ half    sh_scale_a[2][SCALES_PER_TILE];
-    __shared__ half    sh_scale_b[2][SCALES_PER_TILE];
-    __shared__ float   smem_acc[128];
 
-    float acc0 = 0.0f, acc1 = 0.0f;
-    int stage = 0;
-    int tile = 0;
+// ============================================================================
+// ===================== MEMORY LOAD AND MAIN COMPUTE ========================
+// ============================================================================
+// ===================== MEMORY LOAD AND MAIN COMPUTE ========================
+// ============================================================================
+    // Each thread processes K/128 elements (stride == blockDim.x)
 
-    // Prefetch the first tile
-    {
-        const int elems = min(TILE_K, K);
-        const int bytes = (elems + 1) >> 1;
-        for (int byte = tid * 16; byte < bytes; byte += blockDim.x * 16) {
-            const int remaining = bytes - byte;
-            const int cp_bytes = remaining >= 16 ? 16 : remaining;
-            cp_async_16(sh_a[stage] + byte, row_a + byte, cp_bytes);
-            cp_async_16(sh_b[stage] + byte, batch_b + byte, cp_bytes);
+    for (int k_block = tid; k_block < K_sf; k_block += 128) {
+
+        // Load scale factors (FP8 E4M3 -> float) and combine once
+        float scale = decode_fp8(static_cast<int8_t>(row_sfa[k_block])) *
+                      decode_fp8(static_cast<int8_t>(batch_sfb[k_block]));
+        __half scale_h = __float2half(scale);
+        __half2 scale_h2 = __halves2half2(scale_h, scale_h);
+
+        // Process 16 FP4 elements = 8 packed bytes
+        int byte_base = k_block * 8;  // 8 bytes per 16 fp4 vals
+#pragma unroll
+        for (int b_byte = 0; b_byte < 8; ++b_byte) {
+            int global_byte = byte_base + b_byte;
+            int k0 = (k_block << 4) + (b_byte << 1);
+            if (k0 >= K) break;  // guard partial tail
+
+            uint8_t a_pack = row_a[global_byte];
+            uint8_t b_pack = batch_b[global_byte];
+
+            // Fast pairwise decode: two fp4 -> half2 in one instruction
+            __half2 a2 = decode_fp4x2(a_pack);
+            __half2 b2 = decode_fp4x2(b_pack);
+
+            __half2 prod = __hmul2(__hmul2(a2, b2), scale_h2);
+            float2 f = __half22float2(prod);
+            acc += f.x + f.y;
         }
-        asm volatile("cp.async.commit_group;\n" ::);
+
     }
 
-    while (true) {
-        // Wait for current stage to land
-        asm volatile("cp.async.wait_group 0;\n" ::);
-        __syncthreads();
 
-        const int elems_this_tile   = min(TILE_K, K - tile);
-        const int bytes_this_tile   = (elems_this_tile + 1) >> 1;
-        const int scales_this_tile  = (elems_this_tile + 15) >> 4;
 
-        // Decode scales for this tile
-        if (tid < scales_this_tile) {
-            sh_scale_a[stage][tid] = decode_fp8_half(static_cast<int8_t>(row_sfa[(tile >> 4) + tid]));
-            sh_scale_b[stage][tid] = decode_fp8_half(static_cast<int8_t>(batch_sfb[(tile >> 4) + tid]));
-        }
+    smem_acc[tid] = acc;
 
-        // Launch prefetch for the next tile (overlaps with compute)
-        const int next_tile = tile + TILE_K;
-        const int next_stage = stage ^ 1;
-        if (next_tile < K) {
-            const int next_elems = min(TILE_K, K - next_tile);
-            const int next_bytes = (next_elems + 1) >> 1;
-            for (int byte = tid * 16; byte < next_bytes; byte += blockDim.x * 16) {
-                const int remaining = next_bytes - byte;
-                const int cp_bytes = remaining >= 16 ? 16 : remaining;
-                cp_async_16(sh_a[next_stage] + byte, row_a + (next_tile >> 1) + byte, cp_bytes);
-                cp_async_16(sh_b[next_stage] + byte, batch_b + (next_tile >> 1) + byte, cp_bytes);
-            }
-            asm volatile("cp.async.commit_group;\n" ::);
-        }
+    __syncthreads();
 
-        // Decode packed FP4 -> half2 once per byte
-        for (int byte = tid; byte < bytes_this_tile; byte += blockDim.x) {
-            uint8_t a_byte = sh_a[stage][byte];
-            uint8_t b_byte = sh_b[stage][byte];
-            half2 a2 = __halves2half2(decode_fp4_half(a_byte & 0xF), decode_fp4_half(a_byte >> 4));
-            half2 b2 = __halves2half2(decode_fp4_half(b_byte & 0xF), decode_fp4_half(b_byte >> 4));
-            sh_dec_a[stage][byte] = a2;
-            sh_dec_b[stage][byte] = b2;
-        }
-
-        __syncthreads();
-
-        // Compute with decoded data
-        for (int byte = tid; byte < bytes_this_tile; byte += blockDim.x) {
-            const int elem_base = byte * 2;
-            const int sf = elem_base >> 4;  // /16
-            half2 sa = __halves2half2(sh_scale_a[stage][sf], sh_scale_a[stage][sf]);
-            half2 sb = __halves2half2(sh_scale_b[stage][sf], sh_scale_b[stage][sf]);
-            half2 prod = __hmul2(__hmul2(sh_dec_a[stage][byte], sa), __hmul2(sh_dec_b[stage][byte], sb));
-            acc0 += __low2float(prod);
-            acc1 += __high2float(prod);
-        }
-
-        if (next_tile >= K) break;
-        tile = next_tile;
-        stage = next_stage;
-    }
-
-    float acc = acc0 + acc1;
-
-    // Warp-level reduction
+// ============================================================================
+// ================== ACCUMULATION AND BLOCK REDUCTION =======================
+// ============================================================================
+// ================== ACCUMULATION AND BLOCK REDUCTION =======================
+// ============================================================================
+    // Phase 1: warp-level reduce in registers (no barriers).
+    float warp_sum = acc;
     for (int offset = 16; offset > 0; offset >>= 1) {
-        acc += __shfl_down_sync(0xffffffff, acc, offset);
+        warp_sum += __shfl_down_sync(0xffffffff, warp_sum, offset);
     }
 
-    // Block-level reduction
-    const int warp_id = tid >> 5;
-    const int lane = tid & 31;
-    if (lane == 0) smem_acc[warp_id] = acc;
+    // Phase 2: one partial per warp to shared, one barrier, final warp reduce.
+    int warp_id = tid >> 5;
+    int lane = tid & 31;
+    if (lane == 0) smem_acc[warp_id] = warp_sum;
 
     __syncthreads();
 
@@ -193,7 +167,11 @@ __global__ void gemv_nvfp4_kernel(
             c[c_idx] = __float2half(block_sum);
         }
     }
+
+
+
 }
+
 
 
 torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::Tensor sfa, torch::Tensor sfb, torch::Tensor c) {
@@ -218,10 +196,15 @@ torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::
         sfb_ptr,
         c_ptr,
         M, K, L,
+
         N_rows
+
     );
 
+
+
     return c;
+
 }
 
 """
@@ -242,8 +225,10 @@ module = load_inline(
 )
 
 def custom_kernel(data: input_t) -> output_t:
-    a, b, sfa_ref, sfb_ref, sfa_per, sfb_per, c = data
-    #device = a.device
+    a, b, sfa_ref, sfb_ref, _, _, c = data
+    device = a.device
+
+
     return module.batched_scaled_gemv_cuda(
         a,
         b,

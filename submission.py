@@ -23,6 +23,15 @@ __device__ __forceinline__ float half_raw_to_float(const __half_raw& raw) {
     return __half2float(__ushort_as_half(raw.x));
 }
 
+// Decode two FP4 (E2M1) values packed in one byte into a half2
+__device__ __forceinline__ __half2 decode_fp4x2(uint8_t byte) {
+    __half2_raw raw = __nv_cvt_fp4x2_to_halfraw2(
+        static_cast<__nv_fp4x2_storage_t>(byte),
+        __NV_E2M1
+    );
+    return *reinterpret_cast<__half2*>(&raw);
+}
+
 
 __device__ __forceinline__ float decode_fp4(uint8_t nibble) {
     __nv_fp4_storage_t storage = static_cast<__nv_fp4_storage_t>(nibble & 0xF);
@@ -87,42 +96,39 @@ __global__ void gemv_nvfp4_kernel(
     float acc = 0.0f;
 
 
-
 // ============================================================================
 // ===================== MEMORY LOAD AND MAIN COMPUTE ========================
 // ============================================================================
 // ===================== MEMORY LOAD AND MAIN COMPUTE ========================
 // ============================================================================
-    // Each thread processes K/32 elements (stride == blockDim.x)
+    // Each thread processes K/128 elements (stride == blockDim.x)
 
     for (int k_block = tid; k_block < K_sf; k_block += 128) {
 
-        // Load scale factors (FP8 E4M3 -> float)
+        // Load scale factors (FP8 E4M3 -> float) and combine once
+        float scale = decode_fp8(static_cast<int8_t>(row_sfa[k_block])) *
+                      decode_fp8(static_cast<int8_t>(batch_sfb[k_block]));
+        __half scale_h = __float2half(scale);
+        __half2 scale_h2 = __halves2half2(scale_h, scale_h);
 
-        float scale_a = decode_fp8(static_cast<int8_t>(row_sfa[k_block]));
+        // Process 16 FP4 elements = 8 packed bytes
+        int byte_base = k_block * 8;  // 8 bytes per 16 fp4 vals
+#pragma unroll
+        for (int b_byte = 0; b_byte < 8; ++b_byte) {
+            int global_byte = byte_base + b_byte;
+            int k0 = (k_block << 4) + (b_byte << 1);
+            if (k0 >= K) break;  // guard partial tail
 
-        float scale_b = decode_fp8(static_cast<int8_t>(batch_sfb[k_block]));
+            uint8_t a_pack = row_a[global_byte];
+            uint8_t b_pack = batch_b[global_byte];
 
+            // Fast pairwise decode: two fp4 -> half2 in one instruction
+            __half2 a2 = decode_fp4x2(a_pack);
+            __half2 b2 = decode_fp4x2(b_pack);
 
-
-        // Process 16 FP4 elements
-        for (int i = 0; i < 16; i++) {
-            int k = k_block * 16 + i;
-            if (k >= K) break;
-
-            int byte_idx = k / 2;
-            uint8_t a_byte = row_a[byte_idx];
-            uint8_t b_byte = batch_b[byte_idx];
-
-            // k = odd, take last 4 bits, k even, take first 4 bits
-            uint8_t a_nib = (k & 1) ? (a_byte >> 4) : (a_byte & 0xF);
-            uint8_t b_nib = (k & 1) ? (b_byte >> 4) : (b_byte & 0xF);
-
-            float a_val = decode_fp4(a_nib);
-            float b_val = decode_fp4(b_nib);
-
-            acc += (a_val * scale_a) * (b_val * scale_b);
-
+            __half2 prod = __hmul2(__hmul2(a2, b2), scale_h2);
+            float2 f = __half22float2(prod);
+            acc += f.x + f.y;
         }
 
     }
@@ -230,4 +236,3 @@ def custom_kernel(data: input_t) -> output_t:
         sfb_ref,
         c
     )
-
