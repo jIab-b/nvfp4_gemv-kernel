@@ -1,7 +1,9 @@
 "**NVIDIA on GitHub ✅ success**
-> Workflow [19634586744](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19634586744>) completed
+> Workflow [19636493112](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19636493112>) completed
 > Downloading artifacts... done
+> ✅ Testing successful
 > ✅ Benchmarking successful
+> ✅ Leaderboard run successful
 
 Running on:
 * GPU: `NVIDIA B200`
@@ -11,17 +13,51 @@ Running on:
 * Torch: `2.9.1+cu130`
 
 
+## ✅ Passed 10/10 tests:
+```
+✅ k: 256; l: 1; m: 128; seed: 1111
+✅ k: 1536; l: 1; m: 128; seed: 1111
+✅ k: 3072; l: 1; m: 128; seed: 1111
+✅ k: 7168; l: 1; m: 256; seed: 1111
+✅ k: 7168; l: 1; m: 256; seed: 1111
+✅ k: 4608; l: 2; m: 2432; seed: 1111
+✅ k: 7168; l: 2; m: 384; seed: 1111
+✅ k: 512; l: 2; m: 512; seed: 1111
+✅ k: 4096; l: 2; m: 512; seed: 1111
+✅ k: 1536; l: 2; m: 512; seed: 1111```
+
 ## Benchmarks:
 ```
 k: 16384; l: 1; m: 7168; seed: 1111
- ⏱ 49.5 ± 0.06 µs
- ⚡ 49.0 µs 🐌 51.3 µs
+ ⏱ 49.2 ± 0.01 µs
+ ⚡ 49.0 µs 🐌 49.3 µs
 
 k: 7168; l: 8; m: 4096; seed: 1111
- ⏱ 90.0 ± 0.07 µs
- ⚡ 88.1 µs 🐌 91.1 µs
+ ⏱ 82.0 ± 0.03 µs
+ ⚡ 81.8 µs 🐌 82.9 µs
 
 k: 2048; l: 4; m: 7168; seed: 1111
- ⏱ 32.8 ± 0.01 µs
- ⚡ 32.6 µs 🐌 32.8 µs
-```"
+ ⏱ 28.7 ± 0.01 µs
+ ⚡ 28.5 µs 🐌 28.8 µs
+```
+
+## Ranked Benchmark:
+```
+k: 16384; l: 1; m: 7168; seed: 1111
+ ⏱ 49.2 ± 0.01 µs
+ ⚡ 49.1 µs 🐌 49.3 µs
+
+k: 7168; l: 8; m: 4096; seed: 1111
+ ⏱ 82.4 ± 0.08 µs
+ ⚡ 80.9 µs 🐌 83.1 µs
+
+k: 2048; l: 4; m: 7168; seed: 1111
+ ⏱ 28.7 ± 0.02 µs
+ ⚡ 28.5 µs 🐌 29.2 µs
+```","**NVIDIA on GitHub (secret) ✅ success**
+> Workflow [19636493075](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19636493075>) completed
+> Downloading artifacts... done
+> ✅ Testing successful
+> ✅ Benchmarking successful
+> ✅ Leaderboard run successful
+"

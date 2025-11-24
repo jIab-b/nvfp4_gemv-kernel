@@ -19,6 +19,10 @@ cuda_source = """
 // ============================================================================
 // ======================== INITIALIZATION HELPERS ===========================
 // ============================================================================
+// Tunable CTA size (must be a multiple of 32)
+// current perf order 64 -> 128 -> 256 -> 32
+#define BLOCK_SIZE 64
+
 __device__ __forceinline__ float half_raw_to_float(const __half_raw& raw) {
     return __half2float(__ushort_as_half(raw.x));
 }
@@ -92,7 +96,7 @@ __global__ void gemv_nvfp4_kernel(
     const uint8_t* row_a = batch_a + static_cast<size_t>(m) * K_half;
     const uint8_t* row_sfa = batch_sfa + static_cast<size_t>(m) * K_sf;
 
-    __shared__ float smem_acc[128];
+    __shared__ float smem_acc[BLOCK_SIZE];
     float acc = 0.0f;
 
 
@@ -103,7 +107,7 @@ __global__ void gemv_nvfp4_kernel(
 // ============================================================================
     // Each thread processes K/128 elements (stride == blockDim.x)
 
-    for (int k_block = tid; k_block < K_sf; k_block += 128) {
+    for (int k_block = tid; k_block < K_sf; k_block += BLOCK_SIZE) {
 
         // Load scale factors (FP8 E4M3 -> float) and combine once
         float scale = decode_fp8(static_cast<int8_t>(row_sfa[k_block])) *
@@ -181,7 +185,7 @@ torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::
     int N_rows = b.size(0);
 
     dim3 grid(M, L);
-    dim3 block(128);
+    dim3 block(BLOCK_SIZE);
 
     auto* a_ptr = reinterpret_cast<const int8_t*>(a.data_ptr());
     auto* b_ptr = reinterpret_cast<const int8_t*>(b.data_ptr());
