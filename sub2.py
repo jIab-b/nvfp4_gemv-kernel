@@ -22,6 +22,7 @@ cuda_source = """
 // Tunable CTA size (must be a multiple of 32)
 // current perf order 64 -> 128 -> 256 -> 32
 #define BLOCK_SIZE 64
+#define K_TILE 64
 
 __device__ __forceinline__ float half_raw_to_float(const __half_raw& raw) {
     return __half2float(__ushort_as_half(raw.x));
@@ -97,50 +98,76 @@ __global__ void gemv_nvfp4_kernel(
     const uint8_t* row_sfa = batch_sfa + static_cast<size_t>(m) * K_sf;
 
     __shared__ float smem_acc[BLOCK_SIZE];
+    __shared__ uint8_t sh_a[2][K_TILE * 8];
+    __shared__ uint8_t sh_b[2][K_TILE * 8];
+    __shared__ uint8_t sh_sfa[2][K_TILE];
+    __shared__ uint8_t sh_sfb[2][K_TILE];
     float acc = 0.0f;
 
-
 // ============================================================================
 // ===================== MEMORY LOAD AND MAIN COMPUTE ========================
 // ============================================================================
 // ===================== MEMORY LOAD AND MAIN COMPUTE ========================
 // ============================================================================
-    // Each thread processes K/128 elements (stride == blockDim.x)
 
-    for (int k_block = tid; k_block < K_sf; k_block += BLOCK_SIZE) {
+    int tile_count = K_sf / K_TILE;
+    int buf = 0;
 
-        // Load scale factors (FP8 E4M3 -> float) and combine once
-        float scale = decode_fp8(static_cast<int8_t>(row_sfa[k_block])) *
-                      decode_fp8(static_cast<int8_t>(batch_sfb[k_block]));
-        __half scale_h = __float2half(scale);
-        __half2 scale_h2 = __halves2half2(scale_h, scale_h);
+#define ASYNC_COPY_16(dst, src) \
+    asm volatile("cp.async.cg.shared.global [%0], [%1], 16;" :: "r"(dst), "l"(src))
 
-        // Process 16 FP4 elements = 8 packed bytes
-        int byte_base = k_block * 8;  // 8 bytes per 16 fp4 vals
-#pragma unroll
-        for (int b_byte = 0; b_byte < 8; ++b_byte) {
-            int global_byte = byte_base + b_byte;
-            int k0 = (k_block << 4) + (b_byte << 1);
-            if (k0 >= K) break;  // guard partial tail
+    auto issue_tile_async = [&](int b_idx, int tile_idx) {
+        int base_k = tile_idx * K_TILE;
+        uint32_t sh_a_base = __cvta_generic_to_shared(&sh_a[b_idx][0]);
+        uint32_t sh_b_base = __cvta_generic_to_shared(&sh_b[b_idx][0]);
 
-            uint8_t a_pack = row_a[global_byte];
-            uint8_t b_pack = batch_b[global_byte];
+        for (int i = tid * 16; i < K_TILE * 8; i += BLOCK_SIZE * 16) {
+            ASYNC_COPY_16(sh_a_base + i, row_a + base_k * 8 + i);
+            ASYNC_COPY_16(sh_b_base + i, batch_b + base_k * 8 + i);
+        }
+        for (int i = tid; i < K_TILE; i += BLOCK_SIZE) {
+            sh_sfa[b_idx][i] = row_sfa[base_k + i];
+            sh_sfb[b_idx][i] = batch_sfb[base_k + i];
+        }
+        asm volatile("cp.async.commit_group;");
+    };
 
-            // Fast pairwise decode: two fp4 -> half2 in one instruction
-            __half2 a2 = decode_fp4x2(a_pack);
-            __half2 b2 = decode_fp4x2(b_pack);
+    issue_tile_async(0, 0);
+    asm volatile("cp.async.wait_group 0;");
+    __syncthreads();
 
-            __half2 prod = __hmul2(__hmul2(a2, b2), scale_h2);
-            float2 f = __half22float2(prod);
-            acc += f.x + f.y;
+    for (int tile = 0; tile < tile_count; ++tile) {
+        if (tile + 1 < tile_count) {
+            issue_tile_async(buf ^ 1, tile + 1);
         }
 
+        for (int kb = tid; kb < K_TILE; kb += BLOCK_SIZE) {
+            float scale = decode_fp8(static_cast<int8_t>(sh_sfa[buf][kb])) *
+                          decode_fp8(static_cast<int8_t>(sh_sfb[buf][kb]));
+            __half scale_h = __float2half(scale);
+            __half2 scale_h2 = __halves2half2(scale_h, scale_h);
+
+            int byte_base = kb * 8;
+#pragma unroll
+            for (int bb = 0; bb < 8; ++bb) {
+                __half2 a2 = decode_fp4x2(sh_a[buf][byte_base + bb]);
+                __half2 b2 = decode_fp4x2(sh_b[buf][byte_base + bb]);
+                __half2 prod = __hmul2(__hmul2(a2, b2), scale_h2);
+                float2 f = __half22float2(prod);
+                acc += f.x + f.y;
+            }
+        }
+
+        if (tile + 1 < tile_count) {
+            asm volatile("cp.async.wait_group 0;");
+            __syncthreads();
+            buf ^= 1;
+        }
     }
 
-
+#undef ASYNC_COPY_16
 
     smem_acc[tid] = acc;
-
     __syncthreads();
 
 // ============================================================================

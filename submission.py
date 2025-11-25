@@ -105,7 +105,7 @@ __global__ void gemv_nvfp4_kernel(
 // ============================================================================
 // ===================== MEMORY LOAD AND MAIN COMPUTE ========================
 // ============================================================================
-    // Each thread processes K/128 elements (stride == blockDim.x)
+    // Each thread processes K/block_size elements elements (stride == blockDim.x)
 
     for (int k_block = tid; k_block < K_sf; k_block += BLOCK_SIZE) {
 
