@@ -2,12 +2,15 @@ import torch
 from torch.utils.cpp_extension import load_inline
 from task import input_t, output_t
 
+
 cpp_source = """
 #include <torch/extension.h>
+#include <cuda_runtime.h>
 
 torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::Tensor sfa, torch::Tensor sfb, torch::Tensor c);
 """
 
+# Keep the CUDA source tied to the Python K_TILE so both sides stay in sync.
 cuda_source = """
 #include <torch/extension.h>
 #include <cuda_fp16.h>
@@ -22,7 +25,7 @@ cuda_source = """
 // Tunable CTA size (must be a multiple of 32)
 #define BLOCK_SIZE 64
 // K elements per tile (must be multiple of 16 for scale alignment)
-#define K_TILE 1024
+#define K_TILE 4096
 #define SCALES_PER_TILE (K_TILE / 16)
 #define BYTES_PER_TILE (K_TILE / 2)
 
@@ -246,6 +249,7 @@ torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::
     int L = a.size(2);
     int N_rows = b.size(0);
 
+
     dim3 grid(M, L);
     dim3 block(BLOCK_SIZE);
 
@@ -293,8 +297,6 @@ module = load_inline(
 def custom_kernel(data: input_t) -> output_t:
     a, b, sfa_ref, sfb_ref, _, _, c = data
     device = a.device
-
-
     return module.batched_scaled_gemv_cuda(
         a,
         b,
