@@ -116,18 +116,23 @@ __global__ void gemv_nvfp4_kernel(
 #define ASYNC_COPY_16(dst, src) \
     asm volatile("cp.async.cg.shared.global [%0], [%1], 16;" :: "r"(dst), "l"(src))
 
+#define ASYNC_COPY_4(dst, src) \
+    asm volatile("cp.async.ca.shared.global [%0], [%1], 4;" :: "r"(dst), "l"(src))
+
     auto issue_tile_async = [&](int b_idx, int tile_idx) {
         int base_k = tile_idx * K_TILE;
         uint32_t sh_a_base = __cvta_generic_to_shared(&sh_a[b_idx][0]);
         uint32_t sh_b_base = __cvta_generic_to_shared(&sh_b[b_idx][0]);
+        uint32_t sh_sfa_base = __cvta_generic_to_shared(&sh_sfa[b_idx][0]);
+        uint32_t sh_sfb_base = __cvta_generic_to_shared(&sh_sfb[b_idx][0]);
 
         for (int i = tid * 16; i < K_TILE * 8; i += BLOCK_SIZE * 16) {
             ASYNC_COPY_16(sh_a_base + i, row_a + base_k * 8 + i);
             ASYNC_COPY_16(sh_b_base + i, batch_b + base_k * 8 + i);
         }
-        for (int i = tid; i < K_TILE; i += BLOCK_SIZE) {
-            sh_sfa[b_idx][i] = row_sfa[base_k + i];
-            sh_sfb[b_idx][i] = batch_sfb[base_k + i];
+        for (int i = tid * 4; i < K_TILE; i += BLOCK_SIZE * 4) {
+            ASYNC_COPY_4(sh_sfa_base + i, row_sfa + base_k + i);
+            ASYNC_COPY_4(sh_sfb_base + i, batch_sfb + base_k + i);
         }
         asm volatile("cp.async.commit_group;");
     };
@@ -166,6 +171,7 @@ __global__ void gemv_nvfp4_kernel(
     }
 
 #undef ASYNC_COPY_16
+#undef ASYNC_COPY_4
 
     smem_acc[tid] = acc;
     __syncthreads();

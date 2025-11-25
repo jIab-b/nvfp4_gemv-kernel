@@ -1,7 +1,7 @@
 "**NVIDIA on GitHub ✅ success**
-> Workflow [19658900988](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19658900988>) completed
+> Workflow [19659325846](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19659325846>) completed
 > Downloading artifacts... done
-> ✅ Benchmarking successful
+> ❌ Testing failed
 
 Running on:
 * GPU: `NVIDIA B200`
@@ -9,19 +9,26 @@ Running on:
 * Runtime: `CUDA`
 * Platform: `Linux-6.8.0-51-generic-x86_64-with-glibc2.35`
 * Torch: `2.9.1+cu130`
+# Testing failed
+Command ```bash
+python3 eval.py test /tmp/tmpgsvaxts3```
+ran successfully in 3.84 seconds, but did not pass all tests.
 
 
-## Benchmarks:
+## Test log:
 ```
-k: 16384; l: 1; m: 7168; seed: 1111
- ⏱ 49.1 ± 0.01 µs
- ⚡ 49.0 µs 🐌 49.3 µs
-
-k: 7168; l: 8; m: 4096; seed: 1111
- ⏱ 86.1 ± 0.06 µs
- ⚡ 85.8 µs 🐌 88.1 µs
-
-k: 2048; l: 4; m: 7168; seed: 1111
- ⏱ 30.7 ± 0.01 µs
- ⚡ 30.5 µs 🐌 30.9 µs
-```"
+❌ k: 256; l: 1; m: 128; seed: 1111
+> mismatch found! custom implementation doesn't match reference: Number of mismatched elements: 128 ERROR AT (0, 0, 0): 0.0 56.5 ERROR AT (1, 0, 0): 0.0 71.25 ERROR AT (2, 0, 0): 0.0 94.5 ERROR AT (3, 0, 0): 0.0 38.75 ERROR AT (4, 0, 0): 0.0 98.25 ... and 123 more mismatched elements.
+❌ k: 1536; l: 1; m: 128; seed: 1111
+> mismatch found! custom implementation doesn't match reference: Number of mismatched elements: 128 ERROR AT (0, 0, 0): 223.5 419.5 ERROR AT (1, 0, 0): 347.75 553.5 ERROR AT (2, 0, 0): 327.5 563.0 ERROR AT (3, 0, 0): 245.25 374.5 ERROR AT (4, 0, 0): 329.0 566.0 ... and 123 more mismatched elements.
+✅ k: 3072; l: 1; m: 128; seed: 1111
+✅ k: 7168; l: 1; m: 256; seed: 1111
+✅ k: 7168; l: 1; m: 256; seed: 1111
+❌ k: 4608; l: 2; m: 2432; seed: 1111
+> mismatch found! custom implementation doesn't match reference: Number of mismatched elements: 4864 ERROR AT (0, 0, 0): 1215.0 1447.0 ERROR AT (0, 0, 1): 1219.0 1417.0 ERROR AT (1, 0, 0): 1122.0 1284.0 ERROR AT (1, 0, 1): 1176.0 1331.0 ERROR AT (2, 0, 0): 1216.0 1325.0 ... and 4859 more mismatched elements.
+✅ k: 7168; l: 2; m: 384; seed: 1111
+❌ k: 512; l: 2; m: 512; seed: 1111
+> mismatch found! custom implementation doesn't match reference: Number of mismatched elements: 1024 ERROR AT (0, 0, 0): 0.0 126.75 ERROR AT (0, 0, 1): 0.0 153.25 ERROR AT (1, 0, 0): 0.0 167.75 ERROR AT (1, 0, 1): 0.0 156.25 ERROR AT (2, 0, 0): 0.0 193.25 ... and 1019 more mismatched elements.
+✅ k: 4096; l: 2; m: 512; seed: 1111
+❌ k: 1536; l: 2; m: 512; seed: 1111
+> mismatch found! custom implementation doesn't match reference: Number of mismatched elements: 1024 ERROR AT (0, 0, 0): 223.5 419.5 ERROR AT (0, 0, 1): 317.75 432.75 ERROR AT (1, 0, 0): 347.75 553.5 ERROR AT (1, 0, 1): 234.25 349.75 ERROR AT (2, 0, 0): 327.5 563.0 ... and 1019 more mismatched elements.```"
