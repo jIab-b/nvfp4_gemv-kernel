@@ -152,6 +152,44 @@ __device__ __forceinline__ float compute_remainder(
 }
 
 // ============================================================================
+// ============ REMAINDER COMPUTE FROM SHARED MEMORY ==========================
+// ============================================================================
+__device__ __forceinline__ float compute_remainder_smem(
+    const uint8_t* sh_a,
+    const uint8_t* sh_b,
+    const uint8_t* sh_sfa,
+    const uint8_t* sh_sfb,
+    int remainder_scales,
+    int tid
+) {
+    float acc = 0.0f;
+
+#pragma unroll 4
+    for (int sf = tid; sf < remainder_scales; sf += BLOCK_SIZE) {
+        float scale = decode_fp8(static_cast<int8_t>(sh_sfa[sf])) *
+                      decode_fp8(static_cast<int8_t>(sh_sfb[sf]));
+        __half2 scale_h2 = __half2half2(__float2half(scale));
+
+        int byte_base = sf << 3;  // sf * 8 using bit shift
+
+        uint32_t a4_0 = *reinterpret_cast<const uint32_t*>(&sh_a[byte_base]);
+        uint32_t b4_0 = *reinterpret_cast<const uint32_t*>(&sh_b[byte_base]);
+        uint32_t a4_1 = *reinterpret_cast<const uint32_t*>(&sh_a[byte_base + 4]);
+        uint32_t b4_1 = *reinterpret_cast<const uint32_t*>(&sh_b[byte_base + 4]);
+
+        __half2 acc_h2_0 = dot_scaled_4bytes(a4_0, b4_0, scale_h2);
+        __half2 acc_h2_1 = dot_scaled_4bytes(a4_1, b4_1, scale_h2);
+
+        // Combine and accumulate in one step
+        float2 f0 = __half22float2(acc_h2_0);
+        float2 f1 = __half22float2(acc_h2_1);
+        acc += f0.x + f0.y + f1.x + f1.y;
+    }
+
+    return acc;
+}
+
+// ============================================================================
 // ========================== MAIN KERNEL FUNCTION ============================
 // ============================================================================
 __global__ void gemv_nvfp4_kernel(
@@ -236,18 +274,47 @@ __global__ void gemv_nvfp4_kernel(
         asm volatile("cp.async.commit_group;");
     };
 
+    auto issue_remainder_async = [&](int b_idx, int rem_sf_start, int total_K_sf) {
+        const int base_byte = rem_sf_start << 3;  // rem_sf_start * 16 / 2
+        const uint32_t sh_a_base = __cvta_generic_to_shared(&sh_a[b_idx][0]);
+        const uint32_t sh_b_base = __cvta_generic_to_shared(&sh_b[b_idx][0]);
+        const uint32_t sh_sfa_base = __cvta_generic_to_shared(&sh_sfa[b_idx][0]);
+        const uint32_t sh_sfb_base = __cvta_generic_to_shared(&sh_sfb[b_idx][0]);
+
+        int remainder_bytes = ((total_K_sf - rem_sf_start) << 3);  // * 8
+        int remainder_scales = total_K_sf - rem_sf_start;
+
+        // Copy remainder data - adapt stride to remainder size
+        for (int i = tid * 16; i < remainder_bytes; i += BLOCK_SIZE * 16) {
+            ASYNC_COPY_16(sh_a_base + i, row_a + base_byte + i);
+            ASYNC_COPY_16(sh_b_base + i, batch_b + base_byte + i);
+        }
+        for (int i = tid * 4; i < remainder_scales; i += BLOCK_SIZE * 4) {
+            ASYNC_COPY_4(sh_sfa_base + i, row_sfa + rem_sf_start + i);
+            ASYNC_COPY_4(sh_sfb_base + i, batch_sfb + rem_sf_start + i);
+        }
+        asm volatile("cp.async.commit_group;");
+    };
+
 // ============================================================================
 // ===================== DOUBLE-BUFFERED MAIN LOOP ============================
 // ============================================================================
+    int remainder_sf_start = remainder_start / 16;
+    bool has_remainder = (remainder_sf_start < K_sf);
+    int buf = 0;  // Declare buf outside so it's accessible in remainder section
+
     if (tile_count > 0) {
-        int buf = 0;
         issue_tile_async(0, 0);
         asm volatile("cp.async.wait_group 0;");
         __syncthreads();
 
         for (int tile = 0; tile < tile_count; ++tile) {
             if (tile + 1 < tile_count) {
+                // Prefetch next tile
                 issue_tile_async(buf ^ 1, tile + 1);
+            } else if (has_remainder) {
+                // On last tile: prefetch remainder into unused buffer
+                issue_remainder_async(buf ^ 1, remainder_sf_start, K_sf);
             }
 
             acc += compute_tile(
@@ -258,7 +325,7 @@ __global__ void gemv_nvfp4_kernel(
                 tid
             );
 
-            if (tile + 1 < tile_count) {
+            if (tile + 1 < tile_count || has_remainder) {
                 asm volatile("cp.async.wait_group 0;");
                 __syncthreads();
                 buf ^= 1;
@@ -269,17 +336,30 @@ __global__ void gemv_nvfp4_kernel(
 // ============================================================================
 // ===================== REMAINDER PROCESSING =================================
 // ============================================================================
-    int remainder_sf_start = remainder_start / 16;
-    if (remainder_sf_start < K_sf) {
-        acc += compute_remainder(
-            row_a,
-            batch_b,
-            row_sfa,
-            batch_sfb,
-            remainder_sf_start,
-            K_sf,
-            tid
-        );
+    if (has_remainder) {
+        if (tile_count > 0) {
+            // Remainder was prefetched during last tile - use from shared memory
+            int remainder_scales = K_sf - remainder_sf_start;
+            acc += compute_remainder_smem(
+                sh_a[buf],
+                sh_b[buf],
+                sh_sfa[buf],
+                sh_sfb[buf],
+                remainder_scales,
+                tid
+            );
+        } else {
+            // No tiles processed - load remainder directly from global memory
+            acc += compute_remainder(
+                row_a,
+                batch_b,
+                row_sfa,
+                batch_sfb,
+                remainder_sf_start,
+                K_sf,
+                tid
+            );
+        }
     }
 
 #undef ASYNC_COPY_16
