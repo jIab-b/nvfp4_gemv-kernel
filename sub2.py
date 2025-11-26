@@ -19,9 +19,9 @@ cuda_source = """
 // ============================================================================
 // ======================== INITIALIZATION HELPERS ===========================
 // ============================================================================
-#define BLOCK_SIZE 64
-#define K_TILE 64
-#define M_TILE 128
+#define BLOCK_SIZE 128
+#define K_TILE 4096
+#define M_TILE 64
 #define SCALES_PER_TILE (K_TILE / 16)
 #define BYTES_PER_TILE (K_TILE / 2)
 
