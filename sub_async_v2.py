@@ -55,6 +55,7 @@ __device__ __forceinline__ __half2 dot_scaled_4bytes(
     __half2 scale_h2
 ) {
     // Extract bytes using prmt.b32 for 50% reduction in ALU overhead
+    // Inline b_scaled computation to reduce register pressure by 4 registers
     uint32_t b_byte0, b_byte1, b_byte2, b_byte3;
     uint32_t a_byte0, a_byte1, a_byte2, a_byte3;
 
@@ -70,15 +71,11 @@ __device__ __forceinline__ __half2 dot_scaled_4bytes(
     asm("prmt.b32 %0, %1, 0, 0x4442;" : "=r"(a_byte2) : "r"(a4));
     asm("prmt.b32 %0, %1, 0, 0x4443;" : "=r"(a_byte3) : "r"(a4));
 
-    __half2 b0_scaled = __hmul2(decode_fp4x2(b_byte0), scale_h2);
-    __half2 b1_scaled = __hmul2(decode_fp4x2(b_byte1), scale_h2);
-    __half2 b2_scaled = __hmul2(decode_fp4x2(b_byte2), scale_h2);
-    __half2 b3_scaled = __hmul2(decode_fp4x2(b_byte3), scale_h2);
-
-    __half2 acc = __hmul2(decode_fp4x2(a_byte0), b0_scaled);
-    acc = __hfma2(decode_fp4x2(a_byte1), b1_scaled, acc);
-    acc = __hfma2(decode_fp4x2(a_byte2), b2_scaled, acc);
-    acc = __hfma2(decode_fp4x2(a_byte3), b3_scaled, acc);
+    // Inline b_scaled computation to minimize register live ranges
+    __half2 acc = __hmul2(decode_fp4x2(a_byte0), __hmul2(decode_fp4x2(b_byte0), scale_h2));
+    acc = __hfma2(decode_fp4x2(a_byte1), __hmul2(decode_fp4x2(b_byte1), scale_h2), acc);
+    acc = __hfma2(decode_fp4x2(a_byte2), __hmul2(decode_fp4x2(b_byte2), scale_h2), acc);
+    acc = __hfma2(decode_fp4x2(a_byte3), __hmul2(decode_fp4x2(b_byte3), scale_h2), acc);
 
     return acc;
 }
