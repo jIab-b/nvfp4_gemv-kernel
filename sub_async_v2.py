@@ -47,6 +47,27 @@ __device__ __forceinline__ float decode_fp8(int8_t byte) {
 }
 
 // ============================================================================
+// ================ SCALED DOT PRODUCT FOR 4 PACKED BYTES =====================
+// ============================================================================
+__device__ __forceinline__ __half2 dot_scaled_4bytes(
+    uint32_t a4,
+    uint32_t b4,
+    __half2 scale_h2
+) {
+    __half2 b0_scaled = __hmul2(decode_fp4x2(b4 & 0xFF), scale_h2);
+    __half2 b1_scaled = __hmul2(decode_fp4x2((b4 >> 8) & 0xFF), scale_h2);
+    __half2 b2_scaled = __hmul2(decode_fp4x2((b4 >> 16) & 0xFF), scale_h2);
+    __half2 b3_scaled = __hmul2(decode_fp4x2((b4 >> 24) & 0xFF), scale_h2);
+
+    __half2 acc = __hmul2(decode_fp4x2(a4 & 0xFF), b0_scaled);
+    acc = __hfma2(decode_fp4x2((a4 >> 8) & 0xFF), b1_scaled, acc);
+    acc = __hfma2(decode_fp4x2((a4 >> 16) & 0xFF), b2_scaled, acc);
+    acc = __hfma2(decode_fp4x2((a4 >> 24) & 0xFF), b3_scaled, acc);
+
+    return acc;
+}
+
+// ============================================================================
 // ==================== TILE COMPUTE DEVICE FUNCTION ==========================
 // ============================================================================
 __device__ __forceinline__ float compute_tile(
@@ -58,36 +79,22 @@ __device__ __forceinline__ float compute_tile(
 ) {
     float acc = 0.0f;
 
-#pragma unroll 4
+#pragma unroll 8
     for (int sf = tid; sf < SCALES_PER_TILE; sf += BLOCK_SIZE) {
         float scale = decode_fp8(static_cast<int8_t>(sh_sfa[sf])) *
                       decode_fp8(static_cast<int8_t>(sh_sfb[sf]));
         __half2 scale_h2 = __half2half2(__float2half(scale));
 
         int byte_base = sf * 8;
-        __half2 acc_h2 = __float2half2_rn(0.0f);
 
-#pragma unroll
-        for (int bb = 0; bb < 8; bb += 4) {
-            uint32_t a4 = *reinterpret_cast<const uint32_t*>(&sh_a[byte_base + bb]);
-            uint32_t b4 = *reinterpret_cast<const uint32_t*>(&sh_b[byte_base + bb]);
+        uint32_t a4_0 = *reinterpret_cast<const uint32_t*>(&sh_a[byte_base]);
+        uint32_t b4_0 = *reinterpret_cast<const uint32_t*>(&sh_b[byte_base]);
+        uint32_t a4_1 = *reinterpret_cast<const uint32_t*>(&sh_a[byte_base + 4]);
+        uint32_t b4_1 = *reinterpret_cast<const uint32_t*>(&sh_b[byte_base + 4]);
 
-            __half2 a0 = decode_fp4x2(a4 & 0xFF);
-            __half2 b0 = decode_fp4x2(b4 & 0xFF);
-            acc_h2 = __hfma2(__hmul2(a0, b0), scale_h2, acc_h2);
-
-            __half2 a1 = decode_fp4x2((a4 >> 8) & 0xFF);
-            __half2 b1 = decode_fp4x2((b4 >> 8) & 0xFF);
-            acc_h2 = __hfma2(__hmul2(a1, b1), scale_h2, acc_h2);
-
-            __half2 a2 = decode_fp4x2((a4 >> 16) & 0xFF);
-            __half2 b2 = decode_fp4x2((b4 >> 16) & 0xFF);
-            acc_h2 = __hfma2(__hmul2(a2, b2), scale_h2, acc_h2);
-
-            __half2 a3 = decode_fp4x2((a4 >> 24) & 0xFF);
-            __half2 b3 = decode_fp4x2((b4 >> 24) & 0xFF);
-            acc_h2 = __hfma2(__hmul2(a3, b3), scale_h2, acc_h2);
-        }
+        __half2 acc_h2 = dot_scaled_4bytes(a4_0, b4_0, scale_h2);
+        __half2 acc_h2_1 = dot_scaled_4bytes(a4_1, b4_1, scale_h2);
+        acc_h2 = __hadd2(acc_h2, acc_h2_1);
 
         float2 f = __half22float2(acc_h2);
         acc += f.x + f.y;
@@ -112,34 +119,20 @@ __device__ __forceinline__ float compute_remainder(
 
 #pragma unroll 4
     for (int sf = remainder_sf_start + tid; sf < K_sf; sf += BLOCK_SIZE) {
-        float scale = decode_fp8(static_cast<int8_t>(row_sfa[sf])) *
-                      decode_fp8(static_cast<int8_t>(batch_sfb[sf]));
+        float scale = decode_fp8(static_cast<int8_t>(__ldg(&row_sfa[sf]))) *
+                      decode_fp8(static_cast<int8_t>(__ldg(&batch_sfb[sf])));
         __half2 scale_h2 = __half2half2(__float2half(scale));
 
         int byte_base = sf * 8;
-        __half2 acc_h2 = __float2half2_rn(0.0f);
 
-#pragma unroll
-        for (int bb = 0; bb < 8; bb += 4) {
-            uint32_t a4 = *reinterpret_cast<const uint32_t*>(&row_a[byte_base + bb]);
-            uint32_t b4 = *reinterpret_cast<const uint32_t*>(&batch_b[byte_base + bb]);
+        uint32_t a4_0 = __ldg(reinterpret_cast<const uint32_t*>(&row_a[byte_base]));
+        uint32_t b4_0 = __ldg(reinterpret_cast<const uint32_t*>(&batch_b[byte_base]));
+        uint32_t a4_1 = __ldg(reinterpret_cast<const uint32_t*>(&row_a[byte_base + 4]));
+        uint32_t b4_1 = __ldg(reinterpret_cast<const uint32_t*>(&batch_b[byte_base + 4]));
 
-            __half2 a0 = decode_fp4x2(a4 & 0xFF);
-            __half2 b0 = decode_fp4x2(b4 & 0xFF);
-            acc_h2 = __hfma2(__hmul2(a0, b0), scale_h2, acc_h2);
-
-            __half2 a1 = decode_fp4x2((a4 >> 8) & 0xFF);
-            __half2 b1 = decode_fp4x2((b4 >> 8) & 0xFF);
-            acc_h2 = __hfma2(__hmul2(a1, b1), scale_h2, acc_h2);
-
-            __half2 a2 = decode_fp4x2((a4 >> 16) & 0xFF);
-            __half2 b2 = decode_fp4x2((b4 >> 16) & 0xFF);
-            acc_h2 = __hfma2(__hmul2(a2, b2), scale_h2, acc_h2);
-
-            __half2 a3 = decode_fp4x2((a4 >> 24) & 0xFF);
-            __half2 b3 = decode_fp4x2((b4 >> 24) & 0xFF);
-            acc_h2 = __hfma2(__hmul2(a3, b3), scale_h2, acc_h2);
-        }
+        __half2 acc_h2 = dot_scaled_4bytes(a4_0, b4_0, scale_h2);
+        __half2 acc_h2_1 = dot_scaled_4bytes(a4_1, b4_1, scale_h2);
+        acc_h2 = __hadd2(acc_h2, acc_h2_1);
 
         float2 f = __half22float2(acc_h2);
         acc += f.x + f.y;
@@ -225,6 +218,7 @@ __global__ void gemv_nvfp4_kernel(
             ASYNC_COPY_16(sh_a_base + i, row_a + base_byte + i);
             ASYNC_COPY_16(sh_b_base + i, batch_b + base_byte + i);
         }
+#pragma unroll
         for (int i = tid * 4; i < SCALES_PER_TILE; i += BLOCK_SIZE * 4) {
             ASYNC_COPY_4(sh_sfa_base + i, row_sfa + base_sf + i);
             ASYNC_COPY_4(sh_sfb_base + i, batch_sfb + base_sf + i);
