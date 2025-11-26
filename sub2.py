@@ -19,9 +19,11 @@ cuda_source = """
 // ============================================================================
 // ======================== INITIALIZATION HELPERS ===========================
 // ============================================================================
-#define BLOCK_SIZE 128
-#define K_TILE 4096
+// Tuned for per-tile parallelism with in-CTA double buffering.
+#define BLOCK_SIZE 32
+#define K_TILE 512
 #define M_TILE 64
+#define TILES_PER_CTA 2
 #define SCALES_PER_TILE (K_TILE / 16)
 #define BYTES_PER_TILE (K_TILE / 2)
 
@@ -45,6 +47,7 @@ __device__ __forceinline__ float decode_fp8(int8_t byte) {
 
 // ============================================================================
 // ======================== PARTIAL DOT PRODUCT KERNEL =======================
+// Each CTA covers one (m_tile, k_tile, l) and writes a partial sum.
 // ============================================================================
 __global__ void gemv_partial_kernel(
     const int8_t* __restrict__ a,
@@ -55,7 +58,7 @@ __global__ void gemv_partial_kernel(
     int M, int K, int L, int N_rows, int num_k_tiles
 ) {
     int m_tile_idx = blockIdx.x;
-    int k_idx = blockIdx.y;
+    int k_group_idx = blockIdx.y; // each group may hold multiple K tiles
     int l = blockIdx.z;
     int tid = threadIdx.x;
 
@@ -85,126 +88,160 @@ __global__ void gemv_partial_kernel(
     int m_end = min(m_start + M_TILE, M);
     int m_count = m_end - m_start;
 
-    int k_start = k_idx * K_TILE;
-    int k_end = min(k_start + K_TILE, K);
-    int k_count = k_end - k_start;
-    int sf_count = k_count / 16;
-    int byte_count = k_count / 2;
-
-    int base_byte = k_start / 2;
-    int base_sf = k_start / 16;
-
-    __shared__ float smem_acc[M_TILE][BLOCK_SIZE];
-    __shared__ uint8_t sh_a[M_TILE][BYTES_PER_TILE];
-    __shared__ uint8_t sh_b[BYTES_PER_TILE];
-    __shared__ uint8_t sh_sfa[M_TILE][SCALES_PER_TILE];
-    __shared__ uint8_t sh_sfb[SCALES_PER_TILE];
+    __shared__ float smem_acc[M_TILE][BLOCK_SIZE / 32];
+    __shared__ uint8_t sh_a[2][M_TILE][BYTES_PER_TILE];
+    __shared__ uint8_t sh_b[2][BYTES_PER_TILE];
+    __shared__ uint8_t sh_sfa[2][M_TILE][SCALES_PER_TILE];
+    __shared__ uint8_t sh_sfb[2][SCALES_PER_TILE];
 
     float acc[M_TILE];
     for (int mi = 0; mi < M_TILE; ++mi) acc[mi] = 0.0f;
 
 // ============================================================================
 // ===================== MEMORY LOAD AND MAIN COMPUTE ========================
-// ============================================================================
+// Double-buffer across up to TILES_PER_CTA consecutive K tiles handled by this CTA.
 #define ASYNC_COPY_16(dst, src) \
     asm volatile("cp.async.cg.shared.global [%0], [%1], 16;" :: "r"(dst), "l"(src))
 
 #define ASYNC_COPY_4(dst, src) \
     asm volatile("cp.async.ca.shared.global [%0], [%1], 4;" :: "r"(dst), "l"(src))
 
-    uint32_t sh_b_base = __cvta_generic_to_shared(&sh_b[0]);
-    uint32_t sh_sfb_base = __cvta_generic_to_shared(&sh_sfb[0]);
+    auto issue_tile_async = [&](int buf, int tile_idx_global) {
+        int k_start = tile_idx_global * K_TILE;
+        int k_end = min(k_start + K_TILE, K);
+        int k_count = k_end - k_start;
+        int sf_count = k_count / 16;
+        int byte_count = k_count / 2;
+        int base_byte = k_start / 2;
+        int base_sf = k_start / 16;
 
-    for (int i = tid * 16; i < byte_count; i += BLOCK_SIZE * 16) {
-        ASYNC_COPY_16(sh_b_base + i, batch_b + base_byte + i);
-    }
-    for (int i = tid * 4; i < sf_count; i += BLOCK_SIZE * 4) {
-        ASYNC_COPY_4(sh_sfb_base + i, batch_sfb + base_sf + i);
-    }
-
-    for (int mi = 0; mi < m_count; ++mi) {
-        int m = m_start + mi;
-        const uint8_t* row_a = batch_a + static_cast<size_t>(m) * K_half;
-        const uint8_t* row_sfa = batch_sfa + static_cast<size_t>(m) * K_sf;
-
-        uint32_t sh_a_base = __cvta_generic_to_shared(&sh_a[mi][0]);
-        uint32_t sh_sfa_base = __cvta_generic_to_shared(&sh_sfa[mi][0]);
+        uint32_t sh_b_base = __cvta_generic_to_shared(&sh_b[buf][0]);
+        uint32_t sh_sfb_base = __cvta_generic_to_shared(&sh_sfb[buf][0]);
 
         for (int i = tid * 16; i < byte_count; i += BLOCK_SIZE * 16) {
-            ASYNC_COPY_16(sh_a_base + i, row_a + base_byte + i);
+            ASYNC_COPY_16(sh_b_base + i, batch_b + base_byte + i);
         }
         for (int i = tid * 4; i < sf_count; i += BLOCK_SIZE * 4) {
-            ASYNC_COPY_4(sh_sfa_base + i, row_sfa + base_sf + i);
+            ASYNC_COPY_4(sh_sfb_base + i, batch_sfb + base_sf + i);
         }
-    }
 
-    asm volatile("cp.async.commit_group;");
+        for (int mi = 0; mi < m_count; ++mi) {
+            int m = m_start + mi;
+            const uint8_t* row_a = batch_a + static_cast<size_t>(m) * K_half;
+            const uint8_t* row_sfa = batch_sfa + static_cast<size_t>(m) * K_sf;
+
+            uint32_t sh_a_base = __cvta_generic_to_shared(&sh_a[buf][mi][0]);
+            uint32_t sh_sfa_base = __cvta_generic_to_shared(&sh_sfa[buf][mi][0]);
+
+            for (int i = tid * 16; i < byte_count; i += BLOCK_SIZE * 16) {
+                ASYNC_COPY_16(sh_a_base + i, row_a + base_byte + i);
+            }
+            for (int i = tid * 4; i < sf_count; i += BLOCK_SIZE * 4) {
+                ASYNC_COPY_4(sh_sfa_base + i, row_sfa + base_sf + i);
+            }
+        }
+        asm volatile("cp.async.commit_group;");
+    };
+
+    int num_k_groups = (num_k_tiles + TILES_PER_CTA - 1) / TILES_PER_CTA;
+    int base_tile = k_group_idx * TILES_PER_CTA;
+
+    // Preload first tile; optionally second to overlap.
+    if (base_tile < num_k_tiles) issue_tile_async(0, base_tile);
+    if (base_tile + 1 < num_k_tiles) issue_tile_async(1, base_tile + 1);
+
     asm volatile("cp.async.wait_group 0;");
     __syncthreads();
 
-    for (int sf = tid; sf < sf_count; sf += BLOCK_SIZE) {
-        float scale_b = decode_fp8(static_cast<int8_t>(sh_sfb[sf]));
-        int byte_base = sf * 8;
+    int buf = 0;
+    for (int tile = 0; tile < TILES_PER_CTA; ++tile) {
+        int tile_idx_global = base_tile + tile;
+        if (tile_idx_global >= num_k_tiles) break;
+
+        int k_start = tile_idx_global * K_TILE;
+        int k_end = min(k_start + K_TILE, K);
+        int k_count = k_end - k_start;
+        int sf_count = k_count / 16;
+
+        // Compute this tile
+        for (int mi = 0; mi < m_count; ++mi) acc[mi] = 0.0f;
+
+        for (int sf = tid; sf < sf_count; sf += BLOCK_SIZE) {
+            float scale_b = decode_fp8(static_cast<int8_t>(sh_sfb[buf][sf]));
+            int byte_base = sf * 8;
 
 #pragma unroll
-        for (int bb = 0; bb < 8; ++bb) {
-            __half2 b2 = decode_fp4x2(sh_b[byte_base + bb]);
+            for (int bb = 0; bb < 8; ++bb) {
+                __half2 b2 = decode_fp4x2(sh_b[buf][byte_base + bb]);
 
-            for (int mi = 0; mi < m_count; ++mi) {
-                float scale = decode_fp8(static_cast<int8_t>(sh_sfa[mi][sf])) * scale_b;
-                __half scale_h = __float2half(scale);
-                __half2 scale_h2 = __halves2half2(scale_h, scale_h);
+                for (int mi = 0; mi < m_count; ++mi) {
+                    float scale = decode_fp8(static_cast<int8_t>(sh_sfa[buf][mi][sf])) * scale_b;
+                    __half scale_h = __float2half(scale);
+                    __half2 scale_h2 = __halves2half2(scale_h, scale_h);
 
-                __half2 a2 = decode_fp4x2(sh_a[mi][byte_base + bb]);
-                __half2 prod = __hmul2(__hmul2(a2, b2), scale_h2);
-                float2 f = __half22float2(prod);
-                acc[mi] += f.x + f.y;
+                    __half2 a2 = decode_fp4x2(sh_a[buf][mi][byte_base + bb]);
+                    __half2 prod = __hmul2(__hmul2(a2, b2), scale_h2);
+                    float2 f = __half22float2(prod);
+                    acc[mi] += f.x + f.y;
+                }
             }
+        }
+
+        // Reduce and write partial for this tile
+#undef ASYNC_COPY_16
+#undef ASYNC_COPY_4
+
+        for (int mi = 0; mi < m_count; ++mi) {
+            float warp_sum = acc[mi];
+            for (int offset = 16; offset > 0; offset >>= 1) {
+                warp_sum += __shfl_down_sync(0xffffffff, warp_sum, offset);
+            }
+
+            int warp_id = tid >> 5;
+            int lane = tid & 31;
+            if (lane == 0) smem_acc[mi][warp_id] = warp_sum;
+        }
+
+        __syncthreads();
+
+        int warp_id = tid >> 5;
+        int lane = tid & 31;
+
+        if (warp_id == 0) {
+            for (int mi = 0; mi < m_count; ++mi) {
+                float block_sum = (lane < (blockDim.x >> 5)) ? smem_acc[mi][lane] : 0.0f;
+                for (int offset = 16; offset > 0; offset >>= 1) {
+                    block_sum += __shfl_down_sync(0xffffffff, block_sum, offset);
+                }
+                if (lane == 0) {
+                    int m = m_start + mi;
+                    size_t partial_idx = static_cast<size_t>(m) * num_k_tiles * L +
+                                         static_cast<size_t>(tile_idx_global) * L +
+                                         static_cast<size_t>(l);
+                    partials[partial_idx] = block_sum;
+                }
+            }
+        }
+
+        // Prefetch next tile (beyond the two issued) only if it exists
+        int upcoming_tile = base_tile + TILES_PER_CTA + (tile - (TILES_PER_CTA - 1));
+        int next_tile_idx = tile_idx_global + TILES_PER_CTA;
+        if (next_tile_idx < num_k_tiles) {
+            // reuse current buffer for the next far tile
+            issue_tile_async(buf, next_tile_idx);
+        }
+
+        // Wait for the buffer that will be used next iteration
+        if (tile + 1 < TILES_PER_CTA && (tile_idx_global + 1) < num_k_tiles) {
+            asm volatile("cp.async.wait_group 0;");
+            __syncthreads();
+            buf ^= 1;
         }
     }
 
 #undef ASYNC_COPY_16
 #undef ASYNC_COPY_4
 
-// ============================================================================
-// ================== ACCUMULATION AND BLOCK REDUCTION =======================
-// ============================================================================
-    for (int mi = 0; mi < m_count; ++mi) {
-        smem_acc[mi][tid] = acc[mi];
-    }
-    __syncthreads();
-
-    for (int mi = 0; mi < m_count; ++mi) {
-        float warp_sum = acc[mi];
-        for (int offset = 16; offset > 0; offset >>= 1) {
-            warp_sum += __shfl_down_sync(0xffffffff, warp_sum, offset);
-        }
-
-        int warp_id = tid >> 5;
-        int lane = tid & 31;
-        if (lane == 0) smem_acc[mi][warp_id] = warp_sum;
-    }
-
-    __syncthreads();
-
-    int warp_id = tid >> 5;
-    int lane = tid & 31;
-
-    if (warp_id == 0) {
-        for (int mi = 0; mi < m_count; ++mi) {
-            float block_sum = (lane < (blockDim.x >> 5)) ? smem_acc[mi][lane] : 0.0f;
-            for (int offset = 16; offset > 0; offset >>= 1) {
-                block_sum += __shfl_down_sync(0xffffffff, block_sum, offset);
-            }
-            if (lane == 0) {
-                int m = m_start + mi;
-                size_t partial_idx = static_cast<size_t>(m) * num_k_tiles * L + 
-                                     static_cast<size_t>(k_idx) * L + 
-                                     static_cast<size_t>(l);
-                partials[partial_idx] = block_sum;
-            }
-        }
-    }
 }
 
 // ============================================================================
@@ -222,8 +259,8 @@ __global__ void gemv_reduce_kernel(
 
     float sum = 0.0f;
     for (int k_idx = 0; k_idx < num_k_tiles; ++k_idx) {
-        size_t partial_idx = static_cast<size_t>(m) * num_k_tiles * L + 
-                             static_cast<size_t>(k_idx) * L + 
+        size_t partial_idx = static_cast<size_t>(m) * num_k_tiles * L +
+                             static_cast<size_t>(k_idx) * L +
                              static_cast<size_t>(l);
         sum += partials[partial_idx];
     }
@@ -241,12 +278,13 @@ torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::
     int L = a.size(2);
     int N_rows = b.size(0);
 
-    int num_k_tiles = (K + K_TILE - 1) / K_TILE;
     int num_m_tiles = (M + M_TILE - 1) / M_TILE;
+    int num_k_tiles = (K + K_TILE - 1) / K_TILE;
+    int num_k_groups = (num_k_tiles + TILES_PER_CTA - 1) / TILES_PER_CTA;
 
     torch::Tensor partials = torch::zeros({M, num_k_tiles, L}, a.options().dtype(torch::kFloat32));
 
-    dim3 grid1(num_m_tiles, num_k_tiles, L);
+    dim3 grid1(num_m_tiles, num_k_groups, L);
     dim3 block1(BLOCK_SIZE);
 
     auto* a_ptr = reinterpret_cast<const int8_t*>(a.data_ptr());
