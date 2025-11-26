@@ -162,6 +162,7 @@ __global__ void gemv_nvfp4_kernel(
                 __half2 scale_h2 = __halves2half2(scale_h, scale_h);
 
                 int byte_base = sf * 8;
+
 #pragma unroll
                 for (int bb = 0; bb < 8; ++bb) {
                     __half2 a2 = decode_fp4x2(sh_a[buf][byte_base + bb]);
