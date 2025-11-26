@@ -16,11 +16,15 @@ cuda_source = """
 #include <cuda_fp4.h>
 #include <cuda_fp8.h>
 
-#define BLOCK_SIZE 256
+#define BLOCK_SIZE 128
 #define K_TILE 4096
-#define M_TILE 2
+#define M_TILE 4
 #define SCALES_PER_TILE (K_TILE / 16)
 #define BYTES_PER_TILE (K_TILE / 2)
+
+// ============================================================================
+// ======================== INITIALIZATION HELPERS ===========================
+// ============================================================================
 
 __device__ __forceinline__ float half_raw_to_float(const __half_raw& raw) {
     return __half2float(__ushort_as_half(raw.x));
@@ -39,6 +43,10 @@ __device__ __forceinline__ float decode_fp8(int8_t byte) {
     __half_raw raw = __nv_cvt_fp8_to_halfraw(storage, __NV_E4M3);
     return half_raw_to_float(raw);
 }
+
+// ============================================================================
+// ======================== BATCHED GEMV KERNEL ================================
+// ============================================================================
 
 __global__ void gemv_kernel(
     const int8_t* __restrict__ a,
@@ -84,6 +92,10 @@ __global__ void gemv_kernel(
     float acc[M_TILE];
 #pragma unroll
     for (int mi = 0; mi < M_TILE; ++mi) acc[mi] = 0.0f;
+
+// ============================================================================
+// ===================== PER-CTA BASE POINTER SETUP ============================
+// ============================================================================
 
 #define ASYNC_COPY_16(dst, src) \
     asm volatile("cp.async.cg.shared.global [%0], [%1], 16;" :: "r"(dst), "l"(src))
@@ -198,6 +210,10 @@ __global__ void gemv_kernel(
         }
     }
 
+// ============================================================================
+// ================== ACCUMULATION AND BLOCK REDUCTION ========================
+// ============================================================================
+
 #undef ASYNC_COPY_16
 #undef ASYNC_COPY_4
 
@@ -231,6 +247,10 @@ __global__ void gemv_kernel(
         }
     }
 }
+
+// ============================================================================
+// ======================== HOST ENTRY POINT ==================================
+// ============================================================================
 
 torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::Tensor sfa, torch::Tensor sfb, torch::Tensor c) {
     int M = a.size(0);
