@@ -19,8 +19,8 @@ cuda_source = """
 // ============================================================================
 // ======================== CONFIGURATION CONSTANTS ===========================
 // ============================================================================
-#define BLOCK_SIZE 64
-#define K_TILE 4096
+#define BLOCK_SIZE 32
+#define K_TILE 2560
 #define SCALES_PER_TILE (K_TILE / 16)
 #define BYTES_PER_TILE (K_TILE / 2)
 #define NUM_BUFFERS 2
