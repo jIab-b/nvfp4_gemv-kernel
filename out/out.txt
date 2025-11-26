@@ -1,0 +1,88 @@
+"**NVIDIA on GitHub ✅ success**
+> Workflow [19701392380](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19701392380>) completed
+> Downloading artifacts... done
+> ❌ Running benchmarks failed (internal error 1)
+
+Running on:
+* GPU: `NVIDIA B200`
+* CPU: `INTEL(R) XEON(R) PLATINUM 8570`
+* Runtime: `CUDA`
+* Platform: `Linux-6.8.0-51-generic-x86_64-with-glibc2.35`
+* Torch: `2.9.1+cu130`
+# Running failed
+Command ```bash
+python3 eval.py benchmark /tmp/tmpenc5ue6g```
+exited with error code **1** after 10.23 seconds.
+
+## Program stderr:
+```
+multiprocessing.pool.RemoteTraceback: 
+\"\"\"
+Traceback (most recent call last):
+  File \"/usr/local/lib/python3.10/dist-packages/torch/utils/cpp_extension.py\", line 2597, in _run_ninja_build
+    subprocess.run(
+  File \"/usr/lib/python3.10/subprocess.py\", line 526, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['ninja', '-v']' returned non-zero exit status 2.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 125, in worker
+    result = (True, func(*args, **kwds))
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 208, in _run_single_benchmark
+    from submission import custom_kernel
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 376, in <module>
+    module = load_inline(
+  File \"/usr/local/lib/python3.10/dist-packages/torch/utils/cpp_extension.py\", line 2051, in load_inline
+    return _jit_compile(
+  File \"/usr/local/lib/python3.10/dist-packages/torch/utils/cpp_extension.py\", line 2134, in _jit_compile
+    _write_ninja_file_and_build_library(
+  File \"/usr/local/lib/python3.10/dist-packages/torch/utils/cpp_extension.py\", line 2286, in _write_ninja_file_and_build_library
+    _run_ninja_build(
+  File \"/usr/local/lib/python3.10/dist-packages/torch/utils/cpp_extension.py\", line 2614, in _run_ninja_build
+    raise RuntimeError(message) from e
+RuntimeError: Error building extension 'batched_scaled_gemv': [1/2] /usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output cuda.cuda.o.d -DTORCH_EXTENSION_NAME=batched_scaled_gemv -DTORCH_API_INCLUDE_EXTENSION_H -isystem /usr/local/lib/python3.10/dist-packages/torch/include -isystem /usr/local/lib/python3.10/dist-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /usr/include/python3.10 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++17 -gencode=arch=compute_100a,code=sm_100a -c /home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu -o cuda.cuda.o 
+FAILED: [code=2] cuda.cuda.o 
+/usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output cuda.cuda.o.d -DTORCH_EXTENSION_NAME=batched_scaled_gemv -DTORCH_API_INCLUDE_EXTENSION_H -isystem /usr/local/lib/python3.10/dist-packages/torch/include -isystem /usr/local/lib/python3.10/dist-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /usr/include/python3.10 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++17 -gencode=arch=compute_100a,code=sm_100a -c /home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu -o cuda.cuda.o 
+/home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu(30): error: class \"__half\" has no member \"x\"
+      asm(\"cvt.rn.f16.e4m3 %0, %1;\" : \"=h\"(h.x) : \"r\"(static_cast<uint8_t>(byte)));
+                                             ^
+
+/home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu(30): error: expression must be a modifiable lvalue
+      asm(\"cvt.rn.f16.e4m3 %0, %1;\" : \"=h\"(h.x) : \"r\"(static_cast<uint8_t>(byte)));
+                                           ^
+
+2 errors detected in the compilation of \"/home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu\".
+ninja: build stopped: subcommand failed.
+
+\"\"\"
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 485, in <module>
+    sys.exit(main())
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 453, in main
+    return run_benchmarking(logger, pool, tests)
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 306, in run_benchmarking
+    run_single_benchmark(pool, tests[0], False, 200, 10e7)
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 291, in run_single_benchmark
+    return pool.apply(_run_single_benchmark, (test, recheck, max_repeats, max_time_ns))
+  File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 360, in apply
+    return self.apply_async(func, args, kwds).get()
+  File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 774, in get
+    raise self._value
+RuntimeError: Error building extension 'batched_scaled_gemv': [1/2] /usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output cuda.cuda.o.d -DTORCH_EXTENSION_NAME=batched_scaled_gemv -DTORCH_API_INCLUDE_EXTENSION_H -isystem /usr/local/lib/python3.10/dist-packages/torch/include -isystem /usr/local/lib/python3.10/dist-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /usr/include/python3.10 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++17 -gencode=arch=compute_100a,code=sm_100a -c /home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu -o cuda.cuda.o 
+FAILED: [code=2] cuda.cuda.o 
+/usr/local/cuda-13.0/bin/nvcc --generate-dependencies-with-compile --dependency-output cuda.cuda.o.d -DTORCH_EXTENSION_NAME=batched_scaled_gemv -DTORCH_API_INCLUDE_EXTENSION_H -isystem /usr/local/lib/python3.10/dist-packages/torch/include -isystem /usr/local/lib/python3.10/dist-packages/torch/include/torch/csrc/api/include -isystem /usr/local/cuda-13.0/include -isystem /usr/include/python3.10 -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options '-fPIC' -O3 --use_fast_math -std=c++17 -gencode=arch=compute_100a,code=sm_100a -c /home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu -o cuda.cuda.o 
+/home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu(30): error: class \"__half\" has no member \"x\"
+      asm(\"cvt.rn.f16.e4m3 %0, %1;\" : \"=h\"(h.x) : \"r\"(static_cast<uint8_t>(byte)));
+                                             ^
+
+/home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu(30): error: expression must be a modifiable lvalue
+      asm(\"cvt.rn.f16.e4m3 %0, %1;\" : \"=h\"(h.x) : \"r\"(static_cast<uint8_t>(byte)));
+                                           ^
+
+2 errors detected in the compilation of \"/home/runner/.cache/torch_extensions/py310_cu130/batched_scaled_gemv/cuda.cu\".
+ninja: build stopped: subcommand failed.```"

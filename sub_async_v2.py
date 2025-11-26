@@ -54,15 +54,31 @@ __device__ __forceinline__ __half2 dot_scaled_4bytes(
     uint32_t b4,
     __half2 scale_h2
 ) {
-    __half2 b0_scaled = __hmul2(decode_fp4x2(b4 & 0xFF), scale_h2);
-    __half2 b1_scaled = __hmul2(decode_fp4x2((b4 >> 8) & 0xFF), scale_h2);
-    __half2 b2_scaled = __hmul2(decode_fp4x2((b4 >> 16) & 0xFF), scale_h2);
-    __half2 b3_scaled = __hmul2(decode_fp4x2((b4 >> 24) & 0xFF), scale_h2);
+    // Extract bytes using prmt.b32 for 50% reduction in ALU overhead
+    uint32_t b_byte0, b_byte1, b_byte2, b_byte3;
+    uint32_t a_byte0, a_byte1, a_byte2, a_byte3;
 
-    __half2 acc = __hmul2(decode_fp4x2(a4 & 0xFF), b0_scaled);
-    acc = __hfma2(decode_fp4x2((a4 >> 8) & 0xFF), b1_scaled, acc);
-    acc = __hfma2(decode_fp4x2((a4 >> 16) & 0xFF), b2_scaled, acc);
-    acc = __hfma2(decode_fp4x2((a4 >> 24) & 0xFF), b3_scaled, acc);
+    // Extract 4 bytes from b4 using PTX prmt (replicate byte to all positions, select byte 0-3)
+    asm("prmt.b32 %0, %1, 0, 0x4440;" : "=r"(b_byte0) : "r"(b4));
+    asm("prmt.b32 %0, %1, 0, 0x4441;" : "=r"(b_byte1) : "r"(b4));
+    asm("prmt.b32 %0, %1, 0, 0x4442;" : "=r"(b_byte2) : "r"(b4));
+    asm("prmt.b32 %0, %1, 0, 0x4443;" : "=r"(b_byte3) : "r"(b4));
+
+    // Extract 4 bytes from a4
+    asm("prmt.b32 %0, %1, 0, 0x4440;" : "=r"(a_byte0) : "r"(a4));
+    asm("prmt.b32 %0, %1, 0, 0x4441;" : "=r"(a_byte1) : "r"(a4));
+    asm("prmt.b32 %0, %1, 0, 0x4442;" : "=r"(a_byte2) : "r"(a4));
+    asm("prmt.b32 %0, %1, 0, 0x4443;" : "=r"(a_byte3) : "r"(a4));
+
+    __half2 b0_scaled = __hmul2(decode_fp4x2(b_byte0), scale_h2);
+    __half2 b1_scaled = __hmul2(decode_fp4x2(b_byte1), scale_h2);
+    __half2 b2_scaled = __hmul2(decode_fp4x2(b_byte2), scale_h2);
+    __half2 b3_scaled = __hmul2(decode_fp4x2(b_byte3), scale_h2);
+
+    __half2 acc = __hmul2(decode_fp4x2(a_byte0), b0_scaled);
+    acc = __hfma2(decode_fp4x2(a_byte1), b1_scaled, acc);
+    acc = __hfma2(decode_fp4x2(a_byte2), b2_scaled, acc);
+    acc = __hfma2(decode_fp4x2(a_byte3), b3_scaled, acc);
 
     return acc;
 }
