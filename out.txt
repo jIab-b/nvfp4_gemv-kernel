@@ -1,7 +1,7 @@
 "**NVIDIA on GitHub ✅ success**
-> Workflow [19739322959](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19739322959>) completed
+> Workflow [19744890416](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19744890416>) completed
 > Downloading artifacts... done
-> ❌ Benchmarking failed
+> ✅ Benchmarking successful
 
 Running on:
 * GPU: `NVIDIA B200`
@@ -13,184 +13,15 @@ Running on:
 
 ## Benchmarks:
 ```
-❌ k: 16384; l: 1; m: 7168; seed: 1111 failed testing:
+k: 16384; l: 1; m: 7168; seed: 1111
+ ⏱ 31.8 ± 0.03 µs
+ ⚡ 31.6 µs 🐌 33.9 µs
 
-mismatch found! custom implementation doesn't match reference: Number of mismatched elements: 7168 ERROR AT (0, 0, 0): 2700.0 4668.0 ERROR AT (1, 0, 0): 0.0 4840.0 ERROR AT (2, 0, 0): 0.0 4756.0 ERROR AT (3, 0, 0): 0.0 4532.0 ERROR AT (4, 0, 0): 2704.0 4812.0 ... and 7163 more mismatched elements.
+k: 7168; l: 8; m: 4096; seed: 1111
+ ⏱ 46.5 ± 0.06 µs
+ ⚡ 45.9 µs 🐌 48.5 µs
 
-❌ k: 7168; l: 8; m: 4096; seed: 1111 failed testing:
-
-mismatch found! custom implementation doesn't match reference: Number of mismatched elements: 32768 ERROR AT (0, 0, 0): 1290.0 2244.0 ERROR AT (0, 0, 1): 1252.0 2168.0 ERROR AT (0, 0, 2): 1094.0 1782.0 ERROR AT (0, 0, 3): 1198.0 1916.0 ERROR AT (0, 0, 4): 1318.0 1786.0 ... and 32763 more mismatched elements.
-
-❌ k: 2048; l: 4; m: 7168; seed: 1111 failed testing:
-
-mismatch found! custom implementation doesn't match reference: Number of mismatched elements: 28672 ERROR AT (0, 0, 0): 260.25 504.75 ERROR AT (0, 0, 1): 276.0 642.0 ERROR AT (0, 0, 2): 246.75 513.0 ERROR AT (0, 0, 3): 274.25 555.5 ERROR AT (1, 0, 0): 240.5 660.5 ... and 28667 more mismatched elements.
-```
-
-## Program stdout:
-```
-DBG after cp.async A loop
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=64 sfa16=56 sfa32=0 sfa48=0
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=0 sfa16=56 sfa32=64 sfa48=0
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=56 sfa16=64 sfa32=64 sfa48=64
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=64 sfa16=64 sfa32=56 sfa48=0
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=64 sfa16=56 sfa32=0 sfa48=56
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=0 sfa16=0 sfa32=56 sfa48=0
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=64 sfa16=56 sfa32=56 sfa48=56
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=64 sfa16=64 sfa32=64 sfa48=0
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=64 sfa16=0 sfa32=64 sfa48=0
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=0 sfa16=56 sfa32=0 sfa48=0
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=64 sfa16=0 sfa32=0 sfa48=56
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=0 sfa16=56 sfa32=64 sfa48=56
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=0 sfa16=64 sfa32=64 sfa48=0
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=0 sfa16=0 sfa32=64 sfa48=0
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=64 sfa16=64 sfa32=56 sfa48=0
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=0 sfa16=64 sfa32=0 sfa48=64
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=0 sfa16=0 sfa32=64 sfa48=0
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=0 sfa16=0 sfa32=0 sfa48=56
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=0 sfa16=56 sfa32=64 sfa48=56
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=64 sfa16=64 sfa32=64 sfa48=64
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=56 sfa16=0 sfa32=56 sfa48=56
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=0 sfa16=0 sfa32=56 sfa48=64
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=0 sfa16=0 sfa32=0 sfa48=0
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=56 sfa16=64 sfa32=0 sfa48=0
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=0 sfa16=64 sfa32=64 sfa48=56
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=56 sfa16=56 sfa32=56 sfa48=56
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=0 sfa16=64 sfa32=0 sfa48=0
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=0 sfa16=56 sfa32=56 sfa48=64
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=56 sfa16=56 sfa32=56 sfa48=64
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=56 sfa16=64 sfa32=56 sfa48=0
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=64 sfa16=56 sfa32=56 sfa48=64
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=64 sfa16=56 sfa32=56 sfa48=64
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=0 sfa16=0 sfa32=0 sfa48=56
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=56 sfa16=0 sfa32=56 sfa48=0
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=0 sfa16=0 sfa32=64 sfa48=64
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=64 sfa16=56 sfa32=64 sfa48=64
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=64 sfa16=0 sfa32=0 sfa48=64
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=64 sfa16=56 sfa32=64 sfa48=0
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=56 sfa16=56 sfa32=0 sfa48=56
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=56 sfa16=56 sfa32=56 sfa48=64
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=64 sfa16=0 sfa32=0 sfa48=0
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=64 sfa16=64 sfa32=56 sfa48=64
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=0 sfa16=56 sfa32=64 sfa48=64
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=0 sfa16=0 sfa32=64 sfa48=0
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=56 sfa16=64 sfa32=64 sfa48=56
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=64 sfa16=0 sfa32=56 sfa48=64
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=56 sfa16=64 sfa32=56 sfa48=0
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=56 sfa16=56 sfa32=0 sfa48=56
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=56 sfa16=56 sfa32=64 sfa48=56
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=0 sfa16=56 sfa32=0 sfa48=0
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=56 sfa16=64 sfa32=64 sfa48=0
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=0 sfa16=0 sfa32=0 sfa48=64
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=56 sfa16=0 sfa32=0 sfa48=64
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=0 sfa16=0 sfa32=64 sfa48=0
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=0 sfa16=56 sfa32=0 sfa48=56
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=56 sfa16=64 sfa32=0 sfa48=64
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=0 sfa16=0 sfa32=56 sfa48=56
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=0 sfa16=56 sfa32=56 sfa48=56
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=56 sfa16=0 sfa32=0 sfa48=0
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=64 sfa16=0 sfa32=56 sfa48=0
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=0 sfa16=0 sfa32=64 sfa48=64
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=56 sfa16=56 sfa32=56 sfa48=64
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=0 sfa16=56 sfa32=0 sfa48=56
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=56 sfa16=0 sfa32=56 sfa48=56
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=0 sfa16=56 sfa32=56 sfa48=56
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=64 sfa16=0 sfa32=56 sfa48=56
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=56 sfa16=0 sfa32=64 sfa48=0
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=64 sfa16=0 sfa32=64 sfa48=0
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=64 sfa16=64 sfa32=0 sfa48=56
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=56 sfa16=56 sfa32=64 sfa48=64
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=56 sfa16=0 sfa32=64 sfa48=0
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=64 sfa16=64 sfa32=0 sfa48=0
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=0 sfa16=0 sfa32=0 sfa48=56
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=64 sfa16=0 sfa32=0 sfa48=64
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=0 sfa16=0 sfa32=64 sfa48=64
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=56 sfa16=64 sfa32=0 sfa48=0
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=64 sfa16=56 sfa32=0 sfa48=64
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=0 sfa16=56 sfa32=0 sfa48=0
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=0 sfa16=56 sfa32=56 sfa48=0
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=56 sfa16=0 sfa32=56 sfa48=0
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=64 sfa16=64 sfa32=56 sfa48=64
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=0 sfa16=0 sfa32=0 sfa48=64
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=64 sfa16=56 sfa32=56 sfa48=0
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=56 sfa16=56 sfa32=0 sfa48=56
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=64 sfa16=56 sfa32=64 sfa48=64
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=0 sfa16=56 sfa32=56 sfa48=56
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=0 sfa16=64 sfa32=0 sfa48=0
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=64 sfa16=64 sfa32=0 sfa48=56
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=64 sfa16=56 sfa32=64 sfa48=56
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=56 sfa16=0 sfa32=0 sfa48=0
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=0 sfa16=56 sfa32=0 sfa48=56
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=56 sfa16=0 sfa32=0 sfa48=56
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=0 sfa16=56 sfa32=64 sfa48=64
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=56 sfa16=0 sfa32=56 sfa48=64
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=0 sfa16=56 sfa32=64 sfa48=0
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=0 sfa16=0 sfa32=56 sfa48=56
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=56 sfa16=64 sfa32=0 sfa48=0
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=64 sfa16=0 sfa32=56 sfa48=56
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=0 sfa16=64 sfa32=0 sfa48=0
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=64 sfa16=0 sfa32=0 sfa48=0
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=56 sfa16=56 sfa32=0 sfa48=56
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=0 sfa16=56 sfa32=56 sfa48=64
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=56 sfa16=64 sfa32=56 sfa48=64
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=0 sfa16=0 sfa32=56 sfa48=0
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=56 sfa16=56 sfa32=56 sfa48=56
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=0 sfa16=0 sfa32=0 sfa48=64
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=64 sfa16=0 sfa32=64 sfa48=0
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=0 sfa16=0 sfa32=56 sfa48=64
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=0 sfa16=64 sfa32=56 sfa48=64
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=56 sfa16=56 sfa32=56 sfa48=56
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=64 sfa16=64 sfa32=0 sfa48=56
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=56 sfa16=56 sfa32=56 sfa48=0
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=64 sfa16=0 sfa32=0 sfa48=0
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=56 sfa16=56 sfa32=64 sfa48=64
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=0 sfa16=0 sfa32=56 sfa48=0
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=0 sfa16=0 sfa32=0 sfa48=0
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=64 sfa16=64 sfa32=0 sfa48=56
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=64 sfa16=64 sfa32=56 sfa48=56
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=56 sfa16=0 sfa32=0 sfa48=0
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=56 sfa16=56 sfa32=56 sfa48=56
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=56 sfa16=0 sfa32=56 sfa48=56
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=0 sfa16=0 sfa32=64 sfa48=64
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=64 sfa16=64 sfa32=64 sfa48=56
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=64 sfa16=0 sfa32=0 sfa48=64
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=64 sfa16=0 sfa32=56 sfa48=56
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=56 sfa16=56 sfa32=0 sfa48=64
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=64 sfa16=0 sfa32=0 sfa48=0
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=64 sfa16=64 sfa32=0 sfa48=64
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=56 sfa16=0 sfa32=0 sfa48=64
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=56 sfa16=64 sfa32=56 sfa48=56
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=0 sfa16=56 sfa32=56 sfa48=56
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=56 sfa16=0 sfa32=64 sfa48=0
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=0 sfa16=64 sfa32=64 sfa48=56
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=56 sfa16=56 sfa32=56 sfa48=64
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=56 sfa16=0 sfa32=0 sfa48=64
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=0 sfa16=56 sfa32=64 sfa48=56
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=56 sfa16=64 sfa32=64 sfa48=64
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=56 sfa16=64 sfa32=64 sfa48=64
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=56 sfa16=0 sfa32=56 sfa48=64
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=0 sfa16=64 sfa32=0 sfa48=64
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=56 sfa16=0 sfa32=56 sfa48=56
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=64 sfa16=56 sfa32=0 sfa48=0
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=64 sfa16=0 sfa32=0 sfa48=56
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=64 sfa16=64 sfa32=0 sfa48=56
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=64 sfa16=64 sfa32=64 sfa48=0
-DBG B/sfb loaded: b0=3 b1=1 b2=1 b3=0 b16=1 b24=3 sfb0=64 sfb8=64 sfa0=56 sfa16=56 sfa32=64 sfa48=56
-DBG B/sfb loaded: b0=1 b1=2 b2=1 b3=3 b16=0 b24=2 sfb0=64 sfb8=64 sfa0=0 sfa16=56 sfa32=0 sfa48=64
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=56 sfa16=0 sfa32=56 sfa48=56
-DBG after cp.async sfa loop
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=64 sfa16=64 sfa32=0 sfa48=56
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=64 sfa16=0 sfa32=64 sfa48=64
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=0 sfa16=56 sfa32=0 sfa48=64
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=56 sfa16=0 sfa32=0 sfa48=64
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=56 sfa16=64 sfa32=64 sfa48=56
-DBG B/sfb loaded: b0=3 b1=2 b2=2 b3=1 b16=1 b24=0 sfb0=64 sfb8=64 sfa0=0 sfa16=56 sfa32=56 sfa48=0
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=0 sfa16=0 sfa32=64 sfa48=0
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=0 sfa16=56 sfa32=0 sfa48=0
-DBG B/sfb loaded: b0=3 b1=2 b2=2 b3=1 b16=1 b24=0 sfb0=64 sfb8=64 sfa0=64 sfa16=56 sfa32=64 sfa48=56
-DBG B/sfb loaded: b0=3 b1=2 b2=2 b3=1 b16=1 b24=0 sfb0=64 sfb8=64 sfa0=0 sfa16=64 sfa32=64 sfa48=56
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=0 sfa16=0 sfa32=56 sfa48=64
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=56 sfa16=64 sfa32=64 sfa48=64
-DBG B/sfb loaded: b0=3 b1=2 b2=0 b3=3 b16=2 b24=3 sfb0=0 sfb8=0 sfa0=0 sfa16=56 sfa32=64 sfa48=64
-DBG B/sfb loaded: b0=3 b1=2 b2=2 b3=1 b16=1 b24=0 sfb0=64 sfb8=64 sfa0=56 sfa16=64 sfa32=64 sfa48=64
-DBG B/sfb loaded: b0=3 b1=2 b2=2 b3=1 b16=1 b24=0 sfb0=64 sfb8=64 sfa0=56 sfa16=0 sfa32=56 sfa48=64
-[...] 64388 lines omitted```"
+k: 2048; l: 4; m: 7168; seed: 1111
+ ⏱ 17.4 ± 0.02 µs
+ ⚡ 17.2 µs 🐌 19.5 µs
+```"

@@ -20,6 +20,7 @@ cuda_source = """
 // ======================== CONFIGURATION CONSTANTS ===========================
 // ============================================================================
 #define BLOCK_SIZE 32
+#define ROWS_PER_BLOCK 1
 #define K_TILE 2560
 #define SCALES_PER_TILE (K_TILE / 16)
 #define BYTES_PER_TILE (K_TILE / 2)
@@ -86,9 +87,10 @@ __device__ __forceinline__ float compute_tile(
     int tid
 ) {
     float acc = 0.0f;
+    const int THREADS_PER_ROW = BLOCK_SIZE / ROWS_PER_BLOCK;
 
 #pragma unroll 8
-    for (int sf = tid; sf < SCALES_PER_TILE; sf += BLOCK_SIZE) {
+    for (int sf = tid; sf < SCALES_PER_TILE; sf += THREADS_PER_ROW) {
         float scale = decode_fp8(static_cast<int8_t>(sh_sfa[sf])) *
                       decode_fp8(static_cast<int8_t>(sh_sfb[sf]));
         __half2 scale_h2 = __half2half2(__float2half(scale));
@@ -125,9 +127,10 @@ __device__ __forceinline__ float compute_remainder(
     int tid
 ) {
     float acc = 0.0f;
+    const int THREADS_PER_ROW = BLOCK_SIZE / ROWS_PER_BLOCK;
 
 #pragma unroll 4
-    for (int sf = remainder_sf_start + tid; sf < K_sf; sf += BLOCK_SIZE) {
+    for (int sf = remainder_sf_start + tid; sf < K_sf; sf += THREADS_PER_ROW) {
         float scale = decode_fp8(static_cast<int8_t>(__ldg(&row_sfa[sf]))) *
                       decode_fp8(static_cast<int8_t>(__ldg(&batch_sfb[sf])));
         __half2 scale_h2 = __half2half2(__float2half(scale));
@@ -163,9 +166,10 @@ __device__ __forceinline__ float compute_remainder_smem(
     int tid
 ) {
     float acc = 0.0f;
+    const int THREADS_PER_ROW = BLOCK_SIZE / ROWS_PER_BLOCK;
 
 #pragma unroll 4
-    for (int sf = tid; sf < remainder_scales; sf += BLOCK_SIZE) {
+    for (int sf = tid; sf < remainder_scales; sf += THREADS_PER_ROW) {
         float scale = decode_fp8(static_cast<int8_t>(sh_sfa[sf])) *
                       decode_fp8(static_cast<int8_t>(sh_sfb[sf]));
         __half2 scale_h2 = __half2half2(__float2half(scale));
@@ -201,11 +205,13 @@ __global__ void gemv_nvfp4_kernel(
     int M, int K, int L,
     int N_rows
 ) {
-    int m = blockIdx.x;
+    int m_base = blockIdx.x * ROWS_PER_BLOCK;
     int l = blockIdx.y;
     int tid = threadIdx.x;
+    int row_in_block = tid / (BLOCK_SIZE / ROWS_PER_BLOCK);  // Which of the 4 rows this thread handles
+    int tid_in_row = tid % (BLOCK_SIZE / ROWS_PER_BLOCK);    // Thread ID within the row group
 
-    if (m >= M || l >= L) return;
+    if (m_base >= M || l >= L) return;
 
 // ============================================================================
 // ===================== PER-CTA BASE POINTER SETUP ===========================
@@ -227,6 +233,8 @@ __global__ void gemv_nvfp4_kernel(
     const uint8_t* batch_sfa = base_sfa + l * batch_stride_sfa;
     const uint8_t* batch_sfb = base_sfb + l * batch_stride_sfb;
 
+    // Calculate row index for this thread
+    int m = m_base + row_in_block;
     const uint8_t* row_a = batch_a + static_cast<size_t>(m) * K_half;
     const uint8_t* row_sfa = batch_sfa + static_cast<size_t>(m) * K_sf;
 
@@ -234,9 +242,9 @@ __global__ void gemv_nvfp4_kernel(
 // ===================== SHARED MEMORY ALLOCATION =============================
 // ============================================================================
     __shared__ float smem_acc[BLOCK_SIZE];
-    __shared__ uint8_t sh_a[NUM_BUFFERS][BYTES_PER_TILE];
+    __shared__ uint8_t sh_a[NUM_BUFFERS][ROWS_PER_BLOCK][BYTES_PER_TILE];
     __shared__ uint8_t sh_b[NUM_BUFFERS][BYTES_PER_TILE];
-    __shared__ uint8_t sh_sfa[NUM_BUFFERS][SCALES_PER_TILE];
+    __shared__ uint8_t sh_sfa[NUM_BUFFERS][ROWS_PER_BLOCK][SCALES_PER_TILE];
     __shared__ uint8_t sh_sfb[NUM_BUFFERS][SCALES_PER_TILE];
 
     float acc = 0.0f;
@@ -256,19 +264,35 @@ __global__ void gemv_nvfp4_kernel(
         const int base_k = tile_idx * K_TILE;
         const int base_byte = base_k >> 1;  // divide by 2 using shift
         const int base_sf = base_k >> 4;    // divide by 16 using shift
-        const uint32_t sh_a_base = __cvta_generic_to_shared(&sh_a[b_idx][0]);
+
+        // Load 4 rows of A and sfa
+        for (int r = 0; r < ROWS_PER_BLOCK; r++) {
+            if (m_base + r >= M) continue;
+            const uint8_t* this_row_a = batch_a + static_cast<size_t>(m_base + r) * K_half;
+            const uint8_t* this_row_sfa = batch_sfa + static_cast<size_t>(m_base + r) * K_sf;
+            const uint32_t sh_a_base = __cvta_generic_to_shared(&sh_a[b_idx][r][0]);
+            const uint32_t sh_sfa_base = __cvta_generic_to_shared(&sh_sfa[b_idx][r][0]);
+
+#pragma unroll 2
+            for (int i = tid * 16; i < BYTES_PER_TILE; i += BLOCK_SIZE * 16) {
+                ASYNC_COPY_16(sh_a_base + i, this_row_a + base_byte + i);
+            }
+#pragma unroll
+            for (int i = tid * 4; i < SCALES_PER_TILE; i += BLOCK_SIZE * 4) {
+                ASYNC_COPY_4(sh_sfa_base + i, this_row_sfa + base_sf + i);
+            }
+        }
+
+        // Load single shared B and sfb
         const uint32_t sh_b_base = __cvta_generic_to_shared(&sh_b[b_idx][0]);
-        const uint32_t sh_sfa_base = __cvta_generic_to_shared(&sh_sfa[b_idx][0]);
         const uint32_t sh_sfb_base = __cvta_generic_to_shared(&sh_sfb[b_idx][0]);
 
 #pragma unroll 2
         for (int i = tid * 16; i < BYTES_PER_TILE; i += BLOCK_SIZE * 16) {
-            ASYNC_COPY_16(sh_a_base + i, row_a + base_byte + i);
             ASYNC_COPY_16(sh_b_base + i, batch_b + base_byte + i);
         }
 #pragma unroll
         for (int i = tid * 4; i < SCALES_PER_TILE; i += BLOCK_SIZE * 4) {
-            ASYNC_COPY_4(sh_sfa_base + i, row_sfa + base_sf + i);
             ASYNC_COPY_4(sh_sfb_base + i, batch_sfb + base_sf + i);
         }
         asm volatile("cp.async.commit_group;");
@@ -276,21 +300,33 @@ __global__ void gemv_nvfp4_kernel(
 
     auto issue_remainder_async = [&](int b_idx, int rem_sf_start, int total_K_sf) {
         const int base_byte = rem_sf_start << 3;  // rem_sf_start * 16 / 2
-        const uint32_t sh_a_base = __cvta_generic_to_shared(&sh_a[b_idx][0]);
-        const uint32_t sh_b_base = __cvta_generic_to_shared(&sh_b[b_idx][0]);
-        const uint32_t sh_sfa_base = __cvta_generic_to_shared(&sh_sfa[b_idx][0]);
-        const uint32_t sh_sfb_base = __cvta_generic_to_shared(&sh_sfb[b_idx][0]);
-
         int remainder_bytes = ((total_K_sf - rem_sf_start) << 3);  // * 8
         int remainder_scales = total_K_sf - rem_sf_start;
 
-        // Copy remainder data - adapt stride to remainder size
+        // Load 4 rows of A and sfa
+        for (int r = 0; r < ROWS_PER_BLOCK; r++) {
+            if (m_base + r >= M) continue;
+            const uint8_t* this_row_a = batch_a + static_cast<size_t>(m_base + r) * K_half;
+            const uint8_t* this_row_sfa = batch_sfa + static_cast<size_t>(m_base + r) * K_sf;
+            const uint32_t sh_a_base = __cvta_generic_to_shared(&sh_a[b_idx][r][0]);
+            const uint32_t sh_sfa_base = __cvta_generic_to_shared(&sh_sfa[b_idx][r][0]);
+
+            for (int i = tid * 16; i < remainder_bytes; i += BLOCK_SIZE * 16) {
+                ASYNC_COPY_16(sh_a_base + i, this_row_a + base_byte + i);
+            }
+            for (int i = tid * 4; i < remainder_scales; i += BLOCK_SIZE * 4) {
+                ASYNC_COPY_4(sh_sfa_base + i, this_row_sfa + rem_sf_start + i);
+            }
+        }
+
+        // Load single shared B and sfb
+        const uint32_t sh_b_base = __cvta_generic_to_shared(&sh_b[b_idx][0]);
+        const uint32_t sh_sfb_base = __cvta_generic_to_shared(&sh_sfb[b_idx][0]);
+
         for (int i = tid * 16; i < remainder_bytes; i += BLOCK_SIZE * 16) {
-            ASYNC_COPY_16(sh_a_base + i, row_a + base_byte + i);
             ASYNC_COPY_16(sh_b_base + i, batch_b + base_byte + i);
         }
         for (int i = tid * 4; i < remainder_scales; i += BLOCK_SIZE * 4) {
-            ASYNC_COPY_4(sh_sfa_base + i, row_sfa + rem_sf_start + i);
             ASYNC_COPY_4(sh_sfb_base + i, batch_sfb + rem_sf_start + i);
         }
         asm volatile("cp.async.commit_group;");
@@ -317,13 +353,16 @@ __global__ void gemv_nvfp4_kernel(
                 issue_remainder_async(buf ^ 1, remainder_sf_start, K_sf);
             }
 
-            acc += compute_tile(
-                sh_a[buf],
-                sh_b[buf],
-                sh_sfa[buf],
-                sh_sfb[buf],
-                tid
-            );
+            // Each thread group computes for its assigned row
+            if (m < M) {
+                acc += compute_tile(
+                    sh_a[buf][row_in_block],
+                    sh_b[buf],
+                    sh_sfa[buf][row_in_block],
+                    sh_sfb[buf],
+                    tid_in_row
+                );
+            }
 
             if (tile + 1 < tile_count || has_remainder) {
                 asm volatile("cp.async.wait_group 0;");
@@ -336,17 +375,17 @@ __global__ void gemv_nvfp4_kernel(
 // ============================================================================
 // ===================== REMAINDER PROCESSING =================================
 // ============================================================================
-    if (has_remainder) {
+    if (has_remainder && m < M) {
         if (tile_count > 0) {
             // Remainder was prefetched during last tile - use from shared memory
             int remainder_scales = K_sf - remainder_sf_start;
             acc += compute_remainder_smem(
-                sh_a[buf],
+                sh_a[buf][row_in_block],
                 sh_b[buf],
-                sh_sfa[buf],
+                sh_sfa[buf][row_in_block],
                 sh_sfb[buf],
                 remainder_scales,
-                tid
+                tid_in_row
             );
         } else {
             // No tiles processed - load remainder directly from global memory
@@ -357,7 +396,7 @@ __global__ void gemv_nvfp4_kernel(
                 batch_sfb,
                 remainder_sf_start,
                 K_sf,
-                tid
+                tid_in_row
             );
         }
     }
@@ -366,41 +405,26 @@ __global__ void gemv_nvfp4_kernel(
 #undef ASYNC_COPY_4
 
 // ============================================================================
-// ===================== WARP-LEVEL REDUCTION =================================
+// ===================== ROW-GROUP REDUCTION ==================================
 // ============================================================================
-    float warp_sum = acc;
-    // Fully unrolled warp reduction for lower latency
-    warp_sum += __shfl_down_sync(0xffffffff, warp_sum, 16);
-    warp_sum += __shfl_down_sync(0xffffffff, warp_sum, 8);
-    warp_sum += __shfl_down_sync(0xffffffff, warp_sum, 4);
-    warp_sum += __shfl_down_sync(0xffffffff, warp_sum, 2);
-    warp_sum += __shfl_down_sync(0xffffffff, warp_sum, 1);
+    // Each row group (32 threads) reduces independently
+    const int lane = tid_in_row;
+    float row_sum = acc;
 
-// ============================================================================
-// ===================== BLOCK-LEVEL REDUCTION ================================
-// ============================================================================
-    const int warp_id = tid >> 5;
-    const int lane = tid & 31;
-    if (lane == 0) smem_acc[warp_id] = warp_sum;
-
-    __syncthreads();
-
-    if (warp_id == 0) {
-        float block_sum = (lane < (BLOCK_SIZE >> 5)) ? smem_acc[lane] : 0.0f;
-        // Fully unrolled block reduction
-        block_sum += __shfl_down_sync(0xffffffff, block_sum, 16);
-        block_sum += __shfl_down_sync(0xffffffff, block_sum, 8);
-        block_sum += __shfl_down_sync(0xffffffff, block_sum, 4);
-        block_sum += __shfl_down_sync(0xffffffff, block_sum, 2);
-        block_sum += __shfl_down_sync(0xffffffff, block_sum, 1);
+    // Warp reduction within each row group
+    row_sum += __shfl_down_sync(0xffffffff, row_sum, 16);
+    row_sum += __shfl_down_sync(0xffffffff, row_sum, 8);
+    row_sum += __shfl_down_sync(0xffffffff, row_sum, 4);
+    row_sum += __shfl_down_sync(0xffffffff, row_sum, 2);
+    row_sum += __shfl_down_sync(0xffffffff, row_sum, 1);
 
 // ============================================================================
 // ===================== FINAL OUTPUT WRITE ===================================
 // ============================================================================
-        if (lane == 0) {
-            size_t c_idx = static_cast<size_t>(m) + static_cast<size_t>(l) * M;
-            c[c_idx] = __float2half(block_sum);
-        }
+    // Thread 0 of each row group writes the result
+    if (lane == 0 && m < M) {
+        size_t c_idx = static_cast<size_t>(m) + static_cast<size_t>(l) * M;
+        c[c_idx] = __float2half(row_sum);
     }
 }
 
@@ -413,7 +437,9 @@ torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::
     int L = a.size(2);
     int N_rows = b.size(0);
 
-    dim3 grid(M, L);
+    // Launch grid with M/ROWS_PER_BLOCK blocks
+    int grid_m = (M + ROWS_PER_BLOCK - 1) / ROWS_PER_BLOCK;
+    dim3 grid(grid_m, L);
     dim3 block(BLOCK_SIZE);
 
     auto* a_ptr = reinterpret_cast<const int8_t*>(a.data_ptr());
