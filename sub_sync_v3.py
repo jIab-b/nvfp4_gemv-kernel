@@ -21,6 +21,7 @@ cuda_source = """
 // ============================================================================
 #define BLOCK_SIZE 128
 #define ROWS_PER_BLOCK 4
+#define K_TILE 4096  // Tunable parameter (unused in direct load version)
 
 // ============================================================================
 // ======================== TYPE CONVERSION HELPERS ===========================
@@ -238,7 +239,8 @@ module = load_inline(
         '-O3',
         '--use_fast_math',
         '-std=c++17',
-        '-gencode=arch=compute_100a,code=sm_100a'
+        '-gencode=arch=compute_100a,code=sm_100a',
+        '-maxrregcount=60'
     ],
     with_cuda=True,
     verbose=False
