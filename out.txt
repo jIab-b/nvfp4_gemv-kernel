@@ -1,5 +1,5 @@
 "**NVIDIA on GitHub ✅ success**
-> Workflow [19732900989](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19732900989>) completed
+> Workflow [19735045150](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19735045150>) completed
 > Downloading artifacts... done
 > ❌ Running benchmarks failed (timeout)
 
@@ -11,5 +11,5 @@ Running on:
 * Torch: `2.9.1+cu130`
 # Running failed
 Command ```bash
-python3 eval.py benchmark /tmp/tmpypmwzr2v```
+python3 eval.py benchmark /tmp/tmp5zagbmhx```
 **timed out** after 180.00 seconds."

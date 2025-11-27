@@ -254,13 +254,12 @@ __device__ __forceinline__ void prepare_b_smem(
             val &= 0x7F7F7F7F;  // Clear sign bits
 
             // Fill scale factors with proper layout for tcgen05
-            // Per Figure 242: Each 32-bit word should contain all 4 scale factors [SF0|SF1|SF2|SF3]
-            // Replicate this 4-byte pattern across 16B stride for each of 4 scale factor groups
+            // Replicate each scale factor individually across 16B (matches working sub_tma.py)
             for (int k = 0; k < 4; ++k) {
-                *reinterpret_cast<int*>(sm_sfb + k * 16 + 0) = val;
-                *reinterpret_cast<int*>(sm_sfb + k * 16 + 4) = val;
-                *reinterpret_cast<int*>(sm_sfb + k * 16 + 8) = val;
-                *reinterpret_cast<int*>(sm_sfb + k * 16 + 12) = val;
+                int8_t s = (val >> (k * 8)) & 0xFF;
+                uint64_t s8 = 0x0101010101010101ULL * static_cast<uint8_t>(s);
+                *reinterpret_cast<uint64_t*>(sm_sfb + k * 16 + 0) = s8;
+                *reinterpret_cast<uint64_t*>(sm_sfb + k * 16 + 8) = s8;
             }
         }
     }
@@ -304,6 +303,7 @@ __device__ __forceinline__ void execute_tcgen05_mma_tile(
         // Issue tcgen05.mma with block scaling
         // D = A * B with scale_A and scale_B
         // enable_input_d = accumulate (1 to add to existing D, 0 to overwrite)
+        // NOTE: Last parameter MUST be a literal constant (0 or 1), not a register
         if (accumulate) {
             asm volatile(
                 "tcgen05.mma.cta_group::1.kind::mxf4nvf4.block_scale.scale_vec::4X "
@@ -325,20 +325,16 @@ __device__ __forceinline__ void execute_tcgen05_mma_tile(
             :: "l"(mbar));
     }
 
-    // All threads wait for MMA completion with proper parity
-    // Parity alternates: 0 for first iteration, 1 for second, etc.
-    if (parity == 0) {
-        asm volatile(
-            "{.reg .pred p; Lw%=: mbarrier.try_wait.parity.b64 p, [%0], 0; @!p bra Lw%=;}\n"
-            :: "l"(mbar)
-        );
-    } else {
-        asm volatile(
-            "{.reg .pred p; Lw%=: mbarrier.try_wait.parity.b64 p, [%0], 1; @!p bra Lw%=;}\n"
-            :: "l"(mbar)
-        );
-    }
+    // All threads wait for MMA completion
+    // After mbarrier.init (phase=0), first arrive transitions to phase=1
+    // Subsequent arrives alternate phases: 1->2(parity 0)->3(parity 1)->...
+    // We wait on the parity we're transitioning TO
+    asm volatile(
+        "{.reg .pred p; Lw%=: mbarrier.try_wait.parity.b64 p, [%0], %1; @!p bra Lw%=;}\n"
+        :: "l"(mbar), "r"(parity)
+    );
     asm volatile("tcgen05.fence::after_thread_sync;\n");
+    // NOTE: No __syncthreads needed here - mbarrier.try_wait already ensures all threads wait
 }
 
 // ============================================================================
@@ -612,7 +608,9 @@ gemv_tcgen05_kernel(
     }
     __syncthreads();
 
-    int mbar_parity = 1;  // After mbarrier.init (phase=0), first commit sets phase=1
+    // mbarrier.init sets phase=0. After arrive::one, phase becomes 1.
+    // So first wait should be on parity=1, then it alternates.
+    int mbar_parity = 1;
 
     if (tile_count > 0) {
         // Issue first tile load (A and B)
@@ -652,7 +650,7 @@ gemv_tcgen05_kernel(
                 sdesc_a, sdesc_b, sdesc_sfa, sdesc_sfb,
                 idesc, &mbar_mma, warpId, laneId, accumulate, mbar_parity
             );
-            mbar_parity ^= 1;  // Flip parity for next iteration
+            mbar_parity ^= 1;  // Flip parity: 1->0->1->0...
 
             // ================================================================
             // Wait for prefetch and switch buffers
