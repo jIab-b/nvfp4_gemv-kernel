@@ -334,7 +334,13 @@ __device__ __forceinline__ void execute_tcgen05_mma_tile(
         :: "l"(mbar), "r"(parity)
     );
     asm volatile("tcgen05.fence::after_thread_sync;\n");
-    // NOTE: No __syncthreads needed here - mbarrier.try_wait already ensures all threads wait
+    __syncthreads();
+
+    // Reinitialize mbarrier for next iteration
+    if (warpId == 0 && laneId == 0) {
+        asm volatile("mbarrier.init.shared.b64 [%0], 1;\n" :: "l"(mbar));
+    }
+    __syncthreads();
 }
 
 // ============================================================================
@@ -609,8 +615,8 @@ gemv_tcgen05_kernel(
     __syncthreads();
 
     // mbarrier.init sets phase=0. After arrive::one, phase becomes 1.
-    // So first wait should be on parity=1, then it alternates.
-    int mbar_parity = 1;
+    // Since we reinitialize mbarrier each iteration, always wait on parity=1.
+    const int mbar_parity = 1;
 
     if (tile_count > 0) {
         // Issue first tile load (A and B)
@@ -650,7 +656,6 @@ gemv_tcgen05_kernel(
                 sdesc_a, sdesc_b, sdesc_sfa, sdesc_sfb,
                 idesc, &mbar_mma, warpId, laneId, accumulate, mbar_parity
             );
-            mbar_parity ^= 1;  // Flip parity: 1->0->1->0...
 
             // ================================================================
             // Wait for prefetch and switch buffers
