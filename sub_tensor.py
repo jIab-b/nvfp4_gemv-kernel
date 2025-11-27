@@ -254,11 +254,13 @@ __device__ __forceinline__ void prepare_b_smem(
             val &= 0x7F7F7F7F;  // Clear sign bits
 
             // Fill scale factors with proper layout for tcgen05
+            // Per Figure 242: Each 32-bit word should contain all 4 scale factors [SF0|SF1|SF2|SF3]
+            // Replicate this 4-byte pattern across 16B stride for each of 4 scale factor groups
             for (int k = 0; k < 4; ++k) {
-                int8_t s = (val >> (k * 8)) & 0xFF;
-                uint64_t s8 = 0x0101010101010101ULL * static_cast<uint8_t>(s);
-                *reinterpret_cast<uint64_t*>(sm_sfb + k * 16 + 0) = s8;
-                *reinterpret_cast<uint64_t*>(sm_sfb + k * 16 + 8) = s8;
+                *reinterpret_cast<int*>(sm_sfb + k * 16 + 0) = val;
+                *reinterpret_cast<int*>(sm_sfb + k * 16 + 4) = val;
+                *reinterpret_cast<int*>(sm_sfb + k * 16 + 8) = val;
+                *reinterpret_cast<int*>(sm_sfb + k * 16 + 12) = val;
             }
         }
     }

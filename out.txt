@@ -1,1 +1,15 @@
-Submission cancelled.
+"**NVIDIA on GitHub ✅ success**
+> Workflow [19732900989](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19732900989>) completed
+> Downloading artifacts... done
+> ❌ Running benchmarks failed (timeout)
+
+Running on:
+* GPU: `NVIDIA B200`
+* CPU: `INTEL(R) XEON(R) PLATINUM 8570`
+* Runtime: `CUDA`
+* Platform: `Linux-6.8.0-51-generic-x86_64-with-glibc2.35`
+* Torch: `2.9.1+cu130`
+# Running failed
+Command ```bash
+python3 eval.py benchmark /tmp/tmpypmwzr2v```
+**timed out** after 180.00 seconds."
