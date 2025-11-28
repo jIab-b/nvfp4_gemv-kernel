@@ -48,7 +48,6 @@ __device__ __forceinline__ __half2 dot_scaled_4bytes(
     uint32_t b4,
     __half2 scale_h2
 ) {
-    // Extract bytes using bfe.u32 for clearer semantics and same performance as prmt
     uint32_t b_byte0, b_byte1, b_byte2, b_byte3;
     uint32_t a_byte0, a_byte1, a_byte2, a_byte3;
 
@@ -64,13 +63,13 @@ __device__ __forceinline__ __half2 dot_scaled_4bytes(
     asm("bfe.u32 %0, %1, 16, 8;" : "=r"(a_byte2) : "r"(a4));
     asm("bfe.u32 %0, %1, 24, 8;" : "=r"(a_byte3) : "r"(a4));
 
-    // Inline b_scaled computation to minimize register live ranges
-    __half2 acc = __hmul2(decode_fp4x2(a_byte0), __hmul2(decode_fp4x2(b_byte0), scale_h2));
-    acc = __hfma2(decode_fp4x2(a_byte1), __hmul2(decode_fp4x2(b_byte1), scale_h2), acc);
-    acc = __hfma2(decode_fp4x2(a_byte2), __hmul2(decode_fp4x2(b_byte2), scale_h2), acc);
-    acc = __hfma2(decode_fp4x2(a_byte3), __hmul2(decode_fp4x2(b_byte3), scale_h2), acc);
+    // Two independent FMA chains to increase ILP
+    __half2 acc0 = __hmul2(decode_fp4x2(a_byte0), __hmul2(decode_fp4x2(b_byte0), scale_h2));
+    __half2 acc1 = __hmul2(decode_fp4x2(a_byte1), __hmul2(decode_fp4x2(b_byte1), scale_h2));
+    acc0 = __hfma2(decode_fp4x2(a_byte2), __hmul2(decode_fp4x2(b_byte2), scale_h2), acc0);
+    acc1 = __hfma2(decode_fp4x2(a_byte3), __hmul2(decode_fp4x2(b_byte3), scale_h2), acc1);
 
-    return acc;
+    return __hadd2(acc0, acc1);
 }
 
 // ============================================================================
