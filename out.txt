@@ -1,7 +1,7 @@
 "**NVIDIA on GitHub ✅ success**
-> Workflow [19754611026](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19754611026>) completed
+> Workflow [19771245331](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19771245331>) completed
 > Downloading artifacts... done
-> ✅ Benchmarking successful
+> ❌ Running benchmarks failed (internal error 1)
 
 Running on:
 * GPU: `NVIDIA B200`
@@ -9,19 +9,84 @@ Running on:
 * Runtime: `CUDA`
 * Platform: `Linux-6.8.0-51-generic-x86_64-with-glibc2.35`
 * Torch: `2.9.1+cu130`
+# Running failed
+Command ```bash
+python3 eval.py benchmark /tmp/tmpuo4eudt8```
+exited with error code **1** after 3.68 seconds.
 
-
-## Benchmarks:
+## Program stderr:
 ```
-k: 16384; l: 1; m: 7168; seed: 1111
- ⏱ 26.7 ± 0.03 µs
- ⚡ 26.5 µs 🐌 28.7 µs
+multiprocessing.pool.RemoteTraceback: 
+\"\"\"
+Traceback (most recent call last):
+  File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 125, in worker
+    result = (True, func(*args, **kwds))
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 217, in _run_single_benchmark
+    output = custom_kernel(_clone_data(data))
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 191, in custom_kernel
+    compiled = compile_kernel()
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 183, in compile_kernel
+    _compiled_kernel = cute.compile(
+  File \"/home/runner/.local/lib/python3.10/site-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/compiler.py\", line 566, in __call__
+    return self._compile(*args, **kwargs)
+  File \"/home/runner/.local/lib/python3.10/site-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/compiler.py\", line 640, in _compile
+    return func._dsl_object._func(fcn_ptr, *args, **kwargs)
+  File \"/home/runner/.local/lib/python3.10/site-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/dsl.py\", line 1555, in _func
+    result = self.generate_mlir(
+  File \"/home/runner/.local/lib/python3.10/site-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/dsl.py\", line 1361, in generate_mlir
+    module, module_hash, result = self.generate_original_ir(
+  File \"/home/runner/.local/lib/python3.10/site-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/dsl.py\", line 1204, in generate_original_ir
+    module, result = profiler(build_ir_module)()
+  File \"/home/runner/.local/lib/python3.10/site-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/utils/timer.py\", line 29, in func_wrapper
+    return func(*args, **kwargs)
+  File \"/home/runner/.local/lib/python3.10/site-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/dsl.py\", line 1186, in build_ir_module
+    result = funcBody(*ir_args, **ir_kwargs)
+  File \"/home/runner/.local/lib/python3.10/site-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/dsl.py\", line 255, in __call__
+    ret = self.__func__(*args, **kwargs)
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 162, in my_kernel
+    kernel_tcgen(a_tensor, b_tensor, sfa_tensor, sfb_tensor, c_tensor).launch(
+  File \"/home/runner/.local/lib/python3.10/site-packages/nvidia_cutlass_dsl/python_packages/cutlass/cutlass_dsl/cutlass.py\", line 980, in launch
+    ret, name = kernel_generator(*self.func_args, **self.func_kwargs, config=config)
+  File \"/home/runner/.local/lib/python3.10/site-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/dsl.py\", line 1849, in kernel_wrapper
+    kernel_ret = funcBody(*ir_args, **ir_kwargs)
+  File \"/home/runner/.local/lib/python3.10/site-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/dsl.py\", line 255, in __call__
+    ret = self.__func__(*args, **kwargs)
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 107, in kernel_tcgen
+    for kt in range(k_tile_cnt):
+  File \"/home/runner/.local/lib/python3.10/site-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/ast_helpers.py\", line 219, in ir_loop
+    return executor.for_execute(
+  File \"/home/runner/.local/lib/python3.10/site-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/ast_helpers.py\", line 120, in for_execute
+    return self._loop_execute_range_dynamic(
+  File \"/home/runner/.local/lib/python3.10/site-packages/nvidia_cutlass_dsl/python_packages/cutlass/cutlass_dsl/cutlass_ast_decorators.py\", line 411, in _loop_execute_range_dynamic
+    return scf_gen.scf_execute_dynamic(
+  File \"/home/runner/.local/lib/python3.10/site-packages/nvidia_cutlass_dsl/python_packages/cutlass/cutlass_dsl/cutlass_ast_decorators.py\", line 205, in scf_execute_dynamic
+    region_result = builder(
+  File \"/home/runner/.local/lib/python3.10/site-packages/nvidia_cutlass_dsl/python_packages/cutlass/cutlass_dsl/cutlass_ast_decorators.py\", line 407, in for_body_builder
+    updated_func_args = func(iv, *func_args)
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/submission.py\", line 109, in loop_body_0
+    gA_tile = gA_mkl[:, :, bidx, kt, bidz]
+  File \"/home/runner/.local/lib/python3.10/site-packages/nvidia_cutlass_dsl/python_packages/cutlass/base_dsl/_mlir_helpers/op.py\", line 60, in wrapper
+    res_or_list = opFunc(*args, **kwargs, loc=loc)
+  File \"/home/runner/.local/lib/python3.10/site-packages/nvidia_cutlass_dsl/python_packages/cutlass/cute/tensor.py\", line 263, in __getitem__
+    self._check_can_dereference()
+  File \"/home/runner/.local/lib/python3.10/site-packages/nvidia_cutlass_dsl/python_packages/cutlass/cute/tensor.py\", line 566, in _check_can_dereference
+    raise ValueError(
+ValueError: Sub-byte scalar dereference not supported for type Float4E2M1FN
+\"\"\"
 
-k: 7168; l: 8; m: 4096; seed: 1111
- ⏱ 45.1 ± 0.02 µs
- ⚡ 45.0 µs 🐌 46.1 µs
+The above exception was the direct cause of the following exception:
 
-k: 2048; l: 4; m: 7168; seed: 1111
- ⏱ 16.4 ± 0.02 µs
- ⚡ 16.3 µs 🐌 18.4 µs
-```"
+Traceback (most recent call last):
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 485, in <module>
+    sys.exit(main())
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 453, in main
+    return run_benchmarking(logger, pool, tests)
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 306, in run_benchmarking
+    run_single_benchmark(pool, tests[0], False, 200, 10e7)
+  File \"/home/runner/_work/discord-cluster-manager/discord-cluster-manager/eval.py\", line 291, in run_single_benchmark
+    return pool.apply(_run_single_benchmark, (test, recheck, max_repeats, max_time_ns))
+  File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 360, in apply
+    return self.apply_async(func, args, kwds).get()
+  File \"/usr/lib/python3.10/multiprocessing/pool.py\", line 774, in get
+    raise self._value
+ValueError: Sub-byte scalar dereference not supported for type Float4E2M1FN```"
