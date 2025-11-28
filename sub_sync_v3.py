@@ -44,30 +44,15 @@ __device__ __forceinline__ float decode_fp8(int8_t byte) {
 // ================ SCALED DOT PRODUCT FOR 4 PACKED BYTES =====================
 // ============================================================================
 __device__ __forceinline__ __half2 dot_scaled_4bytes(
-    uint32_t a4,
-    uint32_t b4,
+    uchar4 a4,
+    uchar4 b4,
     __half2 scale_h2
 ) {
-    uint32_t b_byte0, b_byte1, b_byte2, b_byte3;
-    uint32_t a_byte0, a_byte1, a_byte2, a_byte3;
-
-    // Extract 4 bytes from b4 using bit field extract
-    asm("bfe.u32 %0, %1, 0, 8;"  : "=r"(b_byte0) : "r"(b4));
-    asm("bfe.u32 %0, %1, 8, 8;"  : "=r"(b_byte1) : "r"(b4));
-    asm("bfe.u32 %0, %1, 16, 8;" : "=r"(b_byte2) : "r"(b4));
-    asm("bfe.u32 %0, %1, 24, 8;" : "=r"(b_byte3) : "r"(b4));
-
-    // Extract 4 bytes from a4
-    asm("bfe.u32 %0, %1, 0, 8;"  : "=r"(a_byte0) : "r"(a4));
-    asm("bfe.u32 %0, %1, 8, 8;"  : "=r"(a_byte1) : "r"(a4));
-    asm("bfe.u32 %0, %1, 16, 8;" : "=r"(a_byte2) : "r"(a4));
-    asm("bfe.u32 %0, %1, 24, 8;" : "=r"(a_byte3) : "r"(a4));
-
     // Two independent FMA chains to increase ILP
-    __half2 acc0 = __hmul2(decode_fp4x2(a_byte0), __hmul2(decode_fp4x2(b_byte0), scale_h2));
-    __half2 acc1 = __hmul2(decode_fp4x2(a_byte1), __hmul2(decode_fp4x2(b_byte1), scale_h2));
-    acc0 = __hfma2(decode_fp4x2(a_byte2), __hmul2(decode_fp4x2(b_byte2), scale_h2), acc0);
-    acc1 = __hfma2(decode_fp4x2(a_byte3), __hmul2(decode_fp4x2(b_byte3), scale_h2), acc1);
+    __half2 acc0 = __hmul2(decode_fp4x2(a4.x), __hmul2(decode_fp4x2(b4.x), scale_h2));
+    __half2 acc1 = __hmul2(decode_fp4x2(a4.y), __hmul2(decode_fp4x2(b4.y), scale_h2));
+    acc0 = __hfma2(decode_fp4x2(a4.z), __hmul2(decode_fp4x2(b4.z), scale_h2), acc0);
+    acc1 = __hfma2(decode_fp4x2(a4.w), __hmul2(decode_fp4x2(b4.w), scale_h2), acc1);
 
     return __hadd2(acc0, acc1);
 }
@@ -90,14 +75,15 @@ __device__ __forceinline__ float compute_direct(
     for (int sf = tid; sf < K_sf; sf += THREADS_PER_ROW) {
         float scale = decode_fp8(static_cast<int8_t>(__ldg(&row_sfa[sf]))) *
                       decode_fp8(static_cast<int8_t>(__ldg(&batch_sfb[sf])));
-        __half2 scale_h2 = __half2half2(__float2half(scale));
+        __half scale_h = __float2half(scale);
+        __half2 scale_h2 = __halves2half2(scale_h, scale_h);
 
         int byte_base = sf << 3;  // sf * 8 using bit shift
 
-        uint32_t a4_0 = __ldg(reinterpret_cast<const uint32_t*>(&row_a[byte_base]));
-        uint32_t b4_0 = __ldg(reinterpret_cast<const uint32_t*>(&batch_b[byte_base]));
-        uint32_t a4_1 = __ldg(reinterpret_cast<const uint32_t*>(&row_a[byte_base + 4]));
-        uint32_t b4_1 = __ldg(reinterpret_cast<const uint32_t*>(&batch_b[byte_base + 4]));
+        uchar4 a4_0 = *reinterpret_cast<const uchar4*>(&row_a[byte_base]);
+        uchar4 b4_0 = *reinterpret_cast<const uchar4*>(&batch_b[byte_base]);
+        uchar4 a4_1 = *reinterpret_cast<const uchar4*>(&row_a[byte_base + 4]);
+        uchar4 b4_1 = *reinterpret_cast<const uchar4*>(&batch_b[byte_base + 4]);
 
         __half2 acc_h2_0 = dot_scaled_4bytes(a4_0, b4_0, scale_h2);
         __half2 acc_h2_1 = dot_scaled_4bytes(a4_1, b4_1, scale_h2);
