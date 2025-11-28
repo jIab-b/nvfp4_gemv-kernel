@@ -19,57 +19,19 @@ cuda_source = """
 // ============================================================================
 // ======================== CONFIGURATION CONSTANTS ===========================
 // ============================================================================
-#define BLOCK_SIZE 64
-#define ROWS_PER_BLOCK 2
+#define BLOCK_SIZE 128
+#define ROWS_PER_BLOCK 4
 #define K_TILE 4096  // Tunable parameter (unused in direct load version)
-
-// ============================================================================
-// =================== MARLIN-STYLE BIT-TWIDDLING HELPERS =====================
-// ============================================================================
-// LOP3: 3-input logical operation (single instruction on GPU)
-// Explicitly used for dequantization as compiler doesn't always recognize it
-template <int lut>
-__device__ inline int lop3(int a, int b, int c) {
-  int res;
-  asm volatile(
-    "lop3.b32 %0, %1, %2, %3, %4;\\n"
-    : "=r"(res) : "r"(a), "r"(b), "r"(c), "n"(lut)
-  );
-  return res;
-}
 
 // ============================================================================
 // ======================== TYPE CONVERSION HELPERS ===========================
 // ============================================================================
-// Marlin-exact FP4 E2M1 decode: pure integer ops + LOP3
-// Battle-tested, bit-identical to official Marlin kernel
-// 3-4× faster than __nv_cvt_fp4x2_to_halfraw2
-__device__ __forceinline__ __half2 decode_fp4x2(uint8_t x) {
-    unsigned int v = x;
-
-    // Expand low and high nibble to byte positions
-    unsigned int lo = v & 0x0f;
-    unsigned int hi = (v >> 4) & 0x0f;
-
-    // Replicate nibble: 0000abcd → abcdabcd
-    lo |= lo << 4;
-    hi |= hi << 4;
-
-    // Replicate byte: abcdabcd → abcdabcd|abcdabcd<<8
-    lo |= lo << 8;
-    hi |= hi << 8;
-
-    // LOP3 magic: (a & b) ^ c with LUT=0xB6
-    // Constructs valid FP16 bits by combining nibble with exponent base
-    lo = lop3<0xB6>(lo, 0x7C00, 0x4000);  // 0x7C00 = exp/mantissa mask, 0x4000 = FP16(2.0)
-    hi = lop3<0xB6>(hi, 0x7C00, 0x4000);
-
-    // Pack into half2
-    __half2 res;
-    reinterpret_cast<unsigned short*>(&res)[0] = static_cast<unsigned short>(lo);
-    reinterpret_cast<unsigned short*>(&res)[1] = static_cast<unsigned short>(hi);
-
-    return res;
+__device__ __forceinline__ __half2 decode_fp4x2(uint8_t byte) {
+    __half2_raw raw = __nv_cvt_fp4x2_to_halfraw2(
+        static_cast<__nv_fp4x2_storage_t>(byte),
+        __NV_E2M1
+    );
+    return *reinterpret_cast<__half2*>(&raw);
 }
 
 __device__ __forceinline__ float decode_fp8(int8_t byte) {
@@ -106,33 +68,63 @@ __device__ __forceinline__ float compute_direct(
     int K_sf,
     int tid
 ) {
-    float acc = 0.0f;
+    // Process 2 scale factors per iteration to maximize ILP
+    // Each thread handles 2× the work but with independent chains
+    float acc0 = 0.0f, acc1 = 0.0f;
     const int THREADS_PER_ROW = BLOCK_SIZE / ROWS_PER_BLOCK;
+    const int STRIDE = THREADS_PER_ROW * 2;  // Process 2 sf per iteration
 
-#pragma unroll 4
-    for (int sf = tid; sf < K_sf; sf += THREADS_PER_ROW) {
-        float scale = decode_fp8(static_cast<int8_t>(__ldg(&row_sfa[sf]))) *
-                      decode_fp8(static_cast<int8_t>(__ldg(&batch_sfb[sf])));
-        __half scale_h = __float2half(scale);
-        __half2 scale_h2 = __halves2half2(scale_h, scale_h);
+#pragma unroll 2
+    for (int sf_base = tid * 2; sf_base < K_sf; sf_base += STRIDE) {
+        // ====================================================================
+        // CHAIN 0: Process sf_base
+        // ====================================================================
+        if (sf_base < K_sf) {
+            float scale0 = decode_fp8(static_cast<int8_t>(__ldg(&row_sfa[sf_base]))) *
+                          decode_fp8(static_cast<int8_t>(__ldg(&batch_sfb[sf_base])));
+            __half2 scale_h2_0 = __halves2half2(__float2half(scale0), __float2half(scale0));
 
-        int byte_base = sf << 3;  // sf * 8 using bit shift
+            int byte_base0 = sf_base << 3;
 
-        uchar4 a4_0 = *reinterpret_cast<const uchar4*>(&row_a[byte_base]);
-        uchar4 b4_0 = *reinterpret_cast<const uchar4*>(&batch_b[byte_base]);
-        uchar4 a4_1 = *reinterpret_cast<const uchar4*>(&row_a[byte_base + 4]);
-        uchar4 b4_1 = *reinterpret_cast<const uchar4*>(&batch_b[byte_base + 4]);
+            uchar4 a4_0 = *reinterpret_cast<const uchar4*>(&row_a[byte_base0]);
+            uchar4 b4_0 = *reinterpret_cast<const uchar4*>(&batch_b[byte_base0]);
+            uchar4 a4_1 = *reinterpret_cast<const uchar4*>(&row_a[byte_base0 + 4]);
+            uchar4 b4_1 = *reinterpret_cast<const uchar4*>(&batch_b[byte_base0 + 4]);
 
-        __half2 acc_h2_0 = dot_scaled_4bytes(a4_0, b4_0, scale_h2);
-        __half2 acc_h2_1 = dot_scaled_4bytes(a4_1, b4_1, scale_h2);
+            __half2 res0_0 = dot_scaled_4bytes(a4_0, b4_0, scale_h2_0);
+            __half2 res0_1 = dot_scaled_4bytes(a4_1, b4_1, scale_h2_0);
 
-        // Combine and accumulate in one step
-        float2 f0 = __half22float2(acc_h2_0);
-        float2 f1 = __half22float2(acc_h2_1);
-        acc += f0.x + f0.y + f1.x + f1.y;
+            float2 f0_0 = __half22float2(res0_0);
+            float2 f0_1 = __half22float2(res0_1);
+            acc0 += f0_0.x + f0_0.y + f0_1.x + f0_1.y;
+        }
+
+        // ====================================================================
+        // CHAIN 1: Process sf_base + 1 (independent of chain 0)
+        // ====================================================================
+        int sf_next = sf_base + 1;
+        if (sf_next < K_sf) {
+            float scale1 = decode_fp8(static_cast<int8_t>(__ldg(&row_sfa[sf_next]))) *
+                          decode_fp8(static_cast<int8_t>(__ldg(&batch_sfb[sf_next])));
+            __half2 scale_h2_1 = __halves2half2(__float2half(scale1), __float2half(scale1));
+
+            int byte_base1 = sf_next << 3;
+
+            uchar4 a4_2 = *reinterpret_cast<const uchar4*>(&row_a[byte_base1]);
+            uchar4 b4_2 = *reinterpret_cast<const uchar4*>(&batch_b[byte_base1]);
+            uchar4 a4_3 = *reinterpret_cast<const uchar4*>(&row_a[byte_base1 + 4]);
+            uchar4 b4_3 = *reinterpret_cast<const uchar4*>(&batch_b[byte_base1 + 4]);
+
+            __half2 res1_0 = dot_scaled_4bytes(a4_2, b4_2, scale_h2_1);
+            __half2 res1_1 = dot_scaled_4bytes(a4_3, b4_3, scale_h2_1);
+
+            float2 f1_0 = __half22float2(res1_0);
+            float2 f1_1 = __half22float2(res1_1);
+            acc1 += f1_0.x + f1_0.y + f1_1.x + f1_1.y;
+        }
     }
 
-    return acc;
+    return acc0 + acc1;
 }
 
 // ============================================================================
@@ -263,7 +255,7 @@ module = load_inline(
         '--use_fast_math',
         '-std=c++17',
         '-gencode=arch=compute_100a,code=sm_100a',
-        '-maxrregcount=80'
+        '-maxrregcount=64'
     ],
     with_cuda=True,
     verbose=False

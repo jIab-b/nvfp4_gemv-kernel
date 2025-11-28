@@ -255,7 +255,7 @@ module = load_inline(
         '--use_fast_math',
         '-std=c++17',
         '-gencode=arch=compute_100a,code=sm_100a',
-        '-maxrregcount=64'
+        '-maxrregcount=80'
     ],
     with_cuda=True,
     verbose=False

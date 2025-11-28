@@ -1,0 +1,71 @@
+{
+  "app": {
+    "name": "nv_app"
+  },
+  "volume": {
+    "name": "nv_vol"
+  },
+  "image": {
+    "base": "pytorch/pytorch:2.9.1-cuda13.0-cudnn9-devel",
+    "env": {
+      "HF_HOME": "/workspace/hf",
+      "HUGGINGFACE_HUB_CACHE": "/workspace/hf"
+    },
+    "run_commands": [
+      [
+        "apt-get update && apt-get install -y curl ca-certificates gnupg",
+        "curl -fsSL -o /tmp/cuda-keyring.deb https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb",
+        "dpkg -i /tmp/cuda-keyring.deb && rm -f /tmp/cuda-keyring.deb",
+        "apt-get update",
+        "curl -fsSL -o /tmp/nsight-compute_2025.3.0_amd64.deb https://developer.download.nvidia.com/devtools/repos/ubuntu2204/amd64/nsight-compute-2025.3.0_2025.3.0.19-1_amd64.deb",
+        "dpkg -i /tmp/nsight-compute_2025.3.0_amd64.deb || apt-get -f install -y",
+        "rm -f /tmp/nsight-compute_2025.3.0_amd64.deb"
+      ]
+    ],
+    "apt_packages": [
+      "nsight-systems",
+      "graphviz"
+    ],
+    "pip_packages": [],
+    "uv_pip_packages": [
+      "nvtx",
+      "vllm",
+      "pydot",
+      "accelerate"
+    ]
+  },
+  "gpu": {
+    "default_type": "L4",
+    "type_aliases": {
+      "L4": "L4",
+      "L40S": "L40S",
+      "A100": "A100-40GB",
+      "H100": "H100"
+    },
+    "modal_object_map": {
+      "L4": "L4",
+      "L40S": "L40S",
+      "A100": "A100",
+      "H100": "H100"
+    }
+  },
+  "build": {
+    "venv": {
+      "path": null
+    }
+  },
+  "storage": {
+    "code_sync": {
+      "dirs": [
+        "commands"
+      ],
+      "exclude_files_global": [
+        "**/*.pyc"
+      ],
+      "exclude_dirs_global": [
+        "**/__pycache__/**"
+      ]
+    },
+    "outputs_remote_dir": "/workspace/out_local",
+  }
+}
