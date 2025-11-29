@@ -1,0 +1,167 @@
+Profiling k: 16384; l: 1; m: 7168; seed: 1111 (1/2):
+
+    gemv_nvfp4_kernel(const unsigned char *, const unsigned char *, const unsigned char *, const unsigned char *, __half *, int, int, int, int) (3584, 1, 1)x(64, 1, 1), Context 1, Stream 7, Device 0, CC 10.0
+
+      Table Name : GPU Throughput
+      ---------------- ----------- ------------
+      Metric Name      Metric Unit Metric Value
+      ---------------- ----------- ------------
+      Memory [%]                 %        39.37
+      Compute (SM) [%]           %        57.82
+      ---------------- ----------- ------------
+
+      Table Name : Pipe Utilization (% of active cycles)
+      Table Description : Pipeline utilization based on the number of cycles the pipeline was active. This takes the rates of different instructions executing on the pipeline into account. For an instruction requiring 4 cycles to complete execution, the counter is increased by 1 for 4 cycles. Use this to understand the pipeline utilization for the time it was active.
+      -------------------- ----------- ------------
+      Metric Name          Metric Unit Metric Value
+      -------------------- ----------- ------------
+      FMA                            %        58.75
+      ALU                            %        56.14
+      TMEM (Tensor Memory)           %            0
+      FP64                           %            0
+      Shared (FP64+Tensor)           %            0
+      TC                             %            0
+      Tensor (All)                   %            0
+      Tensor (DP)                    %            0
+      Tensor (FP)                    %            0
+      Tensor (INT)                   %            0
+      TMA                            %            0
+      -------------------- ----------- ------------
+
+      Table Name : Warp State (All Cycles)
+      ------------------------ ----------- ------------
+      Metric Name              Metric Unit Metric Value
+
+Profiling k: 16384; l: 1; m: 7168; seed: 1111 (2/2):
+
+      ------------------------ ----------- ------------
+      Stall Long Scoreboard           inst         2.74
+      Stall Not Selected              inst         2.53
+      Stall Math Pipe Throttle        inst         1.95
+      Selected                        inst            1
+      Stall Wait                      inst         0.89
+      Stall Dispatch Stall            inst         0.20
+      Stall LG Throttle               inst         0.11
+      Stall MIO Throttle              inst         0.09
+      Stall No Instruction            inst         0.09
+      Stall Short Scoreboard          inst         0.09
+      Stall Branch Resolving          inst         0.03
+      Stall Drain                     inst         0.01
+      Stall Barrier                   inst            0
+      Stall Membar                    inst            0
+      Stall Misc                      inst            0
+      Stall Sleeping                  inst            0
+      Stall Tex Throttle              inst            0
+      ------------------------ ----------- ------------
+
+Profiling k: 7168; l: 8; m: 4096; seed: 1111 (1/2):
+
+    gemv_nvfp4_kernel(const unsigned char *, const unsigned char *, const unsigned char *, const unsigned char *, __half *, int, int, int, int) (2048, 8, 1)x(64, 1, 1), Context 1, Stream 7, Device 0, CC 10.0
+
+      Table Name : GPU Throughput
+      ---------------- ----------- ------------
+      Metric Name      Metric Unit Metric Value
+      ---------------- ----------- ------------
+      Memory [%]                 %        47.98
+      Compute (SM) [%]           %        75.41
+      ---------------- ----------- ------------
+
+      Table Name : Pipe Utilization (% of active cycles)
+      Table Description : Pipeline utilization based on the number of cycles the pipeline was active. This takes the rates of different instructions executing on the pipeline into account. For an instruction requiring 4 cycles to complete execution, the counter is increased by 1 for 4 cycles. Use this to understand the pipeline utilization for the time it was active.
+      -------------------- ----------- ------------
+      Metric Name          Metric Unit Metric Value
+      -------------------- ----------- ------------
+      ALU                            %        66.46
+      FMA                            %        61.60
+      TMEM (Tensor Memory)           %            0
+      FP64                           %            0
+      Shared (FP64+Tensor)           %            0
+      TC                             %            0
+      Tensor (All)                   %            0
+      Tensor (DP)                    %            0
+      Tensor (FP)                    %            0
+      Tensor (INT)                   %            0
+      TMA                            %            0
+      -------------------- ----------- ------------
+
+      Table Name : Warp State (All Cycles)
+      ------------------------ ----------- ------------
+      Metric Name              Metric Unit Metric Value
+
+Profiling k: 7168; l: 8; m: 4096; seed: 1111 (2/2):
+
+      ------------------------ ----------- ------------
+      Stall Long Scoreboard           inst         3.14
+      Stall Not Selected              inst         2.81
+      Stall Math Pipe Throttle        inst         1.92
+      Selected                        inst            1
+      Stall Wait                      inst         1.00
+      Stall Dispatch Stall            inst         0.23
+      Stall Short Scoreboard          inst         0.14
+      Stall No Instruction            inst         0.07
+      Stall Branch Resolving          inst         0.05
+      Stall MIO Throttle              inst         0.04
+      Stall Drain                     inst         0.03
+      Stall LG Throttle               inst         0.03
+      Stall Barrier                   inst            0
+      Stall Membar                    inst            0
+      Stall Misc                      inst            0
+      Stall Sleeping                  inst            0
+      Stall Tex Throttle              inst            0
+      ------------------------ ----------- ------------
+
+Profiling k: 2048; l: 4; m: 7168; seed: 1111 (1/2):
+
+    gemv_nvfp4_kernel(const unsigned char *, const unsigned char *, const unsigned char *, const unsigned char *, __half *, int, int, int, int) (3584, 4, 1)x(64, 1, 1), Context 1, Stream 7, Device 0, CC 10.0
+
+      Table Name : GPU Throughput
+      ---------------- ----------- ------------
+      Metric Name      Metric Unit Metric Value
+      ---------------- ----------- ------------
+      Memory [%]                 %        35.51
+      Compute (SM) [%]           %        59.62
+      ---------------- ----------- ------------
+
+      Table Name : Pipe Utilization (% of active cycles)
+      Table Description : Pipeline utilization based on the number of cycles the pipeline was active. This takes the rates of different instructions executing on the pipeline into account. For an instruction requiring 4 cycles to complete execution, the counter is increased by 1 for 4 cycles. Use this to understand the pipeline utilization for the time it was active.
+      -------------------- ----------- ------------
+      Metric Name          Metric Unit Metric Value
+      -------------------- ----------- ------------
+      ALU                            %        57.72
+      FMA                            %        53.70
+      TMEM (Tensor Memory)           %            0
+      FP64                           %            0
+      Shared (FP64+Tensor)           %            0
+      TC                             %            0
+      Tensor (All)                   %            0
+      Tensor (DP)                    %            0
+      Tensor (FP)                    %            0
+      Tensor (INT)                   %            0
+      TMA                            %            0
+      -------------------- ----------- ------------
+
+      Table Name : Warp State (All Cycles)
+      ------------------------ ----------- ------------
+      Metric Name              Metric Unit Metric Value
+
+Profiling k: 2048; l: 4; m: 7168; seed: 1111 (2/2):
+
+      ------------------------ ----------- ------------
+      Stall Not Selected              inst         2.90
+      Stall Long Scoreboard           inst         2.28
+      Stall Math Pipe Throttle        inst         1.51
+      Stall Wait                      inst         1.16
+      Selected                        inst            1
+      Stall Short Scoreboard          inst         0.42
+      Stall Dispatch Stall            inst         0.29
+      Stall No Instruction            inst         0.18
+      Stall LG Throttle               inst         0.17
+      Stall MIO Throttle              inst         0.13
+      Stall Branch Resolving          inst         0.12
+      Stall Drain                     inst         0.07
+      Stall Barrier                   inst            0
+      Stall Membar                    inst            0
+      Stall Misc                      inst            0
+      Stall Sleeping                  inst            0
+      Stall Tex Throttle              inst            0
+      ------------------------ ----------- ------------

@@ -69,12 +69,12 @@ __device__ __forceinline__ float compute_direct(
     int tid
 ) {
     // Process 1 scale factor (16 FP4 values) per chain, 2 chains for ILP
-    float acc0 = 0.0f, acc1 = 0.0f;
+    float acc0 = 0.0f;
     const int THREADS_PER_ROW = BLOCK_SIZE / ROWS_PER_BLOCK;
-    const int STRIDE = THREADS_PER_ROW * 2;  // Process 2 sf per iteration
+    const int STRIDE = THREADS_PER_ROW * 1;  // Process 2 sf per iteration
 
-#pragma unroll 2
-    for (int sf_base = tid * 2; sf_base < K_sf; sf_base += STRIDE) {
+#pragma unroll 4
+    for (int sf_base = tid * 1; sf_base < K_sf; sf_base += STRIDE) {
         // Chain 0: process sf_base (16 FP4 values = 8 bytes)
         if (sf_base < K_sf) {
             float scale0 = decode_fp8(static_cast<int8_t>(__ldg(&row_sfa[sf_base]))) *
@@ -94,30 +94,9 @@ __device__ __forceinline__ float compute_direct(
             float2 f0_1 = __half22float2(res0_1);
             acc0 += f0_0.x + f0_0.y + f0_1.x + f0_1.y;
         }
-
-        // Chain 1: process sf_base+1 (independent 16 FP4 values)
-        int sf_next = sf_base + 1;
-        if (sf_next < K_sf) {
-            float scale1 = decode_fp8(static_cast<int8_t>(__ldg(&row_sfa[sf_next]))) *
-                          decode_fp8(static_cast<int8_t>(__ldg(&batch_sfb[sf_next])));
-            __half2 scale_h2_1 = __halves2half2(__float2half(scale1), __float2half(scale1));
-
-            int byte_base1 = sf_next << 3;
-            uchar4 a4_2 = *reinterpret_cast<const uchar4*>(&row_a[byte_base1]);
-            uchar4 b4_2 = *reinterpret_cast<const uchar4*>(&batch_b[byte_base1]);
-            uchar4 a4_3 = *reinterpret_cast<const uchar4*>(&row_a[byte_base1 + 4]);
-            uchar4 b4_3 = *reinterpret_cast<const uchar4*>(&batch_b[byte_base1 + 4]);
-
-            __half2 res1_0 = dot_scaled_4bytes(a4_2, b4_2, scale_h2_1);
-            __half2 res1_1 = dot_scaled_4bytes(a4_3, b4_3, scale_h2_1);
-
-            float2 f1_0 = __half22float2(res1_0);
-            float2 f1_1 = __half22float2(res1_1);
-            acc1 += f1_0.x + f1_0.y + f1_1.x + f1_1.y;
-        }
     }
 
-    return acc0 + acc1;
+    return acc0;
 }
 
 // ============================================================================
@@ -243,7 +222,7 @@ module = load_inline(
         '--use_fast_math',
         '-std=c++17',
         '-gencode=arch=compute_100a,code=sm_100a',
-        '-maxrregcount=64'
+        '-maxrregcount=56'
     ],
     with_cuda=True,
     verbose=False
