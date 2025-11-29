@@ -124,10 +124,10 @@ __device__ __forceinline__ float compute_direct(
 // ========================== MAIN KERNEL FUNCTION ============================
 // ============================================================================
 __global__ void gemv_nvfp4_kernel(
-    const int8_t* __restrict__ a,
-    const int8_t* __restrict__ b,
-    const int8_t* __restrict__ sfa,
-    const int8_t* __restrict__ sfb,
+    const uint8_t* __restrict__ a,
+    const uint8_t* __restrict__ b,
+    const uint8_t* __restrict__ sfa,
+    const uint8_t* __restrict__ sfb,
     half* __restrict__ c,
     int M, int K, int L,
     int N_rows
@@ -144,27 +144,22 @@ __global__ void gemv_nvfp4_kernel(
 // ===================== PER-CTA BASE POINTER SETUP ===========================
 // ============================================================================
     const int K_sf = K / 16;
-    const int K_half = K / 2;
-    const size_t batch_stride_a = static_cast<size_t>(M) * K_half;
-    const size_t batch_stride_b = static_cast<size_t>(N_rows) * K_half;
+    const int K_fp4 = K / 2;
+    const size_t batch_stride_a = static_cast<size_t>(M) * K_fp4;
+    const size_t batch_stride_b = static_cast<size_t>(N_rows) * K_fp4;
     const size_t batch_stride_sfa = static_cast<size_t>(M) * K_sf;
     const size_t batch_stride_sfb = static_cast<size_t>(N_rows) * K_sf;
 
-    const uint8_t* base_a = reinterpret_cast<const uint8_t*>(a);
-    const uint8_t* base_b = reinterpret_cast<const uint8_t*>(b);
-    const uint8_t* base_sfa = reinterpret_cast<const uint8_t*>(sfa);
-    const uint8_t* base_sfb = reinterpret_cast<const uint8_t*>(sfb);
-
-    const uint8_t* batch_a = base_a + l * batch_stride_a;
-    const uint8_t* batch_b = base_b + l * batch_stride_b;
-    const uint8_t* batch_sfa = base_sfa + l * batch_stride_sfa;
-    const uint8_t* batch_sfb = base_sfb + l * batch_stride_sfb;
+    const uint8_t* batch_a = a + l * batch_stride_a;
+    const uint8_t* batch_b = b + l * batch_stride_b;
+    const uint8_t* batch_sfa = sfa + l * batch_stride_sfa;
+    const uint8_t* batch_sfb = sfb + l * batch_stride_sfb;
 
     // Calculate row index for this thread
     int m = m_base + row_in_block;
     if (m >= M) return;
 
-    const uint8_t* row_a = batch_a + static_cast<size_t>(m) * K_half;
+    const uint8_t* row_a = batch_a + static_cast<size_t>(m) * K_fp4;
     const uint8_t* row_sfa = batch_sfa + static_cast<size_t>(m) * K_sf;
 
 // ============================================================================
@@ -217,10 +212,10 @@ torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::
     dim3 grid(grid_m, L);
     dim3 block(BLOCK_SIZE);
 
-    auto* a_ptr = reinterpret_cast<const int8_t*>(a.data_ptr());
-    auto* b_ptr = reinterpret_cast<const int8_t*>(b.data_ptr());
-    auto* sfa_ptr = reinterpret_cast<const int8_t*>(sfa.data_ptr());
-    auto* sfb_ptr = reinterpret_cast<const int8_t*>(sfb.data_ptr());
+    auto* a_ptr = reinterpret_cast<const uint8_t*>(a.data_ptr());
+    auto* b_ptr = reinterpret_cast<const uint8_t*>(b.data_ptr());
+    auto* sfa_ptr = reinterpret_cast<const uint8_t*>(sfa.data_ptr());
+    auto* sfb_ptr = reinterpret_cast<const uint8_t*>(sfb.data_ptr());
     auto* c_ptr = reinterpret_cast<half*>(c.data_ptr());
 
     gemv_nvfp4_kernel<<<grid, block>>>(
