@@ -19,9 +19,16 @@ cuda_source = """
 // ============================================================================
 // ======================== CONFIGURATION CONSTANTS ===========================
 // ============================================================================
-#define BLOCK_SIZE 64
-#define ROWS_PER_BLOCK 2
-#define K_TILE 4096  // Tunable parameter (unused in direct load version)
+// Benchmarks go up to K=16384. Keep shared buffers large enough for that upper
+// bound so we don't walk past static allocations when K is big.
+#define MAX_K 16384
+#define MAX_K_HALF (MAX_K / 2)      // bytes for fp4 packed values
+#define MAX_K_SF (MAX_K / 16)       // scale factors
+
+#define BLOCK_SIZE 128
+// One warp (32 threads) dedicated to loading; remaining 96 threads = 3 rows × 32
+#define ROWS_PER_BLOCK 3
+#define PRODUCER_THREADS 32  // First warp loads B into smem
 
 // ============================================================================
 // ======================== TYPE CONVERSION HELPERS ===========================
@@ -48,44 +55,61 @@ __device__ __forceinline__ __half2 dot_scaled_4bytes(
     uchar4 b4,
     __half2 scale_h2
 ) {
-    // Two independent FMA chains to increase ILP
     __half2 acc0 = __hmul2(decode_fp4x2(a4.x), __hmul2(decode_fp4x2(b4.x), scale_h2));
     __half2 acc1 = __hmul2(decode_fp4x2(a4.y), __hmul2(decode_fp4x2(b4.y), scale_h2));
     acc0 = __hfma2(decode_fp4x2(a4.z), __hmul2(decode_fp4x2(b4.z), scale_h2), acc0);
     acc1 = __hfma2(decode_fp4x2(a4.w), __hmul2(decode_fp4x2(b4.w), scale_h2), acc1);
-
     return __hadd2(acc0, acc1);
 }
 
 // ============================================================================
-// ==================== DIRECT LOAD COMPUTE FUNCTION ==========================
+// ==================== DUAL-CHAIN COMPUTE WITH SMEM FALLBACK =================
 // ============================================================================
-__device__ __forceinline__ float compute_direct(
+__device__ __forceinline__ float compute_dual_chain(
     const uint8_t* row_a,
     const uint8_t* batch_b,
     const uint8_t* row_sfa,
     const uint8_t* batch_sfb,
+    const uint8_t* sh_b,
+    const uint8_t* sh_sfb,
+    const uint32_t* b_ready,
+    const uint32_t* sfb_ready,
     int K_sf,
-    int tid
+    int tid_in_row
 ) {
-    // Process 1 scale factor (16 FP4 values) per chain, 2 chains for ILP
     float acc0 = 0.0f, acc1 = 0.0f;
-    const int THREADS_PER_ROW = BLOCK_SIZE / ROWS_PER_BLOCK;
-    const int STRIDE = THREADS_PER_ROW * 2;  // Process 2 sf per iteration
+    const int CONSUMER_THREADS = BLOCK_SIZE - PRODUCER_THREADS;
+    const int THREADS_PER_ROW = CONSUMER_THREADS / ROWS_PER_BLOCK;
+    const int STRIDE = THREADS_PER_ROW * 2;
 
 #pragma unroll 2
-    for (int sf_base = tid * 2; sf_base < K_sf; sf_base += STRIDE) {
+    for (int sf_base = tid_in_row * 2; sf_base < K_sf; sf_base += STRIDE) {
         // Chain 0: process sf_base (16 FP4 values = 8 bytes)
         if (sf_base < K_sf) {
-            float scale0 = decode_fp8(static_cast<int8_t>(__ldg(&row_sfa[sf_base]))) *
-                          decode_fp8(static_cast<int8_t>(__ldg(&batch_sfb[sf_base])));
+            // Check if sfb is in smem
+            bool sfb_in_smem = sfb_ready[sf_base >> 5] & (1u << (sf_base & 31));
+            float sfa_val = decode_fp8(static_cast<int8_t>(__ldg(&row_sfa[sf_base])));
+            float sfb_val = sfb_in_smem ?
+                           decode_fp8(static_cast<int8_t>(sh_sfb[sf_base])) :
+                           decode_fp8(static_cast<int8_t>(__ldg(&batch_sfb[sf_base])));
+
+            float scale0 = sfa_val * sfb_val;
             __half2 scale_h2_0 = __halves2half2(__float2half(scale0), __float2half(scale0));
 
             int byte_base0 = sf_base << 3;
+
+            // Check if B chunk is in smem (coarse-grained: 16-byte chunks)
+            uint32_t chunk_idx0 = byte_base0 >> 4;
+            bool b_in_smem = b_ready[chunk_idx0 >> 5] & (1u << (chunk_idx0 & 31));
+
             uchar4 a4_0 = *reinterpret_cast<const uchar4*>(&row_a[byte_base0]);
-            uchar4 b4_0 = *reinterpret_cast<const uchar4*>(&batch_b[byte_base0]);
+            uchar4 b4_0 = b_in_smem ?
+                         *reinterpret_cast<const uchar4*>(&sh_b[byte_base0]) :
+                         *reinterpret_cast<const uchar4*>(&batch_b[byte_base0]);
             uchar4 a4_1 = *reinterpret_cast<const uchar4*>(&row_a[byte_base0 + 4]);
-            uchar4 b4_1 = *reinterpret_cast<const uchar4*>(&batch_b[byte_base0 + 4]);
+            uchar4 b4_1 = b_in_smem ?
+                         *reinterpret_cast<const uchar4*>(&sh_b[byte_base0 + 4]) :
+                         *reinterpret_cast<const uchar4*>(&batch_b[byte_base0 + 4]);
 
             __half2 res0_0 = dot_scaled_4bytes(a4_0, b4_0, scale_h2_0);
             __half2 res0_1 = dot_scaled_4bytes(a4_1, b4_1, scale_h2_0);
@@ -98,15 +122,27 @@ __device__ __forceinline__ float compute_direct(
         // Chain 1: process sf_base+1 (independent 16 FP4 values)
         int sf_next = sf_base + 1;
         if (sf_next < K_sf) {
-            float scale1 = decode_fp8(static_cast<int8_t>(__ldg(&row_sfa[sf_next]))) *
-                          decode_fp8(static_cast<int8_t>(__ldg(&batch_sfb[sf_next])));
+            bool sfb_in_smem = sfb_ready[sf_next >> 5] & (1u << (sf_next & 31));
+            float sfa_val = decode_fp8(static_cast<int8_t>(__ldg(&row_sfa[sf_next])));
+            float sfb_val = sfb_in_smem ?
+                           decode_fp8(static_cast<int8_t>(sh_sfb[sf_next])) :
+                           decode_fp8(static_cast<int8_t>(__ldg(&batch_sfb[sf_next])));
+
+            float scale1 = sfa_val * sfb_val;
             __half2 scale_h2_1 = __halves2half2(__float2half(scale1), __float2half(scale1));
 
             int byte_base1 = sf_next << 3;
+            uint32_t chunk_idx1 = byte_base1 >> 4;
+            bool b_in_smem = b_ready[chunk_idx1 >> 5] & (1u << (chunk_idx1 & 31));
+
             uchar4 a4_2 = *reinterpret_cast<const uchar4*>(&row_a[byte_base1]);
-            uchar4 b4_2 = *reinterpret_cast<const uchar4*>(&batch_b[byte_base1]);
+            uchar4 b4_2 = b_in_smem ?
+                         *reinterpret_cast<const uchar4*>(&sh_b[byte_base1]) :
+                         *reinterpret_cast<const uchar4*>(&batch_b[byte_base1]);
             uchar4 a4_3 = *reinterpret_cast<const uchar4*>(&row_a[byte_base1 + 4]);
-            uchar4 b4_3 = *reinterpret_cast<const uchar4*>(&batch_b[byte_base1 + 4]);
+            uchar4 b4_3 = b_in_smem ?
+                         *reinterpret_cast<const uchar4*>(&sh_b[byte_base1 + 4]) :
+                         *reinterpret_cast<const uchar4*>(&batch_b[byte_base1 + 4]);
 
             __half2 res1_0 = dot_scaled_4bytes(a4_2, b4_2, scale_h2_1);
             __half2 res1_1 = dot_scaled_4bytes(a4_3, b4_3, scale_h2_1);
@@ -118,6 +154,41 @@ __device__ __forceinline__ float compute_direct(
     }
 
     return acc0 + acc1;
+}
+
+// ============================================================================
+// ================= PRODUCER: LOAD B/SFB INTO SMEM ===========================
+// ============================================================================
+__device__ __forceinline__ void load_b_to_smem(
+    int tid,
+    const uint8_t* batch_b,
+    const uint8_t* batch_sfb,
+    uint8_t* sh_b,
+    uint8_t* sh_sfb,
+    uint32_t* b_ready,
+    uint32_t* sfb_ready,
+    int K_half,
+    int K_sf
+) {
+    // Load B: 8192 bytes, 32 threads × 16 bytes = 512B per iter, ~16 iters
+    for (int i = tid * 16; i < K_half; i += PRODUCER_THREADS * 16) {
+        *reinterpret_cast<uint4*>(&sh_b[i]) =
+            *reinterpret_cast<const uint4*>(&batch_b[i]);
+        // Mark this 16-byte chunk as ready
+        uint32_t chunk_idx = i >> 4;
+        b_ready[chunk_idx >> 5] |= (1u << (chunk_idx & 31));
+    }
+
+    // Load sfb: 512 bytes, 32 threads × 16 bytes = 512B in 1 iter
+    for (int i = tid * 16; i < K_sf; i += PRODUCER_THREADS * 16) {
+        *reinterpret_cast<uint4*>(&sh_sfb[i]) =
+            *reinterpret_cast<const uint4*>(&batch_sfb[i]);
+        // Mark each scale as ready
+        for (int j = 0; j < 16 && (i + j) < K_sf; ++j) {
+            uint32_t idx = i + j;
+            sfb_ready[idx >> 5] |= (1u << (idx & 31));
+        }
+    }
 }
 
 // ============================================================================
@@ -135,14 +206,16 @@ __global__ void gemv_nvfp4_kernel(
     int m_base = blockIdx.x * ROWS_PER_BLOCK;
     int l = blockIdx.y;
     int tid = threadIdx.x;
-    int row_in_block = tid / (BLOCK_SIZE / ROWS_PER_BLOCK);
-    int tid_in_row = tid % (BLOCK_SIZE / ROWS_PER_BLOCK);
 
     if (m_base >= M || l >= L) return;
 
-// ============================================================================
-// ===================== PER-CTA BASE POINTER SETUP ===========================
-// ============================================================================
+    // Consumer threads: tid >= PRODUCER_THREADS
+    const int consumer_tid = tid - PRODUCER_THREADS;
+    const int CONSUMER_THREADS = BLOCK_SIZE - PRODUCER_THREADS;  // 96
+    const int THREADS_PER_ROW = CONSUMER_THREADS / ROWS_PER_BLOCK; // 32
+    int row_in_block = consumer_tid / THREADS_PER_ROW;
+    int tid_in_row = consumer_tid % THREADS_PER_ROW;
+
     const int K_sf = K / 16;
     const int K_half = K / 2;
     const size_t batch_stride_a = static_cast<size_t>(M) * K_half;
@@ -160,46 +233,73 @@ __global__ void gemv_nvfp4_kernel(
     const uint8_t* batch_sfa = base_sfa + l * batch_stride_sfa;
     const uint8_t* batch_sfb = base_sfb + l * batch_stride_sfb;
 
-    // Calculate row index for this thread
     int m = m_base + row_in_block;
-    if (m >= M) return;
+    if (tid >= PRODUCER_THREADS && m >= M) return;
 
     const uint8_t* row_a = batch_a + static_cast<size_t>(m) * K_half;
     const uint8_t* row_sfa = batch_sfa + static_cast<size_t>(m) * K_sf;
 
-// ============================================================================
-// ===================== DIRECT LOAD COMPUTE (NO BARRIERS) ===================
-// ============================================================================
-    float acc = compute_direct(
-        row_a,
-        batch_b,
-        row_sfa,
-        batch_sfb,
-        K_sf,
-        tid_in_row
-    );
+    // ========================================================================
+    // Shared memory: Full B vector + readiness flags
+    // Size baked for maximum K to avoid out-of-bounds when K=16384 (K_sf=1024)
+    __shared__ uint8_t sh_b[MAX_K_HALF];      // up to 8192 bytes
+    __shared__ uint8_t sh_sfb[MAX_K_SF];      // up to 1024 bytes
+    __shared__ uint32_t b_ready[16];          // 8192/16 = 512 chunks, 512/32 = 16 uint32_t
+    __shared__ uint32_t sfb_ready[32];        // 1024 scales, 1024/32 = 32 uint32_t
 
-// ============================================================================
-// ===================== ROW-GROUP REDUCTION ==================================
-// ============================================================================
-    // Each row group (32 threads) reduces independently
-    const int lane = tid_in_row;
-    float row_sum = acc;
+    // Initialize flags to 0
+    if (tid < 16) {
+        b_ready[tid] = 0;
+        sfb_ready[tid] = 0;
+    }
+    if (tid >= 16 && tid < 32) {
+        // Zero the upper half of sfb readiness flags
+        sfb_ready[tid] = 0;
+    }
 
-    // Warp reduction within each row group
-    row_sum += __shfl_down_sync(0xffffffff, row_sum, 16);
-    row_sum += __shfl_down_sync(0xffffffff, row_sum, 8);
-    row_sum += __shfl_down_sync(0xffffffff, row_sum, 4);
-    row_sum += __shfl_down_sync(0xffffffff, row_sum, 2);
-    row_sum += __shfl_down_sync(0xffffffff, row_sum, 1);
+    // ========================================================================
+    // Producer warp: Load B and sfb into smem with readiness tracking
+    // ========================================================================
+    if (tid < PRODUCER_THREADS) {
+        load_b_to_smem(tid, batch_b, batch_sfb, sh_b, sh_sfb, b_ready, sfb_ready, K_half, K_sf);
+    }
 
-// ============================================================================
-// ===================== FINAL OUTPUT WRITE ===================================
-// ============================================================================
-    // Thread 0 of each row group writes the result
-    if (lane == 0) {
-        size_t c_idx = static_cast<size_t>(m) + static_cast<size_t>(l) * M;
-        c[c_idx] = __float2half(row_sum);
+    // ========================================================================
+    // Consumer threads: Compute with opportunistic smem usage
+    // ========================================================================
+    float acc = 0.0f;
+    if (tid >= PRODUCER_THREADS) {
+        acc = compute_dual_chain(
+            row_a,
+            batch_b,
+            row_sfa,
+            batch_sfb,
+            sh_b,
+            sh_sfb,
+            b_ready,
+            sfb_ready,
+            K_sf,
+            tid_in_row
+        );
+    }
+
+    // ========================================================================
+    // Reduction (only consumer threads)
+    // ========================================================================
+    if (tid >= PRODUCER_THREADS) {
+        const int lane = tid_in_row;
+        float row_sum = acc;
+
+        row_sum += __shfl_down_sync(0xffffffff, row_sum, 16);
+        row_sum += __shfl_down_sync(0xffffffff, row_sum, 8);
+        row_sum += __shfl_down_sync(0xffffffff, row_sum, 4);
+        row_sum += __shfl_down_sync(0xffffffff, row_sum, 2);
+        row_sum += __shfl_down_sync(0xffffffff, row_sum, 1);
+
+        if (lane == 0) {
+            size_t c_idx = static_cast<size_t>(m) + static_cast<size_t>(l) * M;
+            c[c_idx] = __float2half(row_sum);
+        }
     }
 }
 
@@ -212,7 +312,6 @@ torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::
     int L = a.size(2);
     int N_rows = b.size(0);
 
-    // Launch grid with M/ROWS_PER_BLOCK blocks
     int grid_m = (M + ROWS_PER_BLOCK - 1) / ROWS_PER_BLOCK;
     dim3 grid(grid_m, L);
     dim3 block(BLOCK_SIZE);
@@ -239,7 +338,7 @@ torch::Tensor batched_scaled_gemv_cuda(torch::Tensor a, torch::Tensor b, torch::
 """
 
 module = load_inline(
-    name='batched_scaled_gemv_v3',
+    name='batched_scaled_gemv_v4',
     cpp_sources=cpp_source,
     cuda_sources=cuda_source,
     functions=['batched_scaled_gemv_cuda'],
@@ -256,7 +355,6 @@ module = load_inline(
 
 def custom_kernel(data: input_t) -> output_t:
     a, b, sfa_ref, sfb_ref, _, _, c = data
-    device = a.device
     return module.batched_scaled_gemv_cuda(
         a,
         b,
