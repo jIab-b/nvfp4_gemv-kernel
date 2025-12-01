@@ -9,9 +9,9 @@ cpp_src = """
 torch::Tensor cuda_nvfp4_gemm(
     torch::Tensor A,
     torch::Tensor B,
-    torch::Tensor C,
     torch::Tensor SFA,
-    torch::Tensor SFB);
+    torch::Tensor SFB,
+    torch::Tensor C);
 """
 
 # CUDA implementation that mirrors the helpers from 1.py but adapts them for GEMM
@@ -295,7 +295,7 @@ gemm_kernel(const __grid_constant__ GemmParams params)
 
     const int iters = params.k / (THREADS_PER_ROW * 16);
 
-    #pragma unroll 4
+    #pragma unroll 4   
     for (int iter = 0; iter < iters; ++iter) {
         int block_base = iter * THREADS_PER_ROW + lane;
         int elem_base = block_base * 16;
