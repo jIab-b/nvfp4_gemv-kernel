@@ -1,0 +1,5 @@
+==PROF== Connected to process 56 (/opt/conda/bin/python3.11)
+==ERROR== An error was reported by the counter measurement library:
+==ERROR== Failed to initialize the profiler: LibraryNotLoaded. Check that a compatible driver library is loaded.
+==PROF== Trying to shutdown target application
+==ERROR== The application returned an error code (9).
