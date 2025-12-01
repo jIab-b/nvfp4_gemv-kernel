@@ -86,6 +86,67 @@ module_directives:
     syntax: ".visible .func ${name}(${param_list})"
     rules:
       - "Use for device functions called from kernels."
+  - name: .maxnreg
+    syntax: ".maxnreg ${n}"
+    rules:
+      - "Limits registers per thread; supported on all SM >= 20 including sm_75."
+      - "Place immediately after .entry/.func declaration."
+  - name: .maxntid
+    syntax: ".maxntid ${nx}{, ${ny}, ${nz}}"
+    rules:
+      - "Specifies maximum threads per block; mutually exclusive with .reqntid."
+      - "Values must not exceed architectural limits (1024 threads total for sm_75)."
+  - name: .reqntid
+    syntax: ".reqntid ${nx}{, ${ny}, ${nz}}"
+    rules:
+      - "Forces exact CTA dimensions (x[,y[,z]])."
+      - "Cannot appear alongside .maxntid."
+  - name: .minnctapersm
+    syntax: ".minnctapersm ${n}"
+    rules:
+      - "Hints minimum CTAs per SM; requires .maxntid or .reqntid to be present."
+  - name: .pragma
+    syntax: ".pragma ${key} ${value?}"
+    rules:
+      - "Common keys on sm_75: \"nounroll\", \"used_bytes_mask\", \"enable_smem_spilling\"."
+  - name: .file
+    syntax: ".file ${idx} \"${path}\""
+    rules:
+      - "Declares debug source file for later .loc directives."
+  - name: .loc
+    syntax: ".loc ${file_idx} ${line} ${col}"
+    rules:
+      - "Maps subsequent instructions to source locations for debugging/profiling."
+  - name: .extern
+    syntax: ".extern ${qualifiers} ${symbol};"
+    rules:
+      - "Used for external function or variable declarations."
+  - name: .visible
+    syntax: ".visible ${qualifiers} ${symbol}"
+    rules:
+      - "Marks symbols exported from module; combine with .entry/.func/.global."
+  - name: .section
+    syntax: ".section ${name}, ${type}"
+    rules:
+      - "Needed when manual sections (e.g., const data) are declared."
+
+data_directives:
+  - name: .global
+    syntax: ".global .align ${align} .b8 ${symbol}[${size}] = {${initializer?}};"
+    rules:
+      - "Alignment must match element width; omit initializer for zeroed storage."
+  - name: .const
+    syntax: ".const .align ${align} .b8 ${symbol}[${size}] = {${initializer}};"
+    rules:
+      - "Place read-only tables here; accessed via ld.const."
+  - name: .shared
+    syntax: ".shared .align ${align} .b8 ${symbol}[${size}];"
+    rules:
+      - "Counts toward static shared memory usage per block."
+  - name: .local
+    syntax: ".local .align ${align} .b8 ${symbol}[${size}];"
+    rules:
+      - "Allocates per-thread stack storage."
 
 instruction_groups:
   - category: control_flow
@@ -132,6 +193,43 @@ instruction_groups:
                 type: list(reg|param)
         rules:
           - "Use call.uni for warp-uniform calls to avoid stack divergence on sm_75."
+      - mnemonic: exit
+        min_ptx: "1.0"
+        min_sm: 10
+        summary: "Terminate the calling thread."
+        templates:
+          - syntax: "exit;"
+            operands: []
+        rules:
+          - "All active lanes execute exit simultaneously to avoid divergence."
+      - mnemonic: trap
+        min_ptx: "1.0"
+        min_sm: 10
+        summary: "Trigger exception for debugger or error handling."
+        templates:
+          - syntax: "trap;"
+            operands: []
+        rules:
+          - "Terminates the CTA; only use for fatal conditions."
+      - mnemonic: brkpt
+        min_ptx: "1.0"
+        min_sm: 10
+        summary: "Software breakpoint."
+        templates:
+          - syntax: "brkpt;"
+            operands: []
+        rules:
+          - "No effect unless debugger is attached."
+      - mnemonic: nanosleep
+        min_ptx: "6.4"
+        min_sm: 70
+        summary: "Hint to yield execution for a number of cycles."
+        templates:
+          - syntax: "nanosleep ${cycles};"
+            operands:
+              - {name: cycles, type: reg|imm, role: wait_cycles}
+        rules:
+          - "cycles is a 32-bit value; behavior undefined for zero."
   - category: predicates
     instructions:
       - mnemonic: setp
@@ -165,6 +263,29 @@ instruction_groups:
             permutation_axes:
               - axis: type
                 values: ["s32", "u32", "s64", "u64", "f16", "f32", "f64"]
+      - mnemonic: vote.sync
+        min_ptx: "6.0"
+        min_sm: 70
+        summary: "Warp vote returning ballot/all/any results."
+        templates:
+          - syntax: "vote.sync.${mode}.b32 ${dst}, ${pred}, ${mask};"
+            operands:
+              - {name: dst, type: b32, role: dest}
+              - {name: pred, type: pred, role: guard}
+              - {name: mask, type: imm|reg, role: active_mask}
+            permutation_axes:
+              - axis: mode
+                values: ["ballot", "all", "any", "uni"]
+        rules:
+          - "Use full mask 0xffffffff for 32-lane warps."
+      - mnemonic: activemask
+        min_ptx: "6.0"
+        min_sm: 70
+        summary: "Read bitmask of currently active lanes."
+        templates:
+          - syntax: "activemask.b32 ${dst};"
+            operands:
+              - {name: dst, type: b32, role: dest}
   - category: data_movement
     instructions:
       - mnemonic: mov
@@ -266,6 +387,48 @@ instruction_groups:
                 values: ["", ".release"]
         rules:
           - "sm_75 lacks shared::cluster scope; keep CTA-only."
+      - mnemonic: ld.const
+        min_ptx: "1.0"
+        min_sm: 10
+        summary: "Load from constant memory."
+        templates:
+          - syntax: "ld.const.${type} ${dst}, [${symbol}+${imm?}];"
+            operands:
+              - {name: dst, type: reg(type), role: dest}
+              - {name: symbol, type: const_label, role: base}
+            permutation_axes:
+              - axis: type
+                values: ["b8", "b16", "b32", "b64", "f16", "f32", "f64", "u32", "s32"]
+        rules:
+          - "Offsets must match element alignment; no cache modifiers allowed."
+      - mnemonic: ld.local
+        min_ptx: "1.0"
+        min_sm: 10
+        summary: "Load from per-thread local memory."
+        templates:
+          - syntax: "ld.local.${type} ${dst}, [${addr}];"
+            operands:
+              - {name: dst, type: reg(type), role: dest}
+              - {name: addr, type: reg64|imm, role: address}
+            permutation_axes:
+              - axis: type
+                values: ["b8", "b16", "b32", "b64", "f16", "f32", "f64", "u32", "s32"]
+        rules:
+          - "Use cvta.to.local before addressing local pointers larger than 32 bits."
+      - mnemonic: st.local
+        min_ptx: "1.0"
+        min_sm: 10
+        summary: "Store to per-thread local memory."
+        templates:
+          - syntax: "st.local.${type} [${addr}], ${src};"
+            operands:
+              - {name: addr, type: reg64|imm, role: address}
+              - {name: src, type: reg(type), role: value}
+            permutation_axes:
+              - axis: type
+                values: ["b8", "b16", "b32", "b64", "f16", "f32", "f64", "u32", "s32"]
+        rules:
+          - "Local memory accesses are thread-private and spill to DRAM; keep aligned."
       - mnemonic: ld.param
         min_ptx: "1.0"
         min_sm: 10
@@ -353,6 +516,20 @@ instruction_groups:
             permutation_axes:
               - axis: type
                 values: ["s16", "u16", "s32", "u32"]
+      - mnemonic: mad.wide
+        min_ptx: "1.0"
+        min_sm: 10
+        summary: "Multiply-add producing 64-bit result."
+        templates:
+          - syntax: "mad.wide.${type} ${dst64}, ${a}, ${b}, ${c};"
+            operands:
+              - {name: dst64, type: reg64, role: dest}
+              - {name: a, type: reg(type)|imm, role: multiplicand0}
+              - {name: b, type: reg(type)|imm, role: multiplicand1}
+              - {name: c, type: reg64|imm, role: addend}
+            permutation_axes:
+              - axis: type
+                values: ["s32", "u32"]
       - mnemonic: shl
         min_ptx: "1.0"
         min_sm: 10
@@ -439,6 +616,23 @@ instruction_groups:
                 values: ["s32", "u32", "s64", "u64", "f32", "f64"]
         rules:
           - "Use .sys scope variant for host-visible synchronization; available since sm_70."
+      - mnemonic: atom.shared
+        min_ptx: "1.1"
+        min_sm: 11
+        summary: "Atomic operations in shared memory."
+        templates:
+          - syntax: "atom.shared.${op}.${type} ${dst}, [${addr}], ${src};"
+            operands:
+              - {name: dst, type: reg(type), role: return}
+              - {name: addr, type: reg32|reg64, role: ptr}
+              - {name: src, type: reg(type)|imm, role: value}
+            permutation_axes:
+              - axis: op
+                values: ["add", "inc", "dec", "min", "max", "and", "or", "xor", "exch", "cas"]
+              - axis: type
+                values: ["s32", "u32", "s64", "u64", "f32"]
+        rules:
+          - "Addresses typically 32-bit in shared space; convert with cvta.to.shared."
       - mnemonic: red.global
         min_ptx: "1.1"
         min_sm: 11
@@ -453,6 +647,22 @@ instruction_groups:
                 values: ["add", "min", "max", "and", "or", "xor"]
               - axis: type
                 values: ["s32", "u32", "s64", "u64", "f32"]
+      - mnemonic: red.shared
+        min_ptx: "1.1"
+        min_sm: 11
+        summary: "Shared-memory reduction atomics."
+        templates:
+          - syntax: "red.shared.${op}.${type} [${addr}], ${src};"
+            operands:
+              - {name: addr, type: reg32|reg64, role: ptr}
+              - {name: src, type: reg(type)|imm, role: value}
+            permutation_axes:
+              - axis: op
+                values: ["add", "min", "max", "and", "or", "xor"]
+              - axis: type
+                values: ["s32", "u32", "s64", "u64", "f32"]
+        rules:
+          - "Implicitly returns void; use atom.shared if old value needed."
   - category: warp_ops
     instructions:
       - mnemonic: shfl.sync
@@ -491,6 +701,16 @@ instruction_groups:
                 values: ["b16"]
         rules:
           - "sm_75 supports 16-bit element forms only; .b8 variants require sm_80+."
+      - mnemonic: bar.warp.sync
+        min_ptx: "6.0"
+        min_sm: 70
+        summary: "Warp-level barrier with mask."
+        templates:
+          - syntax: "bar.warp.sync ${mask};"
+            operands:
+              - {name: mask, type: imm|reg, role: active_mask}
+        rules:
+          - "Use mask=0xffffffff for full warp; ensures convergence before warp ops."
       - mnemonic: mma.sync
         min_ptx: "6.0"
         min_sm: 70
@@ -588,6 +808,46 @@ instruction_groups:
                 values: ["b32", "b64"]
         rules:
           - "Use for bitfield extraction; .wrap not supported on sm_75."
+      - mnemonic: dp4a
+        min_ptx: "5.2"
+        min_sm: 61
+        summary: "4-way dot product accumulate on packed int8."
+        templates:
+          - syntax: "dp4a.${dst_type}.${a_type}.${b_type} ${dst}, ${a}, ${b}, ${c};"
+            operands:
+              - {name: dst, type: reg(dst_type), role: dest}
+              - {name: a, type: reg(a_type), role: packed_vec4}
+              - {name: b, type: reg(b_type), role: packed_vec4}
+              - {name: c, type: reg(dst_type), role: accumulator}
+            permutation_axes:
+              - axis: dst_type
+                values: ["s32", "u32"]
+              - axis: a_type
+                values: ["s32", "u32"]
+              - axis: b_type
+                values: ["s32", "u32"]
+        rules:
+          - "Operands hold four packed int8 lanes in 32-bit registers."
+      - mnemonic: dp2a
+        min_ptx: "5.2"
+        min_sm: 61
+        summary: "2-way dot product accumulate on packed int16."
+        templates:
+          - syntax: "dp2a.${dst_type}.${a_type}.${b_type} ${dst}, ${a}, ${b}, ${c};"
+            operands:
+              - {name: dst, type: reg(dst_type), role: dest}
+              - {name: a, type: reg(a_type), role: packed_vec2}
+              - {name: b, type: reg(b_type), role: packed_vec2}
+              - {name: c, type: reg(dst_type), role: accumulator}
+            permutation_axes:
+              - axis: dst_type
+                values: ["s32", "u32"]
+              - axis: a_type
+                values: ["s32", "u32"]
+              - axis: b_type
+                values: ["s32", "u32"]
+        rules:
+          - "Each operand packs two int16 lanes."
 
 validation_profiles:
   - name: syntax_only
