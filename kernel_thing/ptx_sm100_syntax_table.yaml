@@ -1,0 +1,779 @@
+# PTX Syntax Table for sm_100a (Blackwell)
+# Source of truth for valid PTX instructions on NVIDIA Blackwell architecture
+# Covers all instructions used in nvfp4 GEMV kernels
+
+metadata:
+  schema_version: "0.3"
+  target_gpu:
+    name: "B200"
+    sm: 100
+    compute_capability: "10.0a"
+  ptx_version: "8.7"
+  last_updated: "2025-01-15"
+
+# =============================================================================
+# REGISTER FILES
+# =============================================================================
+register_files:
+  - name: pred
+    prefix: p
+    bits: 1
+    description: "Predicate registers"
+
+  - name: b8
+    prefix: b
+    bits: 8
+    description: "8-bit registers"
+
+  - name: b16
+    prefix: rs
+    bits: 16
+    aliases: [s16, u16]
+    description: "16-bit registers"
+
+  - name: b32
+    prefix: r
+    bits: 32
+    aliases: [s32, u32]
+    description: "32-bit registers"
+
+  - name: b64
+    prefix: rd
+    bits: 64
+    aliases: [s64, u64]
+    description: "64-bit registers"
+
+  - name: f16
+    prefix: h
+    bits: 16
+    description: "16-bit floating point registers"
+
+  - name: f16x2
+    prefix: hh
+    bits: 32
+    description: "Packed f16x2 (stored in b32)"
+
+  - name: f32
+    prefix: f
+    bits: 32
+    description: "32-bit floating point registers"
+
+  - name: f64
+    prefix: fd
+    bits: 64
+    description: "64-bit floating point registers"
+
+# =============================================================================
+# STATE SPACES
+# =============================================================================
+state_spaces:
+  - name: ".reg"
+    description: "Registers (fast, per-thread)"
+
+  - name: ".sreg"
+    description: "Special registers (tid, ctaid, etc.)"
+
+  - name: ".const"
+    description: "Constant memory (cached, read-only)"
+
+  - name: ".global"
+    description: "Global memory (device DRAM)"
+
+  - name: ".local"
+    description: "Local memory (per-thread, in DRAM)"
+
+  - name: ".shared"
+    description: "Shared memory (per-CTA, on-chip SRAM)"
+
+  - name: ".param"
+    description: "Kernel parameters"
+
+# =============================================================================
+# MODULE DIRECTIVES
+# =============================================================================
+module_directives:
+  - name: ".version"
+    syntax: ".version {major}.{minor}"
+    description: "PTX version declaration"
+
+  - name: ".target"
+    syntax: ".target sm_{sm}[, texmode_unified]"
+    values:
+      sm: [75, 80, 86, 87, 89, 90, 100, 103]
+    description: "Target GPU architecture"
+
+  - name: ".address_size"
+    syntax: ".address_size {bits}"
+    values:
+      bits: [32, 64]
+    description: "Pointer size"
+
+# =============================================================================
+# ENTRY/FUNCTION DIRECTIVES
+# =============================================================================
+function_directives:
+  - name: ".entry"
+    syntax: ".visible .entry {name}({params})"
+    description: "Kernel entry point"
+
+  - name: ".func"
+    syntax: ".func {ret_type} {name}({params})"
+    description: "Device function"
+
+  - name: ".param"
+    syntax: ".param .{dtype} {name}"
+    values:
+      dtype: [b8, b16, b32, b64, u8, u16, u32, u64, s8, s16, s32, s64, f16, f32, f64]
+    description: "Function parameter"
+
+# =============================================================================
+# DATA DIRECTIVES
+# =============================================================================
+data_directives:
+  - name: ".reg"
+    syntax: ".reg .{dtype} %{prefix}<{count}>"
+    description: "Register declaration"
+
+  - name: ".shared"
+    syntax: ".shared .align {align} .{dtype} {name}[{size}]"
+    description: "Shared memory declaration"
+
+# =============================================================================
+# INSTRUCTION GROUPS
+# =============================================================================
+instruction_groups:
+
+  # ---------------------------------------------------------------------------
+  # DATA MOVEMENT
+  # ---------------------------------------------------------------------------
+  - name: "Data Movement"
+    instructions:
+
+      # ---- Load Parameter ----
+      - mnemonic: "ld.param"
+        min_sm: 10
+        min_ptx: "1.0"
+        description: "Load from parameter space"
+        templates:
+          - syntax: "ld.param.{dtype} {dst}, [{src}]"
+            permutation_axes:
+              - axis: dtype
+                values: [b8, b16, b32, b64, u8, u16, u32, u64, s8, s16, s32, s64, f16, f32, f64]
+            operands:
+              - {name: dst, type: register}
+              - {name: src, type: param_name}
+
+      # ---- Load Global ----
+      - mnemonic: "ld.global"
+        min_sm: 10
+        min_ptx: "1.0"
+        description: "Load from global memory"
+        templates:
+          # Basic load
+          - syntax: "ld.global.{dtype} {dst}, [{addr}]"
+            permutation_axes:
+              - axis: dtype
+                values: [b8, b16, b32, b64, u8, u16, u32, u64, s8, s16, s32, s64, f16, f32, f64]
+            operands:
+              - {name: dst, type: register}
+              - {name: addr, type: address}
+
+          # Vector load v2
+          - syntax: "ld.global.v2.{dtype} {{{dst0}, {dst1}}}, [{addr}]"
+            permutation_axes:
+              - axis: dtype
+                values: [b16, b32, b64, u16, u32, u64, f16, f32, f64]
+            operands:
+              - {name: dst0, type: register}
+              - {name: dst1, type: register}
+              - {name: addr, type: address}
+
+          # Vector load v4
+          - syntax: "ld.global.v4.{dtype} {{{dst0}, {dst1}, {dst2}, {dst3}}}, [{addr}]"
+            permutation_axes:
+              - axis: dtype
+                values: [b32, u32, f32]
+            operands:
+              - {name: dst0, type: register}
+              - {name: dst1, type: register}
+              - {name: dst2, type: register}
+              - {name: dst3, type: register}
+              - {name: addr, type: address}
+
+          # With cache hints (sm_75+)
+          - syntax: "ld.global.{cache}.{dtype} {dst}, [{addr}]"
+            min_sm: 75
+            permutation_axes:
+              - axis: cache
+                values: [ca, cg, cs, cv, lu]
+              - axis: dtype
+                values: [b8, b16, b32, b64, u8, u16, u32, u64]
+
+          # With L1/L2 eviction priority (sm_75+)
+          - syntax: "ld.global.{l1_policy}.{dtype} {dst}, [{addr}]"
+            min_sm: 75
+            permutation_axes:
+              - axis: l1_policy
+                values: ["L1::evict_normal", "L1::evict_first", "L1::evict_last", "L1::no_allocate"]
+              - axis: dtype
+                values: [b8, b16, b32, b64, u8, u16, u32, u64]
+
+          # With L2 prefetch size (sm_75+)
+          - syntax: "ld.global.{l2_prefetch}.{dtype} {dst}, [{addr}]"
+            min_sm: 75
+            permutation_axes:
+              - axis: l2_prefetch
+                values: ["L2::64B", "L2::128B", "L2::256B"]
+              - axis: dtype
+                values: [b8, b16, b32, b64, u8, u16, u32, u64]
+
+          # Combined L1 + L2 policies
+          - syntax: "ld.global.{l1_policy}.{l2_policy}.{dtype} {dst}, [{addr}]"
+            min_sm: 80
+            permutation_axes:
+              - axis: l1_policy
+                values: ["L1::evict_last", "L1::no_allocate"]
+              - axis: l2_policy
+                values: ["L2::evict_first", "L2::evict_last", "L2::128B", "L2::256B"]
+              - axis: dtype
+                values: [b32, b64, u32, u64]
+
+          # Combined L1 + L2 + L2 prefetch (as in 1.py)
+          - syntax: "ld.global.{l1_policy}.{l2_policy}.{l2_prefetch}.{vec}.{dtype} {dst_vec}, [{addr}]"
+            min_sm: 100
+            permutation_axes:
+              - axis: l1_policy
+                values: ["L1::evict_last", "L1::no_allocate"]
+              - axis: l2_policy
+                values: ["L2::evict_first", "L2::evict_last"]
+              - axis: l2_prefetch
+                values: ["L2::128B", "L2::256B"]
+              - axis: vec
+                values: [v2, v4]
+              - axis: dtype
+                values: [u16, u32, u64]
+
+          # Vector loads with cache hints
+          - syntax: "ld.global.{l1_policy}.{l2_policy}.v4.{dtype} {{{d0}, {d1}, {d2}, {d3}}}, [{addr}]"
+            min_sm: 80
+            permutation_axes:
+              - axis: l1_policy
+                values: ["L1::evict_last", "L1::no_allocate"]
+              - axis: l2_policy
+                values: ["L2::evict_first", "L2::evict_last"]
+              - axis: dtype
+                values: [u32, u64]
+
+      # ---- Store Global ----
+      - mnemonic: "st.global"
+        min_sm: 10
+        min_ptx: "1.0"
+        description: "Store to global memory"
+        templates:
+          - syntax: "st.global.{dtype} [{addr}], {src}"
+            permutation_axes:
+              - axis: dtype
+                values: [b8, b16, b32, b64, u8, u16, u32, u64, f16, f32, f64]
+
+  # ---------------------------------------------------------------------------
+  # DATA CONVERSION - FP4/FP8 (Critical for nvfp4 kernels)
+  # ---------------------------------------------------------------------------
+  - name: "Floating Point Conversion"
+    instructions:
+
+      # ---- FP4 (e2m1) to FP16x2 conversion ----
+      - mnemonic: "cvt"
+        min_sm: 89
+        min_ptx: "7.8"
+        description: "Convert between data types"
+        templates:
+          # FP4 e2m1x2 -> FP16x2 (THE KEY INSTRUCTION for nvfp4)
+          - syntax: "cvt.rn.f16x2.e2m1x2 {dst}, {src}"
+            min_sm: 89
+            min_ptx: "7.8"
+            description: "Convert packed e2m1x2 (FP4) to packed f16x2"
+            operands:
+              - {name: dst, type: register, dtype: b32}  # f16x2 stored as b32
+              - {name: src, type: register, dtype: b8}   # e2m1x2 stored as b8
+
+          # FP4 e2m1x2 -> FP16x2 with ReLU
+          - syntax: "cvt.rn.relu.f16x2.e2m1x2 {dst}, {src}"
+            min_sm: 89
+            min_ptx: "7.8"
+            operands:
+              - {name: dst, type: register, dtype: b32}
+              - {name: src, type: register, dtype: b8}
+
+          # FP8 e4m3x2 -> FP16x2 (for scale factors)
+          - syntax: "cvt.rn.f16x2.e4m3x2 {dst}, {src}"
+            min_sm: 89
+            min_ptx: "7.8"
+            description: "Convert packed e4m3x2 (FP8) to packed f16x2"
+            operands:
+              - {name: dst, type: register, dtype: b32}
+              - {name: src, type: register, dtype: b16}
+
+          # FP8 e5m2x2 -> FP16x2
+          - syntax: "cvt.rn.f16x2.e5m2x2 {dst}, {src}"
+            min_sm: 89
+            min_ptx: "7.8"
+            operands:
+              - {name: dst, type: register, dtype: b32}
+              - {name: src, type: register, dtype: b16}
+
+          # FP32 -> FP16
+          - syntax: "cvt.{rnd}.f16.f32 {dst}, {src}"
+            permutation_axes:
+              - axis: rnd
+                values: [rn, rz, rm, rp]
+            operands:
+              - {name: dst, type: register, dtype: f16}
+              - {name: src, type: register, dtype: f32}
+
+          # FP16 -> FP32
+          - syntax: "cvt.f32.f16 {dst}, {src}"
+            operands:
+              - {name: dst, type: register, dtype: f32}
+              - {name: src, type: register, dtype: f16}
+
+          # Generic integer/float conversions
+          - syntax: "cvt.{rnd}.{dst_type}.{src_type} {dst}, {src}"
+            permutation_axes:
+              - axis: rnd
+                values: [rn, rz, rm, rp, rni, rzi, rmi, rpi, ""]
+              - axis: dst_type
+                values: [s8, s16, s32, s64, u8, u16, u32, u64, f16, f32, f64]
+              - axis: src_type
+                values: [s8, s16, s32, s64, u8, u16, u32, u64, f16, f32, f64]
+
+  # ---------------------------------------------------------------------------
+  # ARITHMETIC - Half Precision (f16, f16x2)
+  # ---------------------------------------------------------------------------
+  - name: "Half Precision Arithmetic"
+    instructions:
+
+      # ---- FMA f16x2 ----
+      - mnemonic: "fma"
+        min_sm: 53
+        min_ptx: "4.2"
+        description: "Fused multiply-add"
+        templates:
+          # f16x2 FMA (THE KEY COMPUTE INSTRUCTION)
+          - syntax: "fma.rn.f16x2 {dst}, {a}, {b}, {c}"
+            min_sm: 53
+            description: "Packed f16x2 fused multiply-add: dst = a*b + c"
+            operands:
+              - {name: dst, type: register, dtype: b32}
+              - {name: a, type: register, dtype: b32}
+              - {name: b, type: register, dtype: b32}
+              - {name: c, type: register, dtype: b32}
+
+          # f16x2 FMA with saturation options
+          - syntax: "fma.rn{.sat}{.relu}.f16x2 {dst}, {a}, {b}, {c}"
+            min_sm: 80
+            permutation_axes:
+              - axis: sat
+                values: ["", ".sat", ".relu"]
+
+          # f32 FMA
+          - syntax: "fma.{rnd}.f32 {dst}, {a}, {b}, {c}"
+            permutation_axes:
+              - axis: rnd
+                values: [rn, rz, rm, rp]
+
+          # f16 FMA (scalar)
+          - syntax: "fma.rn.f16 {dst}, {a}, {b}, {c}"
+            min_sm: 53
+
+      # ---- MUL f16x2 ----
+      - mnemonic: "mul"
+        min_sm: 53
+        description: "Multiply"
+        templates:
+          - syntax: "mul.rn.f16x2 {dst}, {a}, {b}"
+            description: "Packed f16x2 multiply"
+            operands:
+              - {name: dst, type: register, dtype: b32}
+              - {name: a, type: register, dtype: b32}
+              - {name: b, type: register, dtype: b32}
+
+          - syntax: "mul.rn.f16 {dst}, {a}, {b}"
+          - syntax: "mul.{rnd}.f32 {dst}, {a}, {b}"
+            permutation_axes:
+              - axis: rnd
+                values: [rn, rz, rm, rp, ""]
+
+          - syntax: "mul.lo.{dtype} {dst}, {a}, {b}"
+            permutation_axes:
+              - axis: dtype
+                values: [s32, u32, s64, u64]
+
+          - syntax: "mul.hi.{dtype} {dst}, {a}, {b}"
+            permutation_axes:
+              - axis: dtype
+                values: [s32, u32, s64, u64]
+
+          - syntax: "mul.wide.{dtype} {dst}, {a}, {b}"
+            permutation_axes:
+              - axis: dtype
+                values: [s16, u16, s32, u32]
+
+      # ---- ADD f16x2 ----
+      - mnemonic: "add"
+        min_sm: 10
+        description: "Add"
+        templates:
+          - syntax: "add.rn.f16x2 {dst}, {a}, {b}"
+            min_sm: 53
+            description: "Packed f16x2 add"
+
+          - syntax: "add.rn.f16 {dst}, {a}, {b}"
+            min_sm: 53
+
+          - syntax: "add.{dtype} {dst}, {a}, {b}"
+            permutation_axes:
+              - axis: dtype
+                values: [s32, u32, s64, u64]
+
+          - syntax: "add.{rnd}.f32 {dst}, {a}, {b}"
+            permutation_axes:
+              - axis: rnd
+                values: [rn, rz, rm, rp, ""]
+
+  # ---------------------------------------------------------------------------
+  # INTEGER ARITHMETIC
+  # ---------------------------------------------------------------------------
+  - name: "Integer Arithmetic"
+    instructions:
+
+      - mnemonic: "mad"
+        min_sm: 10
+        description: "Multiply-add"
+        templates:
+          - syntax: "mad.lo.{dtype} {dst}, {a}, {b}, {c}"
+            permutation_axes:
+              - axis: dtype
+                values: [s32, u32, s64, u64]
+
+          - syntax: "mad.wide.{dtype} {dst}, {a}, {b}, {c}"
+            permutation_axes:
+              - axis: dtype
+                values: [s16, u16, s32, u32]
+            description: "Widen multiply-add (e.g., u32*u32+u64 -> u64)"
+
+      - mnemonic: "shl"
+        description: "Shift left"
+        templates:
+          - syntax: "shl.{dtype} {dst}, {src}, {shift}"
+            permutation_axes:
+              - axis: dtype
+                values: [b16, b32, b64]
+
+      - mnemonic: "shr"
+        description: "Shift right"
+        templates:
+          - syntax: "shr.{dtype} {dst}, {src}, {shift}"
+            permutation_axes:
+              - axis: dtype
+                values: [b16, b32, b64, u16, u32, u64, s16, s32, s64]
+
+      - mnemonic: "and"
+        description: "Bitwise AND"
+        templates:
+          - syntax: "and.{dtype} {dst}, {a}, {b}"
+            permutation_axes:
+              - axis: dtype
+                values: [b16, b32, b64, pred]
+
+      - mnemonic: "or"
+        description: "Bitwise OR"
+        templates:
+          - syntax: "or.{dtype} {dst}, {a}, {b}"
+            permutation_axes:
+              - axis: dtype
+                values: [b16, b32, b64, pred]
+
+  # ---------------------------------------------------------------------------
+  # DATA MOVEMENT - MOV
+  # ---------------------------------------------------------------------------
+  - name: "Move Operations"
+    instructions:
+
+      - mnemonic: "mov"
+        description: "Move/copy data"
+        templates:
+          # Basic move
+          - syntax: "mov.{dtype} {dst}, {src}"
+            permutation_axes:
+              - axis: dtype
+                values: [b8, b16, b32, b64, u8, u16, u32, u64, s8, s16, s32, s64, f16, f32, f64, pred]
+
+          # Pack/unpack (CRITICAL for FP4/FP8 handling)
+          # Unpack b32 -> 4x b8
+          - syntax: "mov.b32 {{{d0}, {d1}, {d2}, {d3}}}, {src}"
+            description: "Unpack 32-bit to 4x8-bit"
+            operands:
+              - {name: d0, type: register, dtype: b8}
+              - {name: d1, type: register, dtype: b8}
+              - {name: d2, type: register, dtype: b8}
+              - {name: d3, type: register, dtype: b8}
+              - {name: src, type: register, dtype: b32}
+
+          # Pack 4x b8 -> b32
+          - syntax: "mov.b32 {dst}, {{{s0}, {s1}, {s2}, {s3}}}"
+            description: "Pack 4x8-bit to 32-bit"
+
+          # Unpack b32 -> 2x f16
+          - syntax: "mov.b32 {{{d0}, {d1}}}, {src}"
+            description: "Unpack 32-bit to 2x f16"
+
+          # Pack 2x f16 -> b32
+          - syntax: "mov.b32 {dst}, {{{s0}, {s1}}}"
+            description: "Pack 2x f16 to 32-bit"
+
+  # ---------------------------------------------------------------------------
+  # COMPARISON AND SELECTION
+  # ---------------------------------------------------------------------------
+  - name: "Comparison"
+    instructions:
+
+      - mnemonic: "setp"
+        description: "Set predicate"
+        templates:
+          - syntax: "setp.{cmp}.{dtype} {dst}, {a}, {b}"
+            permutation_axes:
+              - axis: cmp
+                values: [eq, ne, lt, le, gt, ge, lo, ls, hi, hs, equ, neu, ltu, leu, gtu, geu, num, nan]
+              - axis: dtype
+                values: [b16, b32, b64, u16, u32, u64, s16, s32, s64, f16, f32, f64]
+
+          - syntax: "setp.{cmp}.{logic}.{dtype} {dst1}, {dst2}, {a}, {b}"
+            permutation_axes:
+              - axis: cmp
+                values: [eq, ne, lt, le, gt, ge]
+              - axis: logic
+                values: [and, or, xor]
+              - axis: dtype
+                values: [b32, s32, u32, f32]
+
+      - mnemonic: "selp"
+        description: "Select on predicate"
+        templates:
+          - syntax: "selp.{dtype} {dst}, {src_true}, {src_false}, {pred}"
+            permutation_axes:
+              - axis: dtype
+                values: [b16, b32, b64, u16, u32, u64, s16, s32, s64, f16, f32, f64]
+
+  # ---------------------------------------------------------------------------
+  # CONTROL FLOW
+  # ---------------------------------------------------------------------------
+  - name: "Control Flow"
+    instructions:
+
+      - mnemonic: "bra"
+        description: "Branch"
+        templates:
+          - syntax: "bra {label}"
+          - syntax: "bra.uni {label}"
+          - syntax: "@{pred} bra {label}"
+          - syntax: "@!{pred} bra {label}"
+
+      - mnemonic: "ret"
+        description: "Return from function"
+        templates:
+          - syntax: "ret"
+          - syntax: "ret.uni"
+
+      - mnemonic: "exit"
+        description: "Exit kernel"
+        templates:
+          - syntax: "exit"
+
+  # ---------------------------------------------------------------------------
+  # SYNCHRONIZATION
+  # ---------------------------------------------------------------------------
+  - name: "Synchronization"
+    instructions:
+
+      - mnemonic: "bar"
+        description: "Barrier synchronization"
+        templates:
+          - syntax: "bar.sync {barrier_id}"
+          - syntax: "bar.sync {barrier_id}, {thread_count}"
+          - syntax: "bar.arrive {barrier_id}, {thread_count}"
+          - syntax: "bar.red.{op}.{dtype} {dst}, {barrier_id}, {thread_count}, {pred}"
+            permutation_axes:
+              - axis: op
+                values: [popc, and, or]
+              - axis: dtype
+                values: [pred]
+
+      - mnemonic: "membar"
+        description: "Memory barrier"
+        templates:
+          - syntax: "membar.{scope}"
+            permutation_axes:
+              - axis: scope
+                values: [cta, gl, sys]
+
+  # ---------------------------------------------------------------------------
+  # WARP-LEVEL OPERATIONS (Critical for reduction)
+  # ---------------------------------------------------------------------------
+  - name: "Warp Operations"
+    instructions:
+
+      # ---- Shuffle (CRITICAL for warp reduction) ----
+      - mnemonic: "shfl"
+        min_sm: 30
+        description: "Warp shuffle"
+        templates:
+          # shfl.sync (sm_70+, required form)
+          - syntax: "shfl.sync.{mode}.b32 {dst}, {src}, {offset}, {mask}"
+            min_sm: 70
+            permutation_axes:
+              - axis: mode
+                values: [up, down, bfly, idx]
+            operands:
+              - {name: dst, type: register, dtype: b32}
+              - {name: src, type: register, dtype: b32}
+              - {name: offset, type: immediate_or_register}
+              - {name: mask, type: immediate}  # e.g., 0xffffffff
+
+          # With predicate output
+          - syntax: "shfl.sync.{mode}.b32 {dst}|{pred}, {src}, {offset}, {clamp}, {mask}"
+            min_sm: 70
+            permutation_axes:
+              - axis: mode
+                values: [up, down, bfly, idx]
+
+      # ---- Vote ----
+      - mnemonic: "vote"
+        min_sm: 12
+        description: "Warp vote"
+        templates:
+          - syntax: "vote.sync.{mode}.pred {dst}, {src}, {mask}"
+            min_sm: 70
+            permutation_axes:
+              - axis: mode
+                values: [all, any, uni, ballot]
+
+      # ---- Activemask ----
+      - mnemonic: "activemask"
+        min_sm: 62
+        description: "Get active thread mask"
+        templates:
+          - syntax: "activemask.b32 {dst}"
+
+  # ---------------------------------------------------------------------------
+  # SPECIAL REGISTERS
+  # ---------------------------------------------------------------------------
+  - name: "Special Registers"
+    instructions:
+
+      - mnemonic: "mov"
+        description: "Move from special register"
+        templates:
+          - syntax: "mov.u32 {dst}, %tid.x"
+          - syntax: "mov.u32 {dst}, %tid.y"
+          - syntax: "mov.u32 {dst}, %tid.z"
+          - syntax: "mov.u32 {dst}, %ntid.x"
+          - syntax: "mov.u32 {dst}, %ntid.y"
+          - syntax: "mov.u32 {dst}, %ntid.z"
+          - syntax: "mov.u32 {dst}, %ctaid.x"
+          - syntax: "mov.u32 {dst}, %ctaid.y"
+          - syntax: "mov.u32 {dst}, %ctaid.z"
+          - syntax: "mov.u32 {dst}, %nctaid.x"
+          - syntax: "mov.u32 {dst}, %nctaid.y"
+          - syntax: "mov.u32 {dst}, %nctaid.z"
+          - syntax: "mov.u32 {dst}, %laneid"
+          - syntax: "mov.u32 {dst}, %warpid"
+          - syntax: "mov.u32 {dst}, %smid"
+
+# =============================================================================
+# VALIDATION PROFILES
+# =============================================================================
+validation_profiles:
+  syntax_only:
+    description: "Fast regex-based syntax check"
+    latency_target_ms: 1
+    checks:
+      - valid_mnemonic
+      - valid_modifiers
+      - operand_count
+
+  ptxas_dry_run:
+    description: "Compile with ptxas, don't generate cubin"
+    latency_target_ms: 200
+    command: "ptxas --gpu-name=sm_100a -o /dev/null {ptx_file}"
+
+  full_compile:
+    description: "Full compilation to cubin"
+    latency_target_ms: 500
+    command: "ptxas --gpu-name=sm_100a -o {output} {ptx_file}"
+
+# =============================================================================
+# INSTRUCTION PATTERNS USED IN 1.py (Quick Reference)
+# =============================================================================
+# These are the exact patterns extracted from 1.py for validation:
+nvfp4_gemv_patterns:
+  loads:
+    # Basic loads
+    - "ld.global.u64.v2 {%0, %1}, [%addr]"
+    - "ld.global.u16 %0, [%addr]"
+
+    # Cached loads for B (reused)
+    - "ld.global.L2::128B.u64.v2 {%0, %1}, [%addr]"
+    - "ld.global.L2::128B.u16 %0, [%addr]"
+
+    # Streaming loads for A (large, used once)
+    - "ld.global.cs.u64.v2 {%0, %1}, [%addr]"
+    - "ld.global.cs.u16 %0, [%addr]"
+
+    # Last-use loads
+    - "ld.global.lu.u16 %0, [%addr]"
+
+    # Complex cache policies (8192 case)
+    - "ld.global.L1::no_allocate.L2::evict_first.L2::256B.v4.u64 {%0, %1, %2, %3}, [%addr]"
+    - "ld.global.L1::evict_last.L2::evict_last.v4.u64 {%0, %1, %2, %3}, [%addr]"
+    - "ld.global.L1::no_allocate.v2.u16 {%0, %1}, [%addr]"
+    - "ld.global.L1::evict_last.v2.u16 {%0, %1}, [%addr]"
+
+  conversions:
+    # FP4 to FP16x2 (the key conversion)
+    - "cvt.rn.f16x2.e2m1x2 %dst, %src"
+
+    # FP8 to FP16x2 (for scales)
+    - "cvt.rn.f16x2.e4m3x2 %dst, %src"
+
+    # FP16 to FP32
+    - "cvt.f32.f16 %dst, %src"
+
+  compute:
+    # FMA f16x2 chain
+    - "fma.rn.f16x2 %acc, %a, %b, %acc"
+
+    # MUL f16x2 (for scales)
+    - "mul.rn.f16x2 %dst, %a, %b"
+
+    # ADD f16x2
+    - "add.rn.f16x2 %dst, %a, %b"
+
+    # ADD f16 (final reduction)
+    - "add.rn.f16 %dst, %a, %b"
+
+  pack_unpack:
+    # Unpack b32 to 4x b8
+    - "mov.b32 {%b0, %b1, %b2, %b3}, %src"
+
+    # Unpack f16x2 to 2x f16
+    - "mov.b32 {%h0, %h1}, %src"
+
+    # Pack 2x f16 to f16x2
+    - "mov.b32 %dst, {%h0, %h1}"
+
+    # Zero init
+    - "mov.b32 %dst, 0"
+
+  reduction:
+    # Warp shuffle down (for reduction)
+    - "shfl.sync.down.b32 %dst, %src, %offset, 0xffffffff"
