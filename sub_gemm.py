@@ -53,9 +53,9 @@ struct GemmParams {
     index_t c_col_stride;
 };
 
-static constexpr int THREADS_PER_ROW = 16;
-static constexpr int ROWS_PER_BLOCK = 8;
-static constexpr int COLS_PER_GROUP = 4;
+static constexpr int K_WORKERS = 16;
+static constexpr int M_TILE = 8;
+static constexpr int N_TILE = 4;
 
 __device__ __forceinline__ void load_row_block(
     const __nv_fp4x2_e2m1* row_ptr,
@@ -235,23 +235,23 @@ __device__ __forceinline__ float block_scaled_fma_16x2fp4(
     return out_f32;
 }
 
-template <int ROWS_PER_BLOCK, int THREADS_PER_ROW, int COLS_PER_GROUP>
-__global__ void __launch_bounds__(ROWS_PER_BLOCK * THREADS_PER_ROW)
+template <int M_TILE, int K_WORKERS, int N_TILE>
+__global__ void __launch_bounds__(M_TILE * K_WORKERS)
 gemm_kernel(const __grid_constant__ GemmParams params)
 {
     const int tid  = threadIdx.x;
-    const int warp = tid / THREADS_PER_ROW;
-    const int lane = tid % THREADS_PER_ROW;
+    const int m_idx = tid / K_WORKERS;
+    const int k_lane = tid % K_WORKERS;
 
     const int batch = blockIdx.z;
-    const int row   = blockIdx.y * ROWS_PER_BLOCK + warp;
-    const int col_tile = blockIdx.x;
+    const int row   = blockIdx.y * M_TILE + m_idx;
+    const int n_tile = blockIdx.x;
 
     if (row >= params.m || batch >= params.batches) {
         return;
     }
 
-    const int col_start = col_tile * COLS_PER_GROUP;
+    const int col_start = n_tile * N_TILE;
     if (col_start >= params.n) {
         return;
     }
@@ -272,12 +272,12 @@ gemm_kernel(const __grid_constant__ GemmParams params)
     const uint16_t* rowS = reinterpret_cast<const uint16_t*>(
         sfa_tensor + SFA_batch_base + row * params.sfa_row_stride);
 
-    const __nv_fp4x2_e2m1* colB_ptrs[COLS_PER_GROUP];
-    const uint16_t* colS_ptrs[COLS_PER_GROUP];
-    bool col_active[COLS_PER_GROUP];
+    const __nv_fp4x2_e2m1* colB_ptrs[N_TILE];
+    const uint16_t* colS_ptrs[N_TILE];
+    bool col_active[N_TILE];
 
     #pragma unroll
-    for (int ci = 0; ci < COLS_PER_GROUP; ++ci) {
+    for (int ci = 0; ci < N_TILE; ++ci) {
         int col = col_start + ci;
         if (col < params.n) {
             col_active[ci] = true;
@@ -291,13 +291,13 @@ gemm_kernel(const __grid_constant__ GemmParams params)
         }
     }
 
-    float accum[COLS_PER_GROUP] = {0.f};
+    float accum[N_TILE] = {0.f};
 
-    const int iters = params.k / (THREADS_PER_ROW * 16);
+    const int iters = params.k / (K_WORKERS * 16);
 
-    #pragma unroll 4   
+    #pragma unroll 4
     for (int iter = 0; iter < iters; ++iter) {
-        int block_base = iter * THREADS_PER_ROW + lane;
+        int block_base = iter * K_WORKERS + k_lane;
         int elem_base = block_base * 16;
 
         uint64_t a_regs[2];
@@ -305,7 +305,7 @@ gemm_kernel(const __grid_constant__ GemmParams params)
         load_row_block(rowA, rowS, elem_base, block_base, a_regs, sfa_reg);
 
         #pragma unroll
-        for (int ci = 0; ci < COLS_PER_GROUP; ++ci) {
+        for (int ci = 0; ci < N_TILE; ++ci) {
             if (!col_active[ci]) {
                 continue;
             }
@@ -319,15 +319,15 @@ gemm_kernel(const __grid_constant__ GemmParams params)
     __half* row_out = c_matrix + C_batch_base + row * params.c_row_stride;
 
     #pragma unroll
-    for (int ci = 0; ci < COLS_PER_GROUP; ++ci) {
+    for (int ci = 0; ci < N_TILE; ++ci) {
         if (!col_active[ci]) {
             continue;
         }
         float value = accum[ci];
-        for (int offset = THREADS_PER_ROW / 2; offset > 0; offset /= 2) {
-            value += __shfl_down_sync(0xFFFF'FFFF, value, offset, THREADS_PER_ROW);
+        for (int offset = K_WORKERS / 2; offset > 0; offset /= 2) {
+            value += __shfl_down_sync(0xFFFF'FFFF, value, offset, K_WORKERS);
         }
-        if (lane == 0) {
+        if (k_lane == 0) {
             int col = col_start + ci;
             __half* out_ptr = row_out + col * params.c_col_stride;
             out_ptr[0] = __float2half(value);
@@ -374,13 +374,13 @@ torch::Tensor cuda_nvfp4_gemm(
     params.c_row_stride = C.stride(0);
     params.c_col_stride = C.stride(1);
 
-    dim3 block_dim(ROWS_PER_BLOCK * THREADS_PER_ROW, 1, 1);
+    dim3 block_dim(M_TILE * K_WORKERS, 1, 1);
     dim3 grid_dim(
-        (params.n + COLS_PER_GROUP - 1) / COLS_PER_GROUP,
-        (params.m + ROWS_PER_BLOCK - 1) / ROWS_PER_BLOCK,
+        (params.n + N_TILE - 1) / N_TILE,
+        (params.m + M_TILE - 1) / M_TILE,
         params.batches);
 
-    gemm_kernel<ROWS_PER_BLOCK, THREADS_PER_ROW, COLS_PER_GROUP><<<grid_dim, block_dim, 0>>>(params);
+    gemm_kernel<M_TILE, K_WORKERS, N_TILE><<<grid_dim, block_dim, 0>>>(params);
     return C;
 }
 """
