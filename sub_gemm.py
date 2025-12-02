@@ -477,6 +477,118 @@ gemm_kernel(const __grid_constant__ Gemm_params params)
             out_ptr[0] = __float2half(value);
         }
     }
+
+    // === DEBUG: Verify full dot product for row=0, col=0 after reduction ===
+    // Only one thread (the one that wrote the result) does this check
+    if (debug && k_lane == 0 && col_active[0]) {
+        // We need to recompute the ENTIRE dot product for row 0, col 0 manually
+        // to compare against what we just wrote
+
+        const float fp4_lut[16] = {
+            0.0f, 0.5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f,
+            -0.0f, -0.5f, -1.0f, -1.5f, -2.0f, -3.0f, -4.0f, -6.0f
+        };
+
+        auto fp8_e4m3_to_float = [](uint8_t val) -> float {
+            uint8_t sign = (val >> 7) & 0x1;
+            uint8_t exp = (val >> 3) & 0xF;
+            uint8_t mant = val & 0x7;
+            float mantissa = 1.0f + mant / 8.0f;
+            float result;
+            if (exp == 0) {
+                result = (mant / 8.0f) * powf(2.0f, -6.0f);
+            } else if (exp == 15 && mant == 7) {
+                result = nanf("");
+            } else {
+                result = mantissa * powf(2.0f, (float)exp - 7.0f);
+            }
+            return sign ? -result : result;
+        };
+
+        printf("\\n=== FULL DOT PRODUCT VERIFICATION (row=0, col=0) ===\\n");
+
+        // Get the value we wrote
+        float written_value = __half2float(row_out[col_start]);
+        printf("Written output value: %f\\n", written_value);
+
+        // Recompute the full dot product from scratch
+        const uint8_t* a_data = reinterpret_cast<const uint8_t*>(rowA);
+        const uint8_t* b_data = reinterpret_cast<const uint8_t*>(colB_ptrs[0]);
+        const uint8_t* sfa_data = reinterpret_cast<const uint8_t*>(rowS);
+        const uint8_t* sfb_data = reinterpret_cast<const uint8_t*>(colS_ptrs[0]);
+
+        float total_sum = 0.0f;
+        int num_scale_blocks = params.k / 16;  // 16 bytes = 32 FP4 = 2 scale factors (16 each)
+
+        printf("num_scale_blocks=%d (params.k=%d)\\n", num_scale_blocks, params.k);
+
+        // Sample 6 random block indices to print
+        int sample_blocks[6] = {0, 1, num_scale_blocks/4, num_scale_blocks/2, num_scale_blocks*3/4, num_scale_blocks-1};
+
+        for (int blk = 0; blk < num_scale_blocks; blk++) {
+            // Each block: 16 bytes of A, 16 bytes of B, 2 scale factors each
+            int byte_offset = blk * 16;
+            int scale_offset = blk * 2;  // 2 FP8 scales per 32 FP4 elements
+
+            // Load scales
+            uint8_t sfa_lo = sfa_data[scale_offset];
+            uint8_t sfa_hi = sfa_data[scale_offset + 1];
+            uint8_t sfb_lo = sfb_data[scale_offset];
+            uint8_t sfb_hi = sfb_data[scale_offset + 1];
+
+            float scale_a0 = fp8_e4m3_to_float(sfa_lo);
+            float scale_a1 = fp8_e4m3_to_float(sfa_hi);
+            float scale_b0 = fp8_e4m3_to_float(sfb_lo);
+            float scale_b1 = fp8_e4m3_to_float(sfb_hi);
+
+            // Compute dot product for first 8 bytes (16 FP4 pairs) with scale0
+            float dot0 = 0.0f;
+            for (int i = 0; i < 8; i++) {
+                uint8_t a_byte = a_data[byte_offset + i];
+                uint8_t b_byte = b_data[byte_offset + i];
+                uint8_t a_lo = a_byte & 0xF;
+                uint8_t a_hi = (a_byte >> 4) & 0xF;
+                uint8_t b_lo = b_byte & 0xF;
+                uint8_t b_hi = (b_byte >> 4) & 0xF;
+                dot0 += fp4_lut[a_lo] * fp4_lut[b_lo] + fp4_lut[a_hi] * fp4_lut[b_hi];
+            }
+
+            // Compute dot product for next 8 bytes (16 FP4 pairs) with scale1
+            float dot1 = 0.0f;
+            for (int i = 0; i < 8; i++) {
+                uint8_t a_byte = a_data[byte_offset + 8 + i];
+                uint8_t b_byte = b_data[byte_offset + 8 + i];
+                uint8_t a_lo = a_byte & 0xF;
+                uint8_t a_hi = (a_byte >> 4) & 0xF;
+                uint8_t b_lo = b_byte & 0xF;
+                uint8_t b_hi = (b_byte >> 4) & 0xF;
+                dot1 += fp4_lut[a_lo] * fp4_lut[b_lo] + fp4_lut[a_hi] * fp4_lut[b_hi];
+            }
+
+            float block_result = dot0 * scale_a0 * scale_b0 + dot1 * scale_a1 * scale_b1;
+            total_sum += block_result;
+
+            // Print sample blocks
+            bool is_sample = false;
+            for (int s = 0; s < 6; s++) {
+                if (blk == sample_blocks[s]) {
+                    is_sample = true;
+                    break;
+                }
+            }
+            if (is_sample) {
+                printf("Block[%d]: byte_off=%d, scale_off=%d\\n", blk, byte_offset, scale_offset);
+                printf("  scales: sfa=(0x%02x,0x%02x)->(%f,%f) sfb=(0x%02x,0x%02x)->(%f,%f)\\n",
+                       sfa_lo, sfa_hi, scale_a0, scale_a1, sfb_lo, sfb_hi, scale_b0, scale_b1);
+                printf("  dot0=%f dot1=%f block_result=%f running_sum=%f\\n",
+                       dot0, dot1, block_result, total_sum);
+            }
+        }
+
+        printf("\\nFINAL: expected_sum=%f, written_value=%f, diff=%f\\n",
+               total_sum, written_value, written_value - total_sum);
+        printf("==============================================\\n\\n");
+    }
 }
 
 torch::Tensor cuda_nvfp4_gemm(
