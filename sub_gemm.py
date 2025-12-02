@@ -478,6 +478,37 @@ gemm_kernel(const __grid_constant__ Gemm_params params)
 
     __half* row_out = params.c_ptr + C_batch_base + row * params.n;
 
+    // === DEBUG: Verify per-k_lane partial sums before reduction ===
+    // IMPORTANT: All 16 k_lanes must participate in shuffle (collective op)
+    const bool is_debug_tile_all_lanes = (blockIdx.z == 0) && (m_idx == 0) && (
+        (blockIdx.y == 0 && blockIdx.x == 0) ||
+        (blockIdx.y == mid_y && blockIdx.x == mid_x) ||
+        (blockIdx.y == last_y && blockIdx.x == last_x)
+    ) && (atomicAdd(&g_debug_done, 0) < 3);
+
+    if (is_debug_tile_all_lanes && col_active[0]) {
+        float my_partial = accum[0];
+
+        // Collect all 16 partial sums to k_lane 0 using shuffle
+        // ALL 16 k_lanes execute this together, mask=0xFFFF for lanes 0-15
+        float all_partials[16];
+        for (int i = 0; i < 16; i++) {
+            all_partials[i] = __shfl_sync(0xFFFF, my_partial, i, K_WORKERS);
+        }
+
+        // Only k_lane 0 prints
+        if (k_lane == 0) {
+            printf("\\n=== PER-K_LANE PARTIAL SUMS (before reduction) ===\\n");
+            float sum_of_partials = 0.0f;
+            for (int i = 0; i < 16; i++) {
+                printf("k_lane[%2d] partial = %f\\n", i, all_partials[i]);
+                sum_of_partials += all_partials[i];
+            }
+            printf("SUM of all partials = %f\\n", sum_of_partials);
+            printf("=================================================\\n\\n");
+        }
+    }
+
     #pragma unroll
     for (int ci = 0; ci < N_TILE; ++ci) {
         if (!col_active[ci]) {
