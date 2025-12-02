@@ -216,11 +216,13 @@ gemm_kernel(
     const __nv_fp8_e4m3* __restrict__ sfa_ptr,
     const __nv_fp8_e4m3* __restrict__ sfb_ptr,
     __half* __restrict__ o_ptr,
-    uint64_t a_batch_stride, uint64_t b_batch_stride,
-    uint64_t sfa_batch_stride, uint64_t sfb_batch_stride, uint64_t c_batch_stride,
-    uint64_t a_row_stride, uint64_t b_row_stride,
-    uint64_t sfa_row_stride, uint64_t sfb_row_stride,
-    uint64_t c_row_stride, uint64_t c_col_stride)
+    uint64_t a_batch_stride,
+    uint64_t b_batch_stride,
+    uint64_t row_stride,
+    uint64_t sfa_batch_stride,
+    uint64_t sfb_batch_stride,
+    uint64_t sf_row_stride,
+    uint64_t c_batch_stride, uint64_t c_row_stride, uint64_t c_col_stride)
 {
     const int tid  = threadIdx.x;
     const int m_idx = tid / K_WORKERS;
@@ -245,9 +247,9 @@ gemm_kernel(
     const size_t SFB_batch_base = static_cast<size_t>(batch) * sfb_batch_stride;
     const size_t C_batch_base   = static_cast<size_t>(batch) * c_batch_stride;
 
-    const __nv_fp4x2_e2m1* rowA = a_ptr + A_batch_base + row * a_row_stride;
+    const __nv_fp4x2_e2m1* rowA = a_ptr + A_batch_base + row * row_stride;
     const uint16_t* rowS = reinterpret_cast<const uint16_t*>(
-        sfa_ptr + SFA_batch_base + row * sfa_row_stride);
+        sfa_ptr + SFA_batch_base + row * sf_row_stride);
 
     const __nv_fp4x2_e2m1* colB_ptrs[N_TILE];
     const uint16_t* colS_ptrs[N_TILE];
@@ -258,9 +260,9 @@ gemm_kernel(
         int col = col_start + ci;
         if (col < n) {
             col_active[ci] = true;
-            colB_ptrs[ci] = b_ptr + B_batch_base + col * b_row_stride;
+            colB_ptrs[ci] = b_ptr + B_batch_base + col * row_stride;
             colS_ptrs[ci] = reinterpret_cast<const uint16_t*>(
-                sfb_ptr + SFB_batch_base + col * sfb_row_stride);
+                sfb_ptr + SFB_batch_base + col * sf_row_stride);
         } else {
             col_active[ci] = false;
             colB_ptrs[ci] = nullptr;
@@ -339,11 +341,13 @@ torch::Tensor cuda_nvfp4_gemm(
         static_cast<const __nv_fp8_e4m3*>(SFA.data_ptr()),
         static_cast<const __nv_fp8_e4m3*>(SFB.data_ptr()),
         static_cast<__half*>(C.data_ptr()),
-        A.stride(2), B.stride(2),
-        SFA.stride(2), SFB.stride(2), C.stride(2),
-        A.stride(0), B.stride(0),
-        SFA.stride(0), SFB.stride(0),
-        C.stride(0), C.stride(1));
+        A.stride(2),
+        B.stride(2),
+        A.stride(0),
+        SFA.stride(2),
+        SFB.stride(2),
+        SFA.stride(0),
+        C.stride(2), C.stride(0), C.stride(1));  
     return C;
 }
 """
@@ -369,9 +373,8 @@ nvfp4_gemm_module = load_inline(
 
 
 def custom_kernel(data: input_t) -> output_t:
-
-    a_sizes = data[0].sizes(); b_sizes = data[1].sizes(); c_sizes = data[4].sizes(); sfa_sizes = data[2].sizes(); sfb_sizes = data[3].sizes()
-    print(f"a_sizes: {a_sizes}, b_sizes: {b_sizes}, c_sizes: {c_sizes}, sfa_sizes: {sfa_sizes}, sfb_sizes: {sfb_sizes}")
-    print(f"a_strides: {data[0].strides()}, b_strides: {data[1].strides()}, c_strides: {data[4].strides()}, sfa_strides: {data[2].strides()}, sfb_strides: {data[3].strides()}")
+    print(f"A.size(): {data[0].size()}, B.size(): {data[1].size()}, C.size(): {data[4].size()}, SFA.size(): {data[2].size()}, SFB.size(): {data[3].size()}")
+    print(f"A.stride(2): {data[0].stride(2)}, B.stride(2): {data[1].stride(2)}, C.stride(2): {data[4].stride(2)}, SFA.stride(2): {data[2].stride(2)}, SFB.stride(2): {data[3].stride(2)}")
+    print(f"A.stride(0): {data[0].stride(0)}, B.stride(0): {data[1].stride(0)}, SFA.stride(0): {data[2].stride(0)}, SFB.stride(0): {data[3].stride(0)}, C.stride(0): {data[4].stride(0)}, C.stride(1): {data[4].stride(1)}")
 
     return nvfp4_gemm_module.cuda_nvfp4_gemm(data[0], data[1], data[2], data[3], data[6])
