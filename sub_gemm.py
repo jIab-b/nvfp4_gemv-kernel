@@ -361,6 +361,98 @@ gemm_kernel(const __grid_constant__ Gemm_params params)
                 printf("sfa bytes: lo=0x%02x hi=0x%02x, sfb bytes: lo=0x%02x hi=0x%02x\\n",
                        sfa_lo, sfa_hi, sfb_lo, sfb_hi);
                 printf("block_scaled_fma result = %f\\n", result);
+
+                // === EXPECTED VALUE COMPUTATION ===
+                // FP4 E2M1 table: 4-bit value -> float
+                // Format: 1 sign bit, 2 exp bits, 1 mantissa bit
+                // Values: 0=0, 1=0.5, 2=1, 3=1.5, 4=2, 5=3, 6=4, 7=6
+                //         8=-0, 9=-0.5, 10=-1, 11=-1.5, 12=-2, 13=-3, 14=-4, 15=-6
+                const float fp4_lut[16] = {
+                    0.0f, 0.5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f,
+                    -0.0f, -0.5f, -1.0f, -1.5f, -2.0f, -3.0f, -4.0f, -6.0f
+                };
+
+                // Decode FP8 E4M3 scales to float
+                // E4M3: 1 sign, 4 exp (bias=7), 3 mantissa
+                auto fp8_e4m3_to_float = [](uint8_t val) -> float {
+                    uint8_t sign = (val >> 7) & 0x1;
+                    uint8_t exp = (val >> 3) & 0xF;
+                    uint8_t mant = val & 0x7;
+                    float mantissa = 1.0f + mant / 8.0f;
+                    float result;
+                    if (exp == 0) {
+                        result = (mant / 8.0f) * powf(2.0f, -6.0f); // subnormal
+                    } else if (exp == 15 && mant == 7) {
+                        result = nanf(""); // NaN
+                    } else {
+                        result = mantissa * powf(2.0f, (float)exp - 7.0f);
+                    }
+                    return sign ? -result : result;
+                };
+
+                float scale_a0 = fp8_e4m3_to_float(sfa_lo);
+                float scale_a1 = fp8_e4m3_to_float(sfa_hi);
+                float scale_b0 = fp8_e4m3_to_float(sfb_lo);
+                float scale_b1 = fp8_e4m3_to_float(sfb_hi);
+
+                printf("--- EXPECTED COMPUTATION ---\\n");
+                printf("scale_a0=%f scale_a1=%f scale_b0=%f scale_b1=%f\\n",
+                       scale_a0, scale_a1, scale_b0, scale_b1);
+                printf("combined_scale0=%f combined_scale1=%f\\n",
+                       scale_a0 * scale_b0, scale_a1 * scale_b1);
+
+                // Decode first 16 FP4 pairs (from a_regs[0], b_regs[0])
+                const uint8_t* a_bytes = reinterpret_cast<const uint8_t*>(&a_regs[0]);
+                const uint8_t* b_bytes = reinterpret_cast<const uint8_t*>(&b_regs[0]);
+
+                float dot0 = 0.0f;
+                printf("First 16 FP4 pairs (a_regs[0] x b_regs[0]):\\n");
+                for (int i = 0; i < 8; i++) {
+                    uint8_t a_byte = a_bytes[i];
+                    uint8_t b_byte = b_bytes[i];
+                    // Each byte has 2 FP4 values: lo nibble and hi nibble
+                    uint8_t a_lo = a_byte & 0xF;
+                    uint8_t a_hi = (a_byte >> 4) & 0xF;
+                    uint8_t b_lo = b_byte & 0xF;
+                    uint8_t b_hi = (b_byte >> 4) & 0xF;
+                    float a0 = fp4_lut[a_lo], a1 = fp4_lut[a_hi];
+                    float b0 = fp4_lut[b_lo], b1 = fp4_lut[b_hi];
+                    dot0 += a0 * b0 + a1 * b1;
+                    if (i < 4) {
+                        printf("  byte[%d]: a=0x%02x (%.1f,%.1f) b=0x%02x (%.1f,%.1f) products=(%.2f,%.2f)\\n",
+                               i, a_byte, a0, a1, b_byte, b0, b1, a0*b0, a1*b1);
+                    }
+                }
+                printf("  ... (4 more bytes)\\n");
+                printf("  raw_dot0 = %f, scaled_dot0 = %f\\n", dot0, dot0 * scale_a0 * scale_b0);
+
+                // Decode second 16 FP4 pairs (from a_regs[1], b_regs[1])
+                const uint8_t* a_bytes1 = reinterpret_cast<const uint8_t*>(&a_regs[1]);
+                const uint8_t* b_bytes1 = reinterpret_cast<const uint8_t*>(&b_regs[1]);
+
+                float dot1 = 0.0f;
+                printf("Second 16 FP4 pairs (a_regs[1] x b_regs[1]):\\n");
+                for (int i = 0; i < 8; i++) {
+                    uint8_t a_byte = a_bytes1[i];
+                    uint8_t b_byte = b_bytes1[i];
+                    uint8_t a_lo = a_byte & 0xF;
+                    uint8_t a_hi = (a_byte >> 4) & 0xF;
+                    uint8_t b_lo = b_byte & 0xF;
+                    uint8_t b_hi = (b_byte >> 4) & 0xF;
+                    float a0 = fp4_lut[a_lo], a1 = fp4_lut[a_hi];
+                    float b0 = fp4_lut[b_lo], b1 = fp4_lut[b_hi];
+                    dot1 += a0 * b0 + a1 * b1;
+                    if (i < 4) {
+                        printf("  byte[%d]: a=0x%02x (%.1f,%.1f) b=0x%02x (%.1f,%.1f) products=(%.2f,%.2f)\\n",
+                               i, a_byte, a0, a1, b_byte, b0, b1, a0*b0, a1*b1);
+                    }
+                }
+                printf("  ... (4 more bytes)\\n");
+                printf("  raw_dot1 = %f, scaled_dot1 = %f\\n", dot1, dot1 * scale_a1 * scale_b1);
+
+                float expected_result = dot0 * scale_a0 * scale_b0 + dot1 * scale_a1 * scale_b1;
+                printf("EXPECTED total = %f, ACTUAL = %f, DIFF = %f\\n",
+                       expected_result, result, result - expected_result);
                 printf("====================================\\n");
             }
 

@@ -1,5 +1,5 @@
 "**NVIDIA on GitHub ✅ success**
-> Workflow [19865147390](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19865147390>) completed
+> Workflow [19865833920](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19865833920>) completed
 > Downloading artifacts... done
 > ❌ Benchmarking failed
 
@@ -30,8 +30,8 @@ mismatch found! custom implementation doesn't match reference: Number of mismatc
 ```
 === GEMM PARAMS DEBUG ===
 params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff83b500000 params.b_ptr=0x7ff82a000000 params.c_ptr=0x7ff830fc0000
-params.sfa_ptr=0x7ff82d800000 params.sfb_ptr=0x7ff826000000
+params.a_ptr=0x7ff857500000 params.b_ptr=0x7ff846000000 params.c_ptr=0x7ff84cfc0000
+params.sfa_ptr=0x7ff849800000 params.sfb_ptr=0x7ff842000000
 params.a_batch_stride=1048576 params.b_batch_stride=58720256
 params.row_stride=8192 params.sf_row_stride=1024
 params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
@@ -47,13 +47,13 @@ colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1)
 colS_ptrs[0] offset from sfb_ptr: 0
 bytes_per_iter=16 K_WORKERS=16
 --- Column pointer details ---
-col[0]: col=0 colB_ptr=0x7ff82a000000 colS_ptr=0x7ff826000000
+col[0]: col=0 colB_ptr=0x7ff846000000 colS_ptr=0x7ff842000000
   colB offset=0 (expected col*row_stride=0)
-col[1]: col=1 colB_ptr=0x7ff82a002000 colS_ptr=0x7ff826000400
+col[1]: col=1 colB_ptr=0x7ff846002000 colS_ptr=0x7ff842000400
   colB offset=8192 (expected col*row_stride=8192)
-col[2]: col=2 colB_ptr=0x7ff82a004000 colS_ptr=0x7ff826000800
+col[2]: col=2 colB_ptr=0x7ff846004000 colS_ptr=0x7ff842000800
   colB offset=16384 (expected col*row_stride=16384)
-col[3]: col=3 colB_ptr=0x7ff82a006000 colS_ptr=0x7ff826000c00
+col[3]: col=3 colB_ptr=0x7ff846006000 colS_ptr=0x7ff842000c00
   colB offset=24576 (expected col*row_stride=24576)
 ========================
 === COMPUTE DEBUG (iter=0, col=0) ===
@@ -63,11 +63,29 @@ b_regs[0]=0xfd04fd02fd02fdfa b_regs[1]=0xfcfaff0500fafafc
 sfa_reg=0xc4b8 sfb_reg=0x38c0
 sfa bytes: lo=0xb8 hi=0xc4, sfb bytes: lo=0xc0 hi=0x38
 block_scaled_fma result = -420.000000
+--- EXPECTED COMPUTATION ---
+scale_a0=-1.000000 scale_a1=-3.000000 scale_b0=-2.000000 scale_b1=1.000000
+combined_scale0=2.000000 combined_scale1=-3.000000
+First 16 FP4 pairs (a_regs[0] x b_regs[0]):
+  byte[0]: a=0x04 (2.0,0.0) b=0xfa (-1.0,-6.0) products=(-2.00,-0.00)
+  byte[1]: a=0x02 (1.0,0.0) b=0xfd (-3.0,-6.0) products=(-3.00,-0.00)
+  byte[2]: a=0xfb (-1.5,-6.0) b=0x02 (1.0,0.0) products=(-1.50,-0.00)
+  byte[3]: a=0xfa (-1.0,-6.0) b=0xfd (-3.0,-6.0) products=(3.00,36.00)
+  ... (4 more bytes)
+  raw_dot0 = 58.500000, scaled_dot0 = 117.000000
+Second 16 FP4 pairs (a_regs[1] x b_regs[1]):
+  byte[0]: a=0xfe (-4.0,-6.0) b=0xfc (-2.0,-6.0) products=(8.00,36.00)
+  byte[1]: a=0xff (-6.0,-6.0) b=0xfa (-1.0,-6.0) products=(6.00,36.00)
+  byte[2]: a=0x05 (3.0,0.0) b=0xfa (-1.0,-6.0) products=(-3.00,-0.00)
+  byte[3]: a=0x01 (0.5,0.0) b=0x00 (0.0,0.0) products=(0.00,0.00)
+  ... (4 more bytes)
+  raw_dot1 = 179.000000, scaled_dot1 = -537.000000
+EXPECTED total = -420.000000, ACTUAL = -420.000000, DIFF = 0.000000
 ====================================
 === GEMM PARAMS DEBUG ===
 params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff83b500000 params.b_ptr=0x7ff82a000000 params.c_ptr=0x7ff831180000
-params.sfa_ptr=0x7ff82d800000 params.sfb_ptr=0x7ff826000000
+params.a_ptr=0x7ff857500000 params.b_ptr=0x7ff846000000 params.c_ptr=0x7ff84d180000
+params.sfa_ptr=0x7ff849800000 params.sfb_ptr=0x7ff842000000
 params.a_batch_stride=1048576 params.b_batch_stride=58720256
 params.row_stride=8192 params.sf_row_stride=1024
 params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
@@ -83,13 +101,13 @@ colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1)
 colS_ptrs[0] offset from sfb_ptr: 0
 bytes_per_iter=16 K_WORKERS=16
 --- Column pointer details ---
-col[0]: col=0 colB_ptr=0x7ff82a000000 colS_ptr=0x7ff826000000
+col[0]: col=0 colB_ptr=0x7ff846000000 colS_ptr=0x7ff842000000
   colB offset=0 (expected col*row_stride=0)
-col[1]: col=1 colB_ptr=0x7ff82a002000 colS_ptr=0x7ff826000400
+col[1]: col=1 colB_ptr=0x7ff846002000 colS_ptr=0x7ff842000400
   colB offset=8192 (expected col*row_stride=8192)
-col[2]: col=2 colB_ptr=0x7ff82a004000 colS_ptr=0x7ff826000800
+col[2]: col=2 colB_ptr=0x7ff846004000 colS_ptr=0x7ff842000800
   colB offset=16384 (expected col*row_stride=16384)
-col[3]: col=3 colB_ptr=0x7ff82a006000 colS_ptr=0x7ff826000c00
+col[3]: col=3 colB_ptr=0x7ff846006000 colS_ptr=0x7ff842000c00
   colB offset=24576 (expected col*row_stride=24576)
 ========================
 === COMPUTE DEBUG (iter=0, col=0) ===
@@ -99,11 +117,29 @@ b_regs[0]=0xfd03fa04030102fa b_regs[1]=0x040500fe05fbfb00
 sfa_reg=0x3840 sfb_reg=0xb838
 sfa bytes: lo=0x40 hi=0x38, sfb bytes: lo=0x38 hi=0xb8
 block_scaled_fma result = -10.250000
+--- EXPECTED COMPUTATION ---
+scale_a0=2.000000 scale_a1=1.000000 scale_b0=1.000000 scale_b1=-1.000000
+combined_scale0=2.000000 combined_scale1=-1.000000
+First 16 FP4 pairs (a_regs[0] x b_regs[0]):
+  byte[0]: a=0x05 (3.0,0.0) b=0xfa (-1.0,-6.0) products=(-3.00,-0.00)
+  byte[1]: a=0x01 (0.5,0.0) b=0x02 (1.0,0.0) products=(0.50,0.00)
+  byte[2]: a=0x01 (0.5,0.0) b=0x01 (0.5,0.0) products=(0.25,0.00)
+  byte[3]: a=0x01 (0.5,0.0) b=0x03 (1.5,0.0) products=(0.75,0.00)
+  ... (4 more bytes)
+  raw_dot0 = -8.500000, scaled_dot0 = -17.000000
+Second 16 FP4 pairs (a_regs[1] x b_regs[1]):
+  byte[0]: a=0x04 (2.0,0.0) b=0x00 (0.0,0.0) products=(0.00,0.00)
+  byte[1]: a=0x04 (2.0,0.0) b=0xfb (-1.5,-6.0) products=(-3.00,-0.00)
+  byte[2]: a=0x01 (0.5,0.0) b=0xfb (-1.5,-6.0) products=(-0.75,-0.00)
+  byte[3]: a=0xfa (-1.0,-6.0) b=0x05 (3.0,0.0) products=(-3.00,-0.00)
+  ... (4 more bytes)
+  raw_dot1 = -6.750000, scaled_dot1 = 6.750000
+EXPECTED total = -10.250000, ACTUAL = -10.250000, DIFF = 0.000000
 ====================================
 === GEMM PARAMS DEBUG ===
 params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff83b500000 params.b_ptr=0x7ff82a000000 params.c_ptr=0x7ff826e00000
-params.sfa_ptr=0x7ff82d800000 params.sfb_ptr=0x7ff826000000
+params.a_ptr=0x7ff857500000 params.b_ptr=0x7ff846000000 params.c_ptr=0x7ff842e00000
+params.sfa_ptr=0x7ff849800000 params.sfb_ptr=0x7ff842000000
 params.a_batch_stride=1048576 params.b_batch_stride=58720256
 params.row_stride=8192 params.sf_row_stride=1024
 params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
@@ -119,13 +155,13 @@ colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1)
 colS_ptrs[0] offset from sfb_ptr: 0
 bytes_per_iter=16 K_WORKERS=16
 --- Column pointer details ---
-col[0]: col=0 colB_ptr=0x7ff82a000000 colS_ptr=0x7ff826000000
+col[0]: col=0 colB_ptr=0x7ff846000000 colS_ptr=0x7ff842000000
   colB offset=0 (expected col*row_stride=0)
-col[1]: col=1 colB_ptr=0x7ff82a002000 colS_ptr=0x7ff826000400
+col[1]: col=1 colB_ptr=0x7ff846002000 colS_ptr=0x7ff842000400
   colB offset=8192 (expected col*row_stride=8192)
-col[2]: col=2 colB_ptr=0x7ff82a004000 colS_ptr=0x7ff826000800
+col[2]: col=2 colB_ptr=0x7ff846004000 colS_ptr=0x7ff842000800
   colB offset=16384 (expected col*row_stride=16384)
-col[3]: col=3 colB_ptr=0x7ff82a006000 colS_ptr=0x7ff826000c00
+col[3]: col=3 colB_ptr=0x7ff846006000 colS_ptr=0x7ff842000c00
   colB offset=24576 (expected col*row_stride=24576)
 ========================
 === COMPUTE DEBUG (iter=0, col=0) ===
@@ -135,11 +171,29 @@ b_regs[0]=0xfffefe02010103ff b_regs[1]=0x01fefafe02050502
 sfa_reg=0xb8c0 sfb_reg=0x4038
 sfa bytes: lo=0xc0 hi=0xb8, sfb bytes: lo=0x38 hi=0x40
 block_scaled_fma result = -353.500000
+--- EXPECTED COMPUTATION ---
+scale_a0=-2.000000 scale_a1=-1.000000 scale_b0=1.000000 scale_b1=2.000000
+combined_scale0=-2.000000 combined_scale1=-2.000000
+First 16 FP4 pairs (a_regs[0] x b_regs[0]):
+  byte[0]: a=0xfe (-4.0,-6.0) b=0xff (-6.0,-6.0) products=(24.00,36.00)
+  byte[1]: a=0xfb (-1.5,-6.0) b=0x03 (1.5,0.0) products=(-2.25,-0.00)
+  byte[2]: a=0x01 (0.5,0.0) b=0x01 (0.5,0.0) products=(0.25,0.00)
+  byte[3]: a=0xfb (-1.5,-6.0) b=0x01 (0.5,0.0) products=(-0.75,-0.00)
+  ... (4 more bytes)
+  raw_dot0 = 150.250000, scaled_dot0 = -300.500000
+Second 16 FP4 pairs (a_regs[1] x b_regs[1]):
+  byte[0]: a=0xfb (-1.5,-6.0) b=0x02 (1.0,0.0) products=(-1.50,-0.00)
+  byte[1]: a=0x03 (1.5,0.0) b=0x05 (3.0,0.0) products=(4.50,0.00)
+  byte[2]: a=0x03 (1.5,0.0) b=0x05 (3.0,0.0) products=(4.50,0.00)
+  byte[3]: a=0xff (-6.0,-6.0) b=0x02 (1.0,0.0) products=(-6.00,-0.00)
+  ... (4 more bytes)
+  raw_dot1 = 26.500000, scaled_dot1 = -53.000000
+EXPECTED total = -353.500000, ACTUAL = -353.500000, DIFF = 0.000000
 ====================================
 === GEMM PARAMS DEBUG ===
 params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff83b500000 params.b_ptr=0x7ff82a000000 params.c_ptr=0x7ff826fc0000
-params.sfa_ptr=0x7ff82d800000 params.sfb_ptr=0x7ff826000000
+params.a_ptr=0x7ff857500000 params.b_ptr=0x7ff846000000 params.c_ptr=0x7ff842fc0000
+params.sfa_ptr=0x7ff849800000 params.sfb_ptr=0x7ff842000000
 params.a_batch_stride=1048576 params.b_batch_stride=58720256
 params.row_stride=8192 params.sf_row_stride=1024
 params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
@@ -155,13 +209,13 @@ colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1)
 colS_ptrs[0] offset from sfb_ptr: 0
 bytes_per_iter=16 K_WORKERS=16
 --- Column pointer details ---
-col[0]: col=0 colB_ptr=0x7ff82a000000 colS_ptr=0x7ff826000000
+col[0]: col=0 colB_ptr=0x7ff846000000 colS_ptr=0x7ff842000000
   colB offset=0 (expected col*row_stride=0)
-col[1]: col=1 colB_ptr=0x7ff82a002000 colS_ptr=0x7ff826000400
+col[1]: col=1 colB_ptr=0x7ff846002000 colS_ptr=0x7ff842000400
   colB offset=8192 (expected col*row_stride=8192)
-col[2]: col=2 colB_ptr=0x7ff82a004000 colS_ptr=0x7ff826000800
+col[2]: col=2 colB_ptr=0x7ff846004000 colS_ptr=0x7ff842000800
   colB offset=16384 (expected col*row_stride=16384)
-col[3]: col=3 colB_ptr=0x7ff82a006000 colS_ptr=0x7ff826000c00
+col[3]: col=3 colB_ptr=0x7ff846006000 colS_ptr=0x7ff842000c00
   colB offset=24576 (expected col*row_stride=24576)
 ========================
 === COMPUTE DEBUG (iter=0, col=0) ===
@@ -171,11 +225,29 @@ b_regs[0]=0xfafcfefbff01fcfb b_regs[1]=0x0200fcfcffff0101
 sfa_reg=0x4038 sfb_reg=0xc4c0
 sfa bytes: lo=0x38 hi=0x40, sfb bytes: lo=0xc0 hi=0xc4
 block_scaled_fma result = -507.000000
+--- EXPECTED COMPUTATION ---
+scale_a0=1.000000 scale_a1=2.000000 scale_b0=-2.000000 scale_b1=-3.000000
+combined_scale0=-2.000000 combined_scale1=-6.000000
+First 16 FP4 pairs (a_regs[0] x b_regs[0]):
+  byte[0]: a=0x02 (1.0,0.0) b=0xfb (-1.5,-6.0) products=(-1.50,-0.00)
+  byte[1]: a=0x05 (3.0,0.0) b=0xfc (-2.0,-6.0) products=(-6.00,-0.00)
+  byte[2]: a=0xff (-6.0,-6.0) b=0x01 (0.5,0.0) products=(-3.00,-0.00)
+  byte[3]: a=0x03 (1.5,0.0) b=0xff (-6.0,-6.0) products=(-9.00,-0.00)
+  ... (4 more bytes)
+  raw_dot0 = 12.000000, scaled_dot0 = -24.000000
+Second 16 FP4 pairs (a_regs[1] x b_regs[1]):
+  byte[0]: a=0x02 (1.0,0.0) b=0x01 (0.5,0.0) products=(0.50,0.00)
+  byte[1]: a=0x04 (2.0,0.0) b=0x01 (0.5,0.0) products=(1.00,0.00)
+  byte[2]: a=0xfb (-1.5,-6.0) b=0xff (-6.0,-6.0) products=(9.00,36.00)
+  byte[3]: a=0x02 (1.0,0.0) b=0xff (-6.0,-6.0) products=(-6.00,-0.00)
+  ... (4 more bytes)
+  raw_dot1 = 80.500000, scaled_dot1 = -483.000000
+EXPECTED total = -507.000000, ACTUAL = -507.000000, DIFF = 0.000000
 ====================================
 === GEMM PARAMS DEBUG ===
 params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff83b500000 params.b_ptr=0x7ff82a000000 params.c_ptr=0x7ff827180000
-params.sfa_ptr=0x7ff82d800000 params.sfb_ptr=0x7ff826000000
+params.a_ptr=0x7ff857500000 params.b_ptr=0x7ff846000000 params.c_ptr=0x7ff843180000
+params.sfa_ptr=0x7ff849800000 params.sfb_ptr=0x7ff842000000
 params.a_batch_stride=1048576 params.b_batch_stride=58720256
 params.row_stride=8192 params.sf_row_stride=1024
 params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
@@ -191,13 +263,13 @@ colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1)
 colS_ptrs[0] offset from sfb_ptr: 0
 bytes_per_iter=16 K_WORKERS=16
 --- Column pointer details ---
-col[0]: col=0 colB_ptr=0x7ff82a000000 colS_ptr=0x7ff826000000
+col[0]: col=0 colB_ptr=0x7ff846000000 colS_ptr=0x7ff842000000
   colB offset=0 (expected col*row_stride=0)
-col[1]: col=1 colB_ptr=0x7ff82a002000 colS_ptr=0x7ff826000400
+col[1]: col=1 colB_ptr=0x7ff846002000 colS_ptr=0x7ff842000400
   colB offset=8192 (expected col*row_stride=8192)
-col[2]: col=2 colB_ptr=0x7ff82a004000 colS_ptr=0x7ff826000800
+col[2]: col=2 colB_ptr=0x7ff846004000 colS_ptr=0x7ff842000800
   colB offset=16384 (expected col*row_stride=16384)
-col[3]: col=3 colB_ptr=0x7ff82a006000 colS_ptr=0x7ff826000c00
+col[3]: col=3 colB_ptr=0x7ff846006000 colS_ptr=0x7ff842000c00
   colB offset=24576 (expected col*row_stride=24576)
 ========================
 === COMPUTE DEBUG (iter=0, col=0) ===
@@ -207,11 +279,29 @@ b_regs[0]=0xfa040405fafbfffc b_regs[1]=0xfa0103fcfb020402
 sfa_reg=0xb840 sfb_reg=0x4000
 sfa bytes: lo=0x40 hi=0xb8, sfb bytes: lo=0x00 hi=0x40
 block_scaled_fma result = -135.000000
+--- EXPECTED COMPUTATION ---
+scale_a0=2.000000 scale_a1=-1.000000 scale_b0=0.000000 scale_b1=2.000000
+combined_scale0=0.000000 combined_scale1=-2.000000
+First 16 FP4 pairs (a_regs[0] x b_regs[0]):
+  byte[0]: a=0x00 (0.0,0.0) b=0xfc (-2.0,-6.0) products=(-0.00,-0.00)
+  byte[1]: a=0xff (-6.0,-6.0) b=0xff (-6.0,-6.0) products=(36.00,36.00)
+  byte[2]: a=0xfb (-1.5,-6.0) b=0xfb (-1.5,-6.0) products=(2.25,36.00)
+  byte[3]: a=0x03 (1.5,0.0) b=0xfa (-1.0,-6.0) products=(-1.50,-0.00)
+  ... (4 more bytes)
+  raw_dot0 = 95.250000, scaled_dot0 = 0.000000
+Second 16 FP4 pairs (a_regs[1] x b_regs[1]):
+  byte[0]: a=0xfe (-4.0,-6.0) b=0x02 (1.0,0.0) products=(-4.00,-0.00)
+  byte[1]: a=0xfa (-1.0,-6.0) b=0x04 (2.0,0.0) products=(-2.00,-0.00)
+  byte[2]: a=0xfd (-3.0,-6.0) b=0x02 (1.0,0.0) products=(-3.00,-0.00)
+  byte[3]: a=0x03 (1.5,0.0) b=0xfb (-1.5,-6.0) products=(-2.25,-0.00)
+  ... (4 more bytes)
+  raw_dot1 = 67.500000, scaled_dot1 = -135.000000
+EXPECTED total = -135.000000, ACTUAL = -135.000000, DIFF = 0.000000
 ====================================
 === GEMM PARAMS DEBUG ===
 params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff83b500000 params.b_ptr=0x7ff82a000000 params.c_ptr=0x7ff83ae00000
-params.sfa_ptr=0x7ff82d800000 params.sfb_ptr=0x7ff826000000
+params.a_ptr=0x7ff857500000 params.b_ptr=0x7ff846000000 params.c_ptr=0x7ff856e00000
+params.sfa_ptr=0x7ff849800000 params.sfb_ptr=0x7ff842000000
 params.a_batch_stride=1048576 params.b_batch_stride=58720256
 params.row_stride=8192 params.sf_row_stride=1024
 params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
@@ -227,13 +317,13 @@ colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1)
 colS_ptrs[0] offset from sfb_ptr: 0
 bytes_per_iter=16 K_WORKERS=16
 --- Column pointer details ---
-col[0]: col=0 colB_ptr=0x7ff82a000000 colS_ptr=0x7ff826000000
+col[0]: col=0 colB_ptr=0x7ff846000000 colS_ptr=0x7ff842000000
   colB offset=0 (expected col*row_stride=0)
-col[1]: col=1 colB_ptr=0x7ff82a002000 colS_ptr=0x7ff826000400
+col[1]: col=1 colB_ptr=0x7ff846002000 colS_ptr=0x7ff842000400
   colB offset=8192 (expected col*row_stride=8192)
-col[2]: col=2 colB_ptr=0x7ff82a004000 colS_ptr=0x7ff826000800
+col[2]: col=2 colB_ptr=0x7ff846004000 colS_ptr=0x7ff842000800
   colB offset=16384 (expected col*row_stride=16384)
-col[3]: col=3 colB_ptr=0x7ff82a006000 colS_ptr=0x7ff826000c00
+col[3]: col=3 colB_ptr=0x7ff846006000 colS_ptr=0x7ff842000c00
   colB offset=24576 (expected col*row_stride=24576)
 ========================
 === COMPUTE DEBUG (iter=0, col=0) ===
@@ -243,11 +333,29 @@ b_regs[0]=0x00050204040304fe b_regs[1]=0x01fe04fa030403fe
 sfa_reg=0x0040 sfb_reg=0xc4c4
 sfa bytes: lo=0x40 hi=0x00, sfb bytes: lo=0xc4 hi=0xc4
 block_scaled_fma result = -318.000000
+--- EXPECTED COMPUTATION ---
+scale_a0=2.000000 scale_a1=0.000000 scale_b0=-3.000000 scale_b1=-3.000000
+combined_scale0=-6.000000 combined_scale1=-0.000000
+First 16 FP4 pairs (a_regs[0] x b_regs[0]):
+  byte[0]: a=0xfa (-1.0,-6.0) b=0xfe (-4.0,-6.0) products=(4.00,36.00)
+  byte[1]: a=0xfb (-1.5,-6.0) b=0x04 (2.0,0.0) products=(-3.00,-0.00)
+  byte[2]: a=0x00 (0.0,0.0) b=0x03 (1.5,0.0) products=(0.00,0.00)
+  byte[3]: a=0x01 (0.5,0.0) b=0x04 (2.0,0.0) products=(1.00,0.00)
+  ... (4 more bytes)
+  raw_dot0 = 53.000000, scaled_dot0 = -318.000000
+Second 16 FP4 pairs (a_regs[1] x b_regs[1]):
+  byte[0]: a=0xfe (-4.0,-6.0) b=0xfe (-4.0,-6.0) products=(16.00,36.00)
+  byte[1]: a=0x01 (0.5,0.0) b=0x03 (1.5,0.0) products=(0.75,0.00)
+  byte[2]: a=0x03 (1.5,0.0) b=0x04 (2.0,0.0) products=(3.00,0.00)
+  byte[3]: a=0x03 (1.5,0.0) b=0x03 (1.5,0.0) products=(2.25,0.00)
+  ... (4 more bytes)
+  raw_dot1 = 90.750000, scaled_dot1 = -0.000000
+EXPECTED total = -318.000000, ACTUAL = -318.000000, DIFF = 0.000000
 ====================================
 === GEMM PARAMS DEBUG ===
 params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff83b500000 params.b_ptr=0x7ff82a000000 params.c_ptr=0x7ff83afc0000
-params.sfa_ptr=0x7ff82d800000 params.sfb_ptr=0x7ff826000000
+params.a_ptr=0x7ff857500000 params.b_ptr=0x7ff846000000 params.c_ptr=0x7ff856fc0000
+params.sfa_ptr=0x7ff849800000 params.sfb_ptr=0x7ff842000000
 params.a_batch_stride=1048576 params.b_batch_stride=58720256
 params.row_stride=8192 params.sf_row_stride=1024
 params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
@@ -261,137 +369,4 @@ rowA offset from a_ptr: 0
 rowS offset from sfa_ptr: 0
 colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1)
 colS_ptrs[0] offset from sfb_ptr: 0
-bytes_per_iter=16 K_WORKERS=16
---- Column pointer details ---
-col[0]: col=0 colB_ptr=0x7ff82a000000 colS_ptr=0x7ff826000000
-  colB offset=0 (expected col*row_stride=0)
-col[1]: col=1 colB_ptr=0x7ff82a002000 colS_ptr=0x7ff826000400
-  colB offset=8192 (expected col*row_stride=8192)
-col[2]: col=2 colB_ptr=0x7ff82a004000 colS_ptr=0x7ff826000800
-  colB offset=16384 (expected col*row_stride=16384)
-col[3]: col=3 colB_ptr=0x7ff82a006000 colS_ptr=0x7ff826000c00
-  colB offset=24576 (expected col*row_stride=24576)
-========================
-=== COMPUTE DEBUG (iter=0, col=0) ===
-elem_base=0 block_base=0
-a_regs[0]=0xfa02010000010001 a_regs[1]=0xfefaff00fffb05fd
-b_regs[0]=0x00fb00fffcfa02fe b_regs[1]=0xfd04fc03ff0404fb
-sfa_reg=0x4038 sfb_reg=0xc0b8
-sfa bytes: lo=0x38 hi=0x40, sfb bytes: lo=0xb8 hi=0xc0
-block_scaled_fma result = -834.000000
-====================================
-=== GEMM PARAMS DEBUG ===
-params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff83b500000 params.b_ptr=0x7ff82a000000 params.c_ptr=0x7ff83b180000
-params.sfa_ptr=0x7ff82d800000 params.sfb_ptr=0x7ff826000000
-params.a_batch_stride=1048576 params.b_batch_stride=58720256
-params.row_stride=8192 params.sf_row_stride=1024
-params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
-params.c_batch_stride=917504
---- Computed values ---
-batch=0 row=0 n_tile=0 col_start=0 iters=32
-A_batch_base=0 SFA_batch_base=0
-B_batch_base=0 SFB_batch_base=0
-C_batch_base=0
-rowA offset from a_ptr: 0
-rowS offset from sfa_ptr: 0
-colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1)
-colS_ptrs[0] offset from sfb_ptr: 0
-bytes_per_iter=16 K_WORKERS=16
---- Column pointer details ---
-col[0]: col=0 colB_ptr=0x7ff82a000000 colS_ptr=0x7ff826000000
-  colB offset=0 (expected col*row_stride=0)
-col[1]: col=1 colB_ptr=0x7ff82a002000 colS_ptr=0x7ff826000400
-  colB offset=8192 (expected col*row_stride=8192)
-col[2]: col=2 colB_ptr=0x7ff82a004000 colS_ptr=0x7ff826000800
-  colB offset=16384 (expected col*row_stride=16384)
-col[3]: col=3 colB_ptr=0x7ff82a006000 colS_ptr=0x7ff826000c00
-  colB offset=24576 (expected col*row_stride=24576)
-========================
-=== COMPUTE DEBUG (iter=0, col=0) ===
-elem_base=0 block_base=0
-a_regs[0]=0xffff02010402fa00 a_regs[1]=0xfe050203fcfffdfc
-b_regs[0]=0xfe0402fd03030503 b_regs[1]=0x0403fefefd01fd02
-sfa_reg=0xb8c4 sfb_reg=0x3840
-sfa bytes: lo=0xc4 hi=0xb8, sfb bytes: lo=0x40 hi=0x38
-block_scaled_fma result = -362.500000
-====================================
-=== GEMM PARAMS DEBUG ===
-params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff83b500000 params.b_ptr=0x7ff82a000000 params.c_ptr=0x7ff844e00000
-params.sfa_ptr=0x7ff82d800000 params.sfb_ptr=0x7ff826000000
-params.a_batch_stride=1048576 params.b_batch_stride=58720256
-params.row_stride=8192 params.sf_row_stride=1024
-params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
-params.c_batch_stride=917504
---- Computed values ---
-batch=0 row=0 n_tile=0 col_start=0 iters=32
-A_batch_base=0 SFA_batch_base=0
-B_batch_base=0 SFB_batch_base=0
-C_batch_base=0
-rowA offset from a_ptr: 0
-rowS offset from sfa_ptr: 0
-colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1)
-colS_ptrs[0] offset from sfb_ptr: 0
-bytes_per_iter=16 K_WORKERS=16
---- Column pointer details ---
-col[0]: col=0 colB_ptr=0x7ff82a000000 colS_ptr=0x7ff826000000
-  colB offset=0 (expected col*row_stride=0)
-col[1]: col=1 colB_ptr=0x7ff82a002000 colS_ptr=0x7ff826000400
-  colB offset=8192 (expected col*row_stride=8192)
-col[2]: col=2 colB_ptr=0x7ff82a004000 colS_ptr=0x7ff826000800
-  colB offset=16384 (expected col*row_stride=16384)
-col[3]: col=3 colB_ptr=0x7ff82a006000 colS_ptr=0x7ff826000c00
-  colB offset=24576 (expected col*row_stride=24576)
-========================
-=== COMPUTE DEBUG (iter=0, col=0) ===
-elem_base=0 block_base=0
-a_regs[0]=0x05fdfefd0301fb01 a_regs[1]=0xfefcfbfafefffcfd
-b_regs[0]=0x0300fdfdfbfa0001 b_regs[1]=0x0000fe0202ff03ff
-sfa_reg=0x4038 sfb_reg=0x0038
-sfa bytes: lo=0x38 hi=0x40, sfb bytes: lo=0x38 hi=0x00
-block_scaled_fma result = 95.000000
-====================================
-=== GEMM PARAMS DEBUG ===
-params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff83b500000 params.b_ptr=0x7ff82a000000 params.c_ptr=0x7ff844fc0000
-params.sfa_ptr=0x7ff82d800000 params.sfb_ptr=0x7ff826000000
-params.a_batch_stride=1048576 params.b_batch_stride=58720256
-params.row_stride=8192 params.sf_row_stride=1024
-params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
-params.c_batch_stride=917504
---- Computed values ---
-batch=0 row=0 n_tile=0 col_start=0 iters=32
-A_batch_base=0 SFA_batch_base=0
-B_batch_base=0 SFB_batch_base=0
-C_batch_base=0
-rowA offset from a_ptr: 0
-rowS offset from sfa_ptr: 0
-colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1)
-colS_ptrs[0] offset from sfb_ptr: 0
-bytes_per_iter=16 K_WORKERS=16
---- Column pointer details ---
-col[0]: col=0 colB_ptr=0x7ff82a000000 colS_ptr=0x7ff826000000
-  colB offset=0 (expected col*row_stride=0)
-col[1]: col=1 colB_ptr=0x7ff82a002000 colS_ptr=0x7ff826000400
-  colB offset=8192 (expected col*row_stride=8192)
-col[2]: col=2 colB_ptr=0x7ff82a004000 colS_ptr=0x7ff826000800
-  colB offset=16384 (expected col*row_stride=16384)
-col[3]: col=3 colB_ptr=0x7ff82a006000 colS_ptr=0x7ff826000c00
-  colB offset=24576 (expected col*row_stride=24576)
-========================
-=== COMPUTE DEBUG (iter=0, col=0) ===
-elem_base=0 block_base=0
-a_regs[0]=0xfbff01fdff04fd05 a_regs[1]=0xfc03fdff0004fffb
-b_regs[0]=0x00fd0202fcfdff01 b_regs[1]=0x010501fc04fb0100
-sfa_reg=0x38b8 sfb_reg=0x0038
-sfa bytes: lo=0xb8 hi=0x38, sfb bytes: lo=0x38 hi=0x00
-block_scaled_fma result = -149.000000
-====================================
-=== GEMM PARAMS DEBUG ===
-params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff83b500000 params.b_ptr=0x7ff82a000000 params.c_ptr=0x7ff845180000
-params.sfa_ptr=0x7ff82d800000 params.sfb_ptr=0x7ff826000000
-params.a_batch_stride=1048576 params.b_batch_stride=58720256
-params.row_stride=8192 params.sf_row_stride=1024
-[...] 6835 lines omitted```"
+[...] 10460 lines omitted```"
