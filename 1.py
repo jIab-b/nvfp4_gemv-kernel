@@ -695,4 +695,10 @@ nvfp4_module = load_inline(
 
 
 def custom_kernel(data: input_t) -> output_t:
+    a_sizes = data[0].sizes(); b_sizes = data[1].sizes(); c_sizes = data[4].sizes(); sfa_sizes = data[2].sizes(); sfb_sizes = data[3].sizes()
+    print(f"a_sizes: {a_sizes}, b_sizes: {b_sizes}, c_sizes: {c_sizes}, sfa_sizes: {sfa_sizes}, sfb_sizes: {sfb_sizes}")
+    print(f"a_strides: {data[0].strides()}, b_strides: {data[1].strides()}, c_strides: {data[4].strides()}, sfa_strides: {data[2].strides()}, sfb_strides: {data[3].strides()}")
+
+
+
     return nvfp4_module.cuda_nvfp4_gemv(data[0], data[1], data[4], data[2], data[3])

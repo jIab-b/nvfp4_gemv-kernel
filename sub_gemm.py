@@ -25,34 +25,6 @@ cuda_src = """
 #include <cuda_fp8.h>
 #include <cuda_fp16.h>
 
-struct GemmParams {
-    using index_t = uint64_t;
-
-    int m;
-    int n;
-    int k;
-    int batches;
-
-    void* a_ptr;
-    void* b_ptr;
-    void* sfa_ptr;
-    void* sfb_ptr;
-    void* o_ptr;
-
-    index_t a_batch_stride;
-    index_t b_batch_stride;
-    index_t sfa_batch_stride;
-    index_t sfb_batch_stride;
-    index_t c_batch_stride;
-
-    index_t a_row_stride;
-    index_t b_row_stride;
-    index_t sfa_row_stride;
-    index_t sfb_row_stride;
-    index_t c_row_stride;
-    index_t c_col_stride;
-};
-
 static constexpr int K_WORKERS = 16;
 static constexpr int M_TILE = 8;
 static constexpr int N_TILE = 4;
@@ -237,7 +209,18 @@ __device__ __forceinline__ float block_scaled_fma_16x2fp4(
 
 template <int M_TILE, int K_WORKERS, int N_TILE>
 __global__ void __launch_bounds__(M_TILE * K_WORKERS)
-gemm_kernel(const __grid_constant__ GemmParams params)
+gemm_kernel(
+    int m, int n, int k, int batches,
+    const __nv_fp4x2_e2m1* __restrict__ a_ptr,
+    const __nv_fp4x2_e2m1* __restrict__ b_ptr,
+    const __nv_fp8_e4m3* __restrict__ sfa_ptr,
+    const __nv_fp8_e4m3* __restrict__ sfb_ptr,
+    __half* __restrict__ o_ptr,
+    uint64_t a_batch_stride, uint64_t b_batch_stride,
+    uint64_t sfa_batch_stride, uint64_t sfb_batch_stride, uint64_t c_batch_stride,
+    uint64_t a_row_stride, uint64_t b_row_stride,
+    uint64_t sfa_row_stride, uint64_t sfb_row_stride,
+    uint64_t c_row_stride, uint64_t c_col_stride)
 {
     const int tid  = threadIdx.x;
     const int m_idx = tid / K_WORKERS;
@@ -247,30 +230,24 @@ gemm_kernel(const __grid_constant__ GemmParams params)
     const int row   = blockIdx.y * M_TILE + m_idx;
     const int n_tile = blockIdx.x;
 
-    if (row >= params.m || batch >= params.batches) {
+    if (row >= m || batch >= batches) {
         return;
     }
 
     const int col_start = n_tile * N_TILE;
-    if (col_start >= params.n) {
+    if (col_start >= n) {
         return;
     }
 
-    const size_t A_batch_base   = static_cast<size_t>(batch) * params.a_batch_stride;
-    const size_t SFA_batch_base = static_cast<size_t>(batch) * params.sfa_batch_stride;
-    const size_t B_batch_base   = static_cast<size_t>(batch) * params.b_batch_stride;
-    const size_t SFB_batch_base = static_cast<size_t>(batch) * params.sfb_batch_stride;
-    const size_t C_batch_base   = static_cast<size_t>(batch) * params.c_batch_stride;
+    const size_t A_batch_base   = static_cast<size_t>(batch) * a_batch_stride;
+    const size_t SFA_batch_base = static_cast<size_t>(batch) * sfa_batch_stride;
+    const size_t B_batch_base   = static_cast<size_t>(batch) * b_batch_stride;
+    const size_t SFB_batch_base = static_cast<size_t>(batch) * sfb_batch_stride;
+    const size_t C_batch_base   = static_cast<size_t>(batch) * c_batch_stride;
 
-    const __nv_fp4x2_e2m1* a_matrix = static_cast<const __nv_fp4x2_e2m1*>(params.a_ptr);
-    const __nv_fp8_e4m3*   sfa_tensor = static_cast<const __nv_fp8_e4m3*>(params.sfa_ptr);
-    const __nv_fp4x2_e2m1* b_matrix = static_cast<const __nv_fp4x2_e2m1*>(params.b_ptr);
-    const __nv_fp8_e4m3*   sfb_tensor = static_cast<const __nv_fp8_e4m3*>(params.sfb_ptr);
-    __half* c_matrix = static_cast<__half*>(params.o_ptr);
-
-    const __nv_fp4x2_e2m1* rowA = a_matrix + A_batch_base + row * params.a_row_stride;
+    const __nv_fp4x2_e2m1* rowA = a_ptr + A_batch_base + row * a_row_stride;
     const uint16_t* rowS = reinterpret_cast<const uint16_t*>(
-        sfa_tensor + SFA_batch_base + row * params.sfa_row_stride);
+        sfa_ptr + SFA_batch_base + row * sfa_row_stride);
 
     const __nv_fp4x2_e2m1* colB_ptrs[N_TILE];
     const uint16_t* colS_ptrs[N_TILE];
@@ -279,11 +256,11 @@ gemm_kernel(const __grid_constant__ GemmParams params)
     #pragma unroll
     for (int ci = 0; ci < N_TILE; ++ci) {
         int col = col_start + ci;
-        if (col < params.n) {
+        if (col < n) {
             col_active[ci] = true;
-            colB_ptrs[ci] = b_matrix + B_batch_base + col * params.b_row_stride;
+            colB_ptrs[ci] = b_ptr + B_batch_base + col * b_row_stride;
             colS_ptrs[ci] = reinterpret_cast<const uint16_t*>(
-                sfb_tensor + SFB_batch_base + col * params.sfb_row_stride);
+                sfb_ptr + SFB_batch_base + col * sfb_row_stride);
         } else {
             col_active[ci] = false;
             colB_ptrs[ci] = nullptr;
@@ -293,7 +270,7 @@ gemm_kernel(const __grid_constant__ GemmParams params)
 
     float accum[N_TILE] = {0.f};
 
-    const int iters = params.k / (K_WORKERS * 16);
+    const int iters = k / (K_WORKERS * 16);
 
     #pragma unroll 4
     for (int iter = 0; iter < iters; ++iter) {
@@ -316,7 +293,7 @@ gemm_kernel(const __grid_constant__ GemmParams params)
         }
     }
 
-    __half* row_out = c_matrix + C_batch_base + row * params.c_row_stride;
+    __half* row_out = o_ptr + C_batch_base + row * c_row_stride;
 
     #pragma unroll
     for (int ci = 0; ci < N_TILE; ++ci) {
@@ -329,7 +306,7 @@ gemm_kernel(const __grid_constant__ GemmParams params)
         }
         if (k_lane == 0) {
             int col = col_start + ci;
-            __half* out_ptr = row_out + col * params.c_col_stride;
+            __half* out_ptr = row_out + col * c_col_stride;
             out_ptr[0] = __float2half(value);
         }
     }
@@ -349,38 +326,24 @@ torch::Tensor cuda_nvfp4_gemm(
 
     const int N = static_cast<int>(B.size(0));
 
-    GemmParams params{};
-    params.m = M;
-    params.n = N;
-    params.k = K;
-    params.batches = L;
-
-    params.a_ptr = A.data_ptr();
-    params.b_ptr = B.data_ptr();
-    params.sfa_ptr = SFA.data_ptr();
-    params.sfb_ptr = SFB.data_ptr();
-    params.o_ptr = C.data_ptr();
-
-    params.a_batch_stride = A.stride(2);
-    params.b_batch_stride = B.stride(2);
-    params.sfa_batch_stride = SFA.stride(2);
-    params.sfb_batch_stride = SFB.stride(2);
-    params.c_batch_stride = C.stride(2);
-
-    params.a_row_stride = A.stride(0);
-    params.b_row_stride = B.stride(0);
-    params.sfa_row_stride = SFA.stride(0);
-    params.sfb_row_stride = SFB.stride(0);
-    params.c_row_stride = C.stride(0);
-    params.c_col_stride = C.stride(1);
-
     dim3 block_dim(M_TILE * K_WORKERS, 1, 1);
     dim3 grid_dim(
-        (params.n + N_TILE - 1) / N_TILE,
-        (params.m + M_TILE - 1) / M_TILE,
-        params.batches);
+        (N + N_TILE - 1) / N_TILE,
+        (M + M_TILE - 1) / M_TILE,
+        L);
 
-    gemm_kernel<M_TILE, K_WORKERS, N_TILE><<<grid_dim, block_dim, 0>>>(params);
+    gemm_kernel<M_TILE, K_WORKERS, N_TILE><<<grid_dim, block_dim, 0>>>(
+        M, N, K, L,
+        static_cast<const __nv_fp4x2_e2m1*>(A.data_ptr()),
+        static_cast<const __nv_fp4x2_e2m1*>(B.data_ptr()),
+        static_cast<const __nv_fp8_e4m3*>(SFA.data_ptr()),
+        static_cast<const __nv_fp8_e4m3*>(SFB.data_ptr()),
+        static_cast<__half*>(C.data_ptr()),
+        A.stride(2), B.stride(2),
+        SFA.stride(2), SFB.stride(2), C.stride(2),
+        A.stride(0), B.stride(0),
+        SFA.stride(0), SFB.stride(0),
+        C.stride(0), C.stride(1));
     return C;
 }
 """
@@ -406,4 +369,9 @@ nvfp4_gemm_module = load_inline(
 
 
 def custom_kernel(data: input_t) -> output_t:
+
+    a_sizes = data[0].sizes(); b_sizes = data[1].sizes(); c_sizes = data[4].sizes(); sfa_sizes = data[2].sizes(); sfb_sizes = data[3].sizes()
+    print(f"a_sizes: {a_sizes}, b_sizes: {b_sizes}, c_sizes: {c_sizes}, sfa_sizes: {sfa_sizes}, sfb_sizes: {sfb_sizes}")
+    print(f"a_strides: {data[0].strides()}, b_strides: {data[1].strides()}, c_strides: {data[4].strides()}, sfa_strides: {data[2].strides()}, sfb_strides: {data[3].strides()}")
+
     return nvfp4_gemm_module.cuda_nvfp4_gemm(data[0], data[1], data[2], data[3], data[6])
