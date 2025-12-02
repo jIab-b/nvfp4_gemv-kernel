@@ -342,7 +342,29 @@ gemm_kernel(const __grid_constant__ Gemm_params params)
             uint64_t b_regs[2];
             uint16_t sfb_reg;
             load_col_block(colB_ptrs[ci], colS_ptrs[ci], elem_base, block_base, b_regs, sfb_reg);
-            accum[ci] += block_scaled_fma_16x2fp4(a_regs, b_regs, sfa_reg, sfb_reg);
+            float result = block_scaled_fma_16x2fp4(a_regs, b_regs, sfa_reg, sfb_reg);
+
+            // Debug: print loaded values and result for first iteration, first column
+            if (debug && iter == 0 && ci == 0) {
+                printf("=== COMPUTE DEBUG (iter=0, col=0) ===\\n");
+                printf("elem_base=%d block_base=%d\\n", elem_base, block_base);
+                printf("a_regs[0]=0x%016llx a_regs[1]=0x%016llx\\n",
+                       (unsigned long long)a_regs[0], (unsigned long long)a_regs[1]);
+                printf("b_regs[0]=0x%016llx b_regs[1]=0x%016llx\\n",
+                       (unsigned long long)b_regs[0], (unsigned long long)b_regs[1]);
+                printf("sfa_reg=0x%04x sfb_reg=0x%04x\\n", sfa_reg, sfb_reg);
+                // Decode scales as two fp8 values
+                uint8_t sfa_lo = sfa_reg & 0xFF;
+                uint8_t sfa_hi = (sfa_reg >> 8) & 0xFF;
+                uint8_t sfb_lo = sfb_reg & 0xFF;
+                uint8_t sfb_hi = (sfb_reg >> 8) & 0xFF;
+                printf("sfa bytes: lo=0x%02x hi=0x%02x, sfb bytes: lo=0x%02x hi=0x%02x\\n",
+                       sfa_lo, sfa_hi, sfb_lo, sfb_hi);
+                printf("block_scaled_fma result = %f\\n", result);
+                printf("====================================\\n");
+            }
+
+            accum[ci] += result;
         }
     }
 
