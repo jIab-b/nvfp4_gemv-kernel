@@ -302,16 +302,26 @@ gemm_kernel(const __grid_constant__ Gemm_params params)
         printf("--- Computed values ---\\n");
         printf("batch=%d row=%d n_tile=%d col_start=%d iters=%d\\n",
                batch, row, n_tile, col_start, iters);
-        printf("A_batch_base=%zu SFA_batch_base=%zu\\n", A_batch_base, SFA_batch_base);
-        printf("B_batch_base=%zu SFB_batch_base=%zu\\n", B_batch_base, SFB_batch_base);
-        printf("C_batch_base=%zu\\n", C_batch_base);
-        printf("rowA offset from a_ptr: %zu\\n", (size_t)(rowA - params.a_ptr));
-        printf("rowS offset from sfa_ptr: %zu\\n", (size_t)(rowS - reinterpret_cast<const uint16_t*>(params.sfa_ptr)));
-        printf("colB_ptrs[0] offset from b_ptr: %zu (col_active[0]=%d)\\n",
-               col_active[0] ? (size_t)(colB_ptrs[0] - params.b_ptr) : 0, col_active[0]);
-        printf("colS_ptrs[0] offset from sfb_ptr: %zu\\n",
-               col_active[0] ? (size_t)(colS_ptrs[0] - reinterpret_cast<const uint16_t*>(params.sfb_ptr)) : 0);
+        printf("A_batch_base=%llu SFA_batch_base=%llu\\n", (unsigned long long)A_batch_base, (unsigned long long)SFA_batch_base);
+        printf("B_batch_base=%llu SFB_batch_base=%llu\\n", (unsigned long long)B_batch_base, (unsigned long long)SFB_batch_base);
+        printf("C_batch_base=%llu\\n", (unsigned long long)C_batch_base);
+        printf("rowA offset from a_ptr: %llu\\n", (unsigned long long)(rowA - params.a_ptr));
+        printf("rowS offset from sfa_ptr: %llu\\n", (unsigned long long)(rowS - reinterpret_cast<const uint16_t*>(params.sfa_ptr)));
+        printf("colB_ptrs[0] offset from b_ptr: %llu (col_active[0]=%d)\\n",
+               (unsigned long long)(col_active[0] ? (colB_ptrs[0] - params.b_ptr) : 0), (int)col_active[0]);
+        printf("colS_ptrs[0] offset from sfb_ptr: %llu\\n",
+               (unsigned long long)(col_active[0] ? (colS_ptrs[0] - reinterpret_cast<const uint16_t*>(params.sfb_ptr)) : 0));
         printf("bytes_per_iter=%d K_WORKERS=%d\\n", bytes_per_iter, K_WORKERS);
+        printf("--- Column pointer details ---\\n");
+        for (int ci = 0; ci < N_TILE; ++ci) {
+            if (col_active[ci]) {
+                printf("col[%d]: col=%d colB_ptr=%p colS_ptr=%p\\n",
+                       ci, col_start + ci, (void*)colB_ptrs[ci], (void*)colS_ptrs[ci]);
+                printf("  colB offset=%llu (expected col*row_stride=%llu)\\n",
+                       (unsigned long long)(colB_ptrs[ci] - params.b_ptr),
+                       (unsigned long long)((col_start + ci) * params.row_stride));
+            }
+        }
         printf("========================\\n");
     }
 
@@ -421,7 +431,4 @@ nvfp4_gemm_module = load_inline(
 def custom_kernel(data: input_t) -> output_t:
     #print(f"A.size(): {data[0].size()}, B.size(): {data[1].size()}, C.size(): {data[6].size()}, SFA.size(): {data[2].size()}, SFB.size(): {data[3].size()}")
     #print(f"A.stride(): {data[0].stride()}, B.stride(): {data[1].stride()}, C.stride(): {data[6].stride()}, SFA.stride(): {data[2].stride()}, SFB.stride(): {data[3].stride()}")
-
-    #print(f"sfa size: {data[2].size()}, sfb size: {data[3].size()}");
-    #print(f"sfa per size: {data[4].size()}, sfb per size: {data[5].size()}");
     return nvfp4_gemm_module.cuda_nvfp4_gemm(data[0], data[1], data[2], data[3], data[6])

@@ -1,5 +1,5 @@
 "**NVIDIA on GitHub ✅ success**
-> Workflow [19863897752](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19863897752>) completed
+> Workflow [19864632806](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19864632806>) completed
 > Downloading artifacts... done
 > ❌ Benchmarking failed
 
@@ -30,386 +30,366 @@ mismatch found! custom implementation doesn't match reference: Number of mismatc
 ```
 === GEMM PARAMS DEBUG ===
 params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff807500000 params.b_ptr=0x7ff7f6000000 params.c_ptr=0x7ff7fcfc0000
-params.sfa_ptr=0x7ff7f9800000 params.sfb_ptr=0x7ff7f2000000
+params.a_ptr=0x7ff7eb500000 params.b_ptr=0x7ff7da000000 params.c_ptr=0x7ff7e0fc0000
+params.sfa_ptr=0x7ff7dd800000 params.sfb_ptr=0x7ff7d6000000
 params.a_batch_stride=1048576 params.b_batch_stride=58720256
 params.row_stride=8192 params.sf_row_stride=1024
 params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
 params.c_batch_stride=917504
 --- Computed values ---
 batch=0 row=0 n_tile=0 col_start=0 iters=32
-A_batch_base=%zu SFA_batch_base=%zu
-B_batch_base=%zu SFB_batch_base=%zu
-C_batch_base=%zu
-rowA offset from a_ptr: %zu
-rowS offset from sfa_ptr: %zu
-colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1262262536)
-colS_ptrs[0] offset from sfb_ptr: %zu
+A_batch_base=0 SFA_batch_base=0
+B_batch_base=0 SFB_batch_base=0
+C_batch_base=0
+rowA offset from a_ptr: 0
+rowS offset from sfa_ptr: 0
+colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1)
+colS_ptrs[0] offset from sfb_ptr: 0
 bytes_per_iter=16 K_WORKERS=16
+--- Column pointer details ---
+col[0]: col=0 colB_ptr=0x7ff7da000000 colS_ptr=0x7ff7d6000000
+  colB offset=0 (expected col*row_stride=0)
+col[1]: col=1 colB_ptr=0x7ff7da002000 colS_ptr=0x7ff7d6000400
+  colB offset=8192 (expected col*row_stride=8192)
+col[2]: col=2 colB_ptr=0x7ff7da004000 colS_ptr=0x7ff7d6000800
+  colB offset=16384 (expected col*row_stride=16384)
+col[3]: col=3 colB_ptr=0x7ff7da006000 colS_ptr=0x7ff7d6000c00
+  colB offset=24576 (expected col*row_stride=24576)
 ========================
 === GEMM PARAMS DEBUG ===
 params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff807500000 params.b_ptr=0x7ff7f6000000 params.c_ptr=0x7ff7fd180000
-params.sfa_ptr=0x7ff7f9800000 params.sfb_ptr=0x7ff7f2000000
+params.a_ptr=0x7ff7eb500000 params.b_ptr=0x7ff7da000000 params.c_ptr=0x7ff7e1180000
+params.sfa_ptr=0x7ff7dd800000 params.sfb_ptr=0x7ff7d6000000
 params.a_batch_stride=1048576 params.b_batch_stride=58720256
 params.row_stride=8192 params.sf_row_stride=1024
 params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
 params.c_batch_stride=917504
 --- Computed values ---
 batch=0 row=0 n_tile=0 col_start=0 iters=32
-A_batch_base=%zu SFA_batch_base=%zu
-B_batch_base=%zu SFB_batch_base=%zu
-C_batch_base=%zu
-rowA offset from a_ptr: %zu
-rowS offset from sfa_ptr: %zu
-colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1262262536)
-colS_ptrs[0] offset from sfb_ptr: %zu
+A_batch_base=0 SFA_batch_base=0
+B_batch_base=0 SFB_batch_base=0
+C_batch_base=0
+rowA offset from a_ptr: 0
+rowS offset from sfa_ptr: 0
+colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1)
+colS_ptrs[0] offset from sfb_ptr: 0
 bytes_per_iter=16 K_WORKERS=16
+--- Column pointer details ---
+col[0]: col=0 colB_ptr=0x7ff7da000000 colS_ptr=0x7ff7d6000000
+  colB offset=0 (expected col*row_stride=0)
+col[1]: col=1 colB_ptr=0x7ff7da002000 colS_ptr=0x7ff7d6000400
+  colB offset=8192 (expected col*row_stride=8192)
+col[2]: col=2 colB_ptr=0x7ff7da004000 colS_ptr=0x7ff7d6000800
+  colB offset=16384 (expected col*row_stride=16384)
+col[3]: col=3 colB_ptr=0x7ff7da006000 colS_ptr=0x7ff7d6000c00
+  colB offset=24576 (expected col*row_stride=24576)
 ========================
 === GEMM PARAMS DEBUG ===
 params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff807500000 params.b_ptr=0x7ff7f6000000 params.c_ptr=0x7ff7f2e00000
-params.sfa_ptr=0x7ff7f9800000 params.sfb_ptr=0x7ff7f2000000
+params.a_ptr=0x7ff7eb500000 params.b_ptr=0x7ff7da000000 params.c_ptr=0x7ff7d6e00000
+params.sfa_ptr=0x7ff7dd800000 params.sfb_ptr=0x7ff7d6000000
 params.a_batch_stride=1048576 params.b_batch_stride=58720256
 params.row_stride=8192 params.sf_row_stride=1024
 params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
 params.c_batch_stride=917504
 --- Computed values ---
 batch=0 row=0 n_tile=0 col_start=0 iters=32
-A_batch_base=%zu SFA_batch_base=%zu
-B_batch_base=%zu SFB_batch_base=%zu
-C_batch_base=%zu
-rowA offset from a_ptr: %zu
-rowS offset from sfa_ptr: %zu
-colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1262262536)
-colS_ptrs[0] offset from sfb_ptr: %zu
+A_batch_base=0 SFA_batch_base=0
+B_batch_base=0 SFB_batch_base=0
+C_batch_base=0
+rowA offset from a_ptr: 0
+rowS offset from sfa_ptr: 0
+colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1)
+colS_ptrs[0] offset from sfb_ptr: 0
 bytes_per_iter=16 K_WORKERS=16
+--- Column pointer details ---
+col[0]: col=0 colB_ptr=0x7ff7da000000 colS_ptr=0x7ff7d6000000
+  colB offset=0 (expected col*row_stride=0)
+col[1]: col=1 colB_ptr=0x7ff7da002000 colS_ptr=0x7ff7d6000400
+  colB offset=8192 (expected col*row_stride=8192)
+col[2]: col=2 colB_ptr=0x7ff7da004000 colS_ptr=0x7ff7d6000800
+  colB offset=16384 (expected col*row_stride=16384)
+col[3]: col=3 colB_ptr=0x7ff7da006000 colS_ptr=0x7ff7d6000c00
+  colB offset=24576 (expected col*row_stride=24576)
 ========================
 === GEMM PARAMS DEBUG ===
 params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff807500000 params.b_ptr=0x7ff7f6000000 params.c_ptr=0x7ff7f2fc0000
-params.sfa_ptr=0x7ff7f9800000 params.sfb_ptr=0x7ff7f2000000
+params.a_ptr=0x7ff7eb500000 params.b_ptr=0x7ff7da000000 params.c_ptr=0x7ff7d6fc0000
+params.sfa_ptr=0x7ff7dd800000 params.sfb_ptr=0x7ff7d6000000
 params.a_batch_stride=1048576 params.b_batch_stride=58720256
 params.row_stride=8192 params.sf_row_stride=1024
 params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
 params.c_batch_stride=917504
 --- Computed values ---
 batch=0 row=0 n_tile=0 col_start=0 iters=32
-A_batch_base=%zu SFA_batch_base=%zu
-B_batch_base=%zu SFB_batch_base=%zu
-C_batch_base=%zu
-rowA offset from a_ptr: %zu
-rowS offset from sfa_ptr: %zu
-colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1262262536)
-colS_ptrs[0] offset from sfb_ptr: %zu
+A_batch_base=0 SFA_batch_base=0
+B_batch_base=0 SFB_batch_base=0
+C_batch_base=0
+rowA offset from a_ptr: 0
+rowS offset from sfa_ptr: 0
+colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1)
+colS_ptrs[0] offset from sfb_ptr: 0
 bytes_per_iter=16 K_WORKERS=16
+--- Column pointer details ---
+col[0]: col=0 colB_ptr=0x7ff7da000000 colS_ptr=0x7ff7d6000000
+  colB offset=0 (expected col*row_stride=0)
+col[1]: col=1 colB_ptr=0x7ff7da002000 colS_ptr=0x7ff7d6000400
+  colB offset=8192 (expected col*row_stride=8192)
+col[2]: col=2 colB_ptr=0x7ff7da004000 colS_ptr=0x7ff7d6000800
+  colB offset=16384 (expected col*row_stride=16384)
+col[3]: col=3 colB_ptr=0x7ff7da006000 colS_ptr=0x7ff7d6000c00
+  colB offset=24576 (expected col*row_stride=24576)
 ========================
 === GEMM PARAMS DEBUG ===
 params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff807500000 params.b_ptr=0x7ff7f6000000 params.c_ptr=0x7ff7f3180000
-params.sfa_ptr=0x7ff7f9800000 params.sfb_ptr=0x7ff7f2000000
+params.a_ptr=0x7ff7eb500000 params.b_ptr=0x7ff7da000000 params.c_ptr=0x7ff7d7180000
+params.sfa_ptr=0x7ff7dd800000 params.sfb_ptr=0x7ff7d6000000
 params.a_batch_stride=1048576 params.b_batch_stride=58720256
 params.row_stride=8192 params.sf_row_stride=1024
 params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
 params.c_batch_stride=917504
 --- Computed values ---
 batch=0 row=0 n_tile=0 col_start=0 iters=32
-A_batch_base=%zu SFA_batch_base=%zu
-B_batch_base=%zu SFB_batch_base=%zu
-C_batch_base=%zu
-rowA offset from a_ptr: %zu
-rowS offset from sfa_ptr: %zu
-colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1262262536)
-colS_ptrs[0] offset from sfb_ptr: %zu
+A_batch_base=0 SFA_batch_base=0
+B_batch_base=0 SFB_batch_base=0
+C_batch_base=0
+rowA offset from a_ptr: 0
+rowS offset from sfa_ptr: 0
+colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1)
+colS_ptrs[0] offset from sfb_ptr: 0
 bytes_per_iter=16 K_WORKERS=16
+--- Column pointer details ---
+col[0]: col=0 colB_ptr=0x7ff7da000000 colS_ptr=0x7ff7d6000000
+  colB offset=0 (expected col*row_stride=0)
+col[1]: col=1 colB_ptr=0x7ff7da002000 colS_ptr=0x7ff7d6000400
+  colB offset=8192 (expected col*row_stride=8192)
+col[2]: col=2 colB_ptr=0x7ff7da004000 colS_ptr=0x7ff7d6000800
+  colB offset=16384 (expected col*row_stride=16384)
+col[3]: col=3 colB_ptr=0x7ff7da006000 colS_ptr=0x7ff7d6000c00
+  colB offset=24576 (expected col*row_stride=24576)
 ========================
 === GEMM PARAMS DEBUG ===
 params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff807500000 params.b_ptr=0x7ff7f6000000 params.c_ptr=0x7ff806e00000
-params.sfa_ptr=0x7ff7f9800000 params.sfb_ptr=0x7ff7f2000000
+params.a_ptr=0x7ff7eb500000 params.b_ptr=0x7ff7da000000 params.c_ptr=0x7ff7eae00000
+params.sfa_ptr=0x7ff7dd800000 params.sfb_ptr=0x7ff7d6000000
 params.a_batch_stride=1048576 params.b_batch_stride=58720256
 params.row_stride=8192 params.sf_row_stride=1024
 params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
 params.c_batch_stride=917504
 --- Computed values ---
 batch=0 row=0 n_tile=0 col_start=0 iters=32
-A_batch_base=%zu SFA_batch_base=%zu
-B_batch_base=%zu SFB_batch_base=%zu
-C_batch_base=%zu
-rowA offset from a_ptr: %zu
-rowS offset from sfa_ptr: %zu
-colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1262262536)
-colS_ptrs[0] offset from sfb_ptr: %zu
+A_batch_base=0 SFA_batch_base=0
+B_batch_base=0 SFB_batch_base=0
+C_batch_base=0
+rowA offset from a_ptr: 0
+rowS offset from sfa_ptr: 0
+colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1)
+colS_ptrs[0] offset from sfb_ptr: 0
 bytes_per_iter=16 K_WORKERS=16
+--- Column pointer details ---
+col[0]: col=0 colB_ptr=0x7ff7da000000 colS_ptr=0x7ff7d6000000
+  colB offset=0 (expected col*row_stride=0)
+col[1]: col=1 colB_ptr=0x7ff7da002000 colS_ptr=0x7ff7d6000400
+  colB offset=8192 (expected col*row_stride=8192)
+col[2]: col=2 colB_ptr=0x7ff7da004000 colS_ptr=0x7ff7d6000800
+  colB offset=16384 (expected col*row_stride=16384)
+col[3]: col=3 colB_ptr=0x7ff7da006000 colS_ptr=0x7ff7d6000c00
+  colB offset=24576 (expected col*row_stride=24576)
 ========================
 === GEMM PARAMS DEBUG ===
 params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff807500000 params.b_ptr=0x7ff7f6000000 params.c_ptr=0x7ff806fc0000
-params.sfa_ptr=0x7ff7f9800000 params.sfb_ptr=0x7ff7f2000000
+params.a_ptr=0x7ff7eb500000 params.b_ptr=0x7ff7da000000 params.c_ptr=0x7ff7eafc0000
+params.sfa_ptr=0x7ff7dd800000 params.sfb_ptr=0x7ff7d6000000
 params.a_batch_stride=1048576 params.b_batch_stride=58720256
 params.row_stride=8192 params.sf_row_stride=1024
 params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
 params.c_batch_stride=917504
 --- Computed values ---
 batch=0 row=0 n_tile=0 col_start=0 iters=32
-A_batch_base=%zu SFA_batch_base=%zu
-B_batch_base=%zu SFB_batch_base=%zu
-C_batch_base=%zu
-rowA offset from a_ptr: %zu
-rowS offset from sfa_ptr: %zu
-colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1262262536)
-colS_ptrs[0] offset from sfb_ptr: %zu
+A_batch_base=0 SFA_batch_base=0
+B_batch_base=0 SFB_batch_base=0
+C_batch_base=0
+rowA offset from a_ptr: 0
+rowS offset from sfa_ptr: 0
+colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1)
+colS_ptrs[0] offset from sfb_ptr: 0
 bytes_per_iter=16 K_WORKERS=16
+--- Column pointer details ---
+col[0]: col=0 colB_ptr=0x7ff7da000000 colS_ptr=0x7ff7d6000000
+  colB offset=0 (expected col*row_stride=0)
+col[1]: col=1 colB_ptr=0x7ff7da002000 colS_ptr=0x7ff7d6000400
+  colB offset=8192 (expected col*row_stride=8192)
+col[2]: col=2 colB_ptr=0x7ff7da004000 colS_ptr=0x7ff7d6000800
+  colB offset=16384 (expected col*row_stride=16384)
+col[3]: col=3 colB_ptr=0x7ff7da006000 colS_ptr=0x7ff7d6000c00
+  colB offset=24576 (expected col*row_stride=24576)
 ========================
 === GEMM PARAMS DEBUG ===
 params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff807500000 params.b_ptr=0x7ff7f6000000 params.c_ptr=0x7ff807180000
-params.sfa_ptr=0x7ff7f9800000 params.sfb_ptr=0x7ff7f2000000
+params.a_ptr=0x7ff7eb500000 params.b_ptr=0x7ff7da000000 params.c_ptr=0x7ff7eb180000
+params.sfa_ptr=0x7ff7dd800000 params.sfb_ptr=0x7ff7d6000000
 params.a_batch_stride=1048576 params.b_batch_stride=58720256
 params.row_stride=8192 params.sf_row_stride=1024
 params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
 params.c_batch_stride=917504
 --- Computed values ---
 batch=0 row=0 n_tile=0 col_start=0 iters=32
-A_batch_base=%zu SFA_batch_base=%zu
-B_batch_base=%zu SFB_batch_base=%zu
-C_batch_base=%zu
-rowA offset from a_ptr: %zu
-rowS offset from sfa_ptr: %zu
-colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1262262536)
-colS_ptrs[0] offset from sfb_ptr: %zu
+A_batch_base=0 SFA_batch_base=0
+B_batch_base=0 SFB_batch_base=0
+C_batch_base=0
+rowA offset from a_ptr: 0
+rowS offset from sfa_ptr: 0
+colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1)
+colS_ptrs[0] offset from sfb_ptr: 0
 bytes_per_iter=16 K_WORKERS=16
+--- Column pointer details ---
+col[0]: col=0 colB_ptr=0x7ff7da000000 colS_ptr=0x7ff7d6000000
+  colB offset=0 (expected col*row_stride=0)
+col[1]: col=1 colB_ptr=0x7ff7da002000 colS_ptr=0x7ff7d6000400
+  colB offset=8192 (expected col*row_stride=8192)
+col[2]: col=2 colB_ptr=0x7ff7da004000 colS_ptr=0x7ff7d6000800
+  colB offset=16384 (expected col*row_stride=16384)
+col[3]: col=3 colB_ptr=0x7ff7da006000 colS_ptr=0x7ff7d6000c00
+  colB offset=24576 (expected col*row_stride=24576)
 ========================
 === GEMM PARAMS DEBUG ===
 params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff807500000 params.b_ptr=0x7ff7f6000000 params.c_ptr=0x7ff810e00000
-params.sfa_ptr=0x7ff7f9800000 params.sfb_ptr=0x7ff7f2000000
+params.a_ptr=0x7ff7eb500000 params.b_ptr=0x7ff7da000000 params.c_ptr=0x7ff7f4e00000
+params.sfa_ptr=0x7ff7dd800000 params.sfb_ptr=0x7ff7d6000000
 params.a_batch_stride=1048576 params.b_batch_stride=58720256
 params.row_stride=8192 params.sf_row_stride=1024
 params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
 params.c_batch_stride=917504
 --- Computed values ---
 batch=0 row=0 n_tile=0 col_start=0 iters=32
-A_batch_base=%zu SFA_batch_base=%zu
-B_batch_base=%zu SFB_batch_base=%zu
-C_batch_base=%zu
-rowA offset from a_ptr: %zu
-rowS offset from sfa_ptr: %zu
-colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1262262536)
-colS_ptrs[0] offset from sfb_ptr: %zu
+A_batch_base=0 SFA_batch_base=0
+B_batch_base=0 SFB_batch_base=0
+C_batch_base=0
+rowA offset from a_ptr: 0
+rowS offset from sfa_ptr: 0
+colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1)
+colS_ptrs[0] offset from sfb_ptr: 0
 bytes_per_iter=16 K_WORKERS=16
+--- Column pointer details ---
+col[0]: col=0 colB_ptr=0x7ff7da000000 colS_ptr=0x7ff7d6000000
+  colB offset=0 (expected col*row_stride=0)
+col[1]: col=1 colB_ptr=0x7ff7da002000 colS_ptr=0x7ff7d6000400
+  colB offset=8192 (expected col*row_stride=8192)
+col[2]: col=2 colB_ptr=0x7ff7da004000 colS_ptr=0x7ff7d6000800
+  colB offset=16384 (expected col*row_stride=16384)
+col[3]: col=3 colB_ptr=0x7ff7da006000 colS_ptr=0x7ff7d6000c00
+  colB offset=24576 (expected col*row_stride=24576)
 ========================
 === GEMM PARAMS DEBUG ===
 params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff807500000 params.b_ptr=0x7ff7f6000000 params.c_ptr=0x7ff810fc0000
-params.sfa_ptr=0x7ff7f9800000 params.sfb_ptr=0x7ff7f2000000
+params.a_ptr=0x7ff7eb500000 params.b_ptr=0x7ff7da000000 params.c_ptr=0x7ff7f4fc0000
+params.sfa_ptr=0x7ff7dd800000 params.sfb_ptr=0x7ff7d6000000
 params.a_batch_stride=1048576 params.b_batch_stride=58720256
 params.row_stride=8192 params.sf_row_stride=1024
 params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
 params.c_batch_stride=917504
 --- Computed values ---
 batch=0 row=0 n_tile=0 col_start=0 iters=32
-A_batch_base=%zu SFA_batch_base=%zu
-B_batch_base=%zu SFB_batch_base=%zu
-C_batch_base=%zu
-rowA offset from a_ptr: %zu
-rowS offset from sfa_ptr: %zu
-colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1262262536)
-colS_ptrs[0] offset from sfb_ptr: %zu
+A_batch_base=0 SFA_batch_base=0
+B_batch_base=0 SFB_batch_base=0
+C_batch_base=0
+rowA offset from a_ptr: 0
+rowS offset from sfa_ptr: 0
+colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1)
+colS_ptrs[0] offset from sfb_ptr: 0
 bytes_per_iter=16 K_WORKERS=16
+--- Column pointer details ---
+col[0]: col=0 colB_ptr=0x7ff7da000000 colS_ptr=0x7ff7d6000000
+  colB offset=0 (expected col*row_stride=0)
+col[1]: col=1 colB_ptr=0x7ff7da002000 colS_ptr=0x7ff7d6000400
+  colB offset=8192 (expected col*row_stride=8192)
+col[2]: col=2 colB_ptr=0x7ff7da004000 colS_ptr=0x7ff7d6000800
+  colB offset=16384 (expected col*row_stride=16384)
+col[3]: col=3 colB_ptr=0x7ff7da006000 colS_ptr=0x7ff7d6000c00
+  colB offset=24576 (expected col*row_stride=24576)
 ========================
 === GEMM PARAMS DEBUG ===
 params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff807500000 params.b_ptr=0x7ff7f6000000 params.c_ptr=0x7ff811180000
-params.sfa_ptr=0x7ff7f9800000 params.sfb_ptr=0x7ff7f2000000
+params.a_ptr=0x7ff7eb500000 params.b_ptr=0x7ff7da000000 params.c_ptr=0x7ff7f5180000
+params.sfa_ptr=0x7ff7dd800000 params.sfb_ptr=0x7ff7d6000000
 params.a_batch_stride=1048576 params.b_batch_stride=58720256
 params.row_stride=8192 params.sf_row_stride=1024
 params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
 params.c_batch_stride=917504
 --- Computed values ---
 batch=0 row=0 n_tile=0 col_start=0 iters=32
-A_batch_base=%zu SFA_batch_base=%zu
-B_batch_base=%zu SFB_batch_base=%zu
-C_batch_base=%zu
-rowA offset from a_ptr: %zu
-rowS offset from sfa_ptr: %zu
-colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1262262536)
-colS_ptrs[0] offset from sfb_ptr: %zu
+A_batch_base=0 SFA_batch_base=0
+B_batch_base=0 SFB_batch_base=0
+C_batch_base=0
+rowA offset from a_ptr: 0
+rowS offset from sfa_ptr: 0
+colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1)
+colS_ptrs[0] offset from sfb_ptr: 0
 bytes_per_iter=16 K_WORKERS=16
+--- Column pointer details ---
+col[0]: col=0 colB_ptr=0x7ff7da000000 colS_ptr=0x7ff7d6000000
+  colB offset=0 (expected col*row_stride=0)
+col[1]: col=1 colB_ptr=0x7ff7da002000 colS_ptr=0x7ff7d6000400
+  colB offset=8192 (expected col*row_stride=8192)
+col[2]: col=2 colB_ptr=0x7ff7da004000 colS_ptr=0x7ff7d6000800
+  colB offset=16384 (expected col*row_stride=16384)
+col[3]: col=3 colB_ptr=0x7ff7da006000 colS_ptr=0x7ff7d6000c00
+  colB offset=24576 (expected col*row_stride=24576)
 ========================
 === GEMM PARAMS DEBUG ===
 params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff807500000 params.b_ptr=0x7ff7f6000000 params.c_ptr=0x7ff824e00000
-params.sfa_ptr=0x7ff7f9800000 params.sfb_ptr=0x7ff7f2000000
+params.a_ptr=0x7ff7eb500000 params.b_ptr=0x7ff7da000000 params.c_ptr=0x7ff808e00000
+params.sfa_ptr=0x7ff7dd800000 params.sfb_ptr=0x7ff7d6000000
 params.a_batch_stride=1048576 params.b_batch_stride=58720256
 params.row_stride=8192 params.sf_row_stride=1024
 params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
 params.c_batch_stride=917504
 --- Computed values ---
 batch=0 row=0 n_tile=0 col_start=0 iters=32
-A_batch_base=%zu SFA_batch_base=%zu
-B_batch_base=%zu SFB_batch_base=%zu
-C_batch_base=%zu
-rowA offset from a_ptr: %zu
-rowS offset from sfa_ptr: %zu
-colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1262262536)
-colS_ptrs[0] offset from sfb_ptr: %zu
+A_batch_base=0 SFA_batch_base=0
+B_batch_base=0 SFB_batch_base=0
+C_batch_base=0
+rowA offset from a_ptr: 0
+rowS offset from sfa_ptr: 0
+colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1)
+colS_ptrs[0] offset from sfb_ptr: 0
 bytes_per_iter=16 K_WORKERS=16
+--- Column pointer details ---
+col[0]: col=0 colB_ptr=0x7ff7da000000 colS_ptr=0x7ff7d6000000
+  colB offset=0 (expected col*row_stride=0)
+col[1]: col=1 colB_ptr=0x7ff7da002000 colS_ptr=0x7ff7d6000400
+  colB offset=8192 (expected col*row_stride=8192)
+col[2]: col=2 colB_ptr=0x7ff7da004000 colS_ptr=0x7ff7d6000800
+  colB offset=16384 (expected col*row_stride=16384)
+col[3]: col=3 colB_ptr=0x7ff7da006000 colS_ptr=0x7ff7d6000c00
+  colB offset=24576 (expected col*row_stride=24576)
 ========================
 === GEMM PARAMS DEBUG ===
 params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff807500000 params.b_ptr=0x7ff7f6000000 params.c_ptr=0x7ff824fc0000
-params.sfa_ptr=0x7ff7f9800000 params.sfb_ptr=0x7ff7f2000000
+params.a_ptr=0x7ff7eb500000 params.b_ptr=0x7ff7da000000 params.c_ptr=0x7ff808fc0000
+params.sfa_ptr=0x7ff7dd800000 params.sfb_ptr=0x7ff7d6000000
 params.a_batch_stride=1048576 params.b_batch_stride=58720256
 params.row_stride=8192 params.sf_row_stride=1024
 params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
 params.c_batch_stride=917504
 --- Computed values ---
 batch=0 row=0 n_tile=0 col_start=0 iters=32
-A_batch_base=%zu SFA_batch_base=%zu
-B_batch_base=%zu SFB_batch_base=%zu
-C_batch_base=%zu
-rowA offset from a_ptr: %zu
-rowS offset from sfa_ptr: %zu
-colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1262262536)
-colS_ptrs[0] offset from sfb_ptr: %zu
+A_batch_base=0 SFA_batch_base=0
+B_batch_base=0 SFB_batch_base=0
+C_batch_base=0
+rowA offset from a_ptr: 0
+rowS offset from sfa_ptr: 0
+colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1)
+colS_ptrs[0] offset from sfb_ptr: 0
 bytes_per_iter=16 K_WORKERS=16
+--- Column pointer details ---
+col[0]: col=0 colB_ptr=0x7ff7da000000 colS_ptr=0x7ff7d6000000
+  colB offset=0 (expected col*row_stride=0)
+col[1]: col=1 colB_ptr=0x7ff7da002000 colS_ptr=0x7ff7d6000400
+  colB offset=8192 (expected col*row_stride=8192)
+col[2]: col=2 colB_ptr=0x7ff7da004000 colS_ptr=0x7ff7d6000800
+  colB offset=16384 (expected col*row_stride=16384)
+col[3]: col=3 colB_ptr=0x7ff7da006000 colS_ptr=0x7ff7d6000c00
+  colB offset=24576 (expected col*row_stride=24576)
 ========================
-=== GEMM PARAMS DEBUG ===
-params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff807500000 params.b_ptr=0x7ff7f6000000 params.c_ptr=0x7ff825180000
-params.sfa_ptr=0x7ff7f9800000 params.sfb_ptr=0x7ff7f2000000
-params.a_batch_stride=1048576 params.b_batch_stride=58720256
-params.row_stride=8192 params.sf_row_stride=1024
-params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
-params.c_batch_stride=917504
---- Computed values ---
-batch=0 row=0 n_tile=0 col_start=0 iters=32
-A_batch_base=%zu SFA_batch_base=%zu
-B_batch_base=%zu SFB_batch_base=%zu
-C_batch_base=%zu
-rowA offset from a_ptr: %zu
-rowS offset from sfa_ptr: %zu
-colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1262262536)
-colS_ptrs[0] offset from sfb_ptr: %zu
-bytes_per_iter=16 K_WORKERS=16
-========================
-=== GEMM PARAMS DEBUG ===
-params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff807500000 params.b_ptr=0x7ff7f6000000 params.c_ptr=0x7ff82ee00000
-params.sfa_ptr=0x7ff7f9800000 params.sfb_ptr=0x7ff7f2000000
-params.a_batch_stride=1048576 params.b_batch_stride=58720256
-params.row_stride=8192 params.sf_row_stride=1024
-params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
-params.c_batch_stride=917504
---- Computed values ---
-batch=0 row=0 n_tile=0 col_start=0 iters=32
-A_batch_base=%zu SFA_batch_base=%zu
-B_batch_base=%zu SFB_batch_base=%zu
-C_batch_base=%zu
-rowA offset from a_ptr: %zu
-rowS offset from sfa_ptr: %zu
-colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1262262536)
-colS_ptrs[0] offset from sfb_ptr: %zu
-bytes_per_iter=16 K_WORKERS=16
-========================
-=== GEMM PARAMS DEBUG ===
-params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff807500000 params.b_ptr=0x7ff7f6000000 params.c_ptr=0x7ff82efc0000
-params.sfa_ptr=0x7ff7f9800000 params.sfb_ptr=0x7ff7f2000000
-params.a_batch_stride=1048576 params.b_batch_stride=58720256
-params.row_stride=8192 params.sf_row_stride=1024
-params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
-params.c_batch_stride=917504
---- Computed values ---
-batch=0 row=0 n_tile=0 col_start=0 iters=32
-A_batch_base=%zu SFA_batch_base=%zu
-B_batch_base=%zu SFB_batch_base=%zu
-C_batch_base=%zu
-rowA offset from a_ptr: %zu
-rowS offset from sfa_ptr: %zu
-colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1262262536)
-colS_ptrs[0] offset from sfb_ptr: %zu
-bytes_per_iter=16 K_WORKERS=16
-========================
-=== GEMM PARAMS DEBUG ===
-params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff807500000 params.b_ptr=0x7ff7f6000000 params.c_ptr=0x7ff82f180000
-params.sfa_ptr=0x7ff7f9800000 params.sfb_ptr=0x7ff7f2000000
-params.a_batch_stride=1048576 params.b_batch_stride=58720256
-params.row_stride=8192 params.sf_row_stride=1024
-params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
-params.c_batch_stride=917504
---- Computed values ---
-batch=0 row=0 n_tile=0 col_start=0 iters=32
-A_batch_base=%zu SFA_batch_base=%zu
-B_batch_base=%zu SFB_batch_base=%zu
-C_batch_base=%zu
-rowA offset from a_ptr: %zu
-rowS offset from sfa_ptr: %zu
-colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1262262536)
-colS_ptrs[0] offset from sfb_ptr: %zu
-bytes_per_iter=16 K_WORKERS=16
-========================
-=== GEMM PARAMS DEBUG ===
-params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff807500000 params.b_ptr=0x7ff7f6000000 params.c_ptr=0x7ff842e00000
-params.sfa_ptr=0x7ff7f9800000 params.sfb_ptr=0x7ff7f2000000
-params.a_batch_stride=1048576 params.b_batch_stride=58720256
-params.row_stride=8192 params.sf_row_stride=1024
-params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
-params.c_batch_stride=917504
---- Computed values ---
-batch=0 row=0 n_tile=0 col_start=0 iters=32
-A_batch_base=%zu SFA_batch_base=%zu
-B_batch_base=%zu SFB_batch_base=%zu
-C_batch_base=%zu
-rowA offset from a_ptr: %zu
-rowS offset from sfa_ptr: %zu
-colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1262262536)
-colS_ptrs[0] offset from sfb_ptr: %zu
-bytes_per_iter=16 K_WORKERS=16
-========================
-=== GEMM PARAMS DEBUG ===
-params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff807500000 params.b_ptr=0x7ff7f6000000 params.c_ptr=0x7ff842fc0000
-params.sfa_ptr=0x7ff7f9800000 params.sfb_ptr=0x7ff7f2000000
-params.a_batch_stride=1048576 params.b_batch_stride=58720256
-params.row_stride=8192 params.sf_row_stride=1024
-params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
-params.c_batch_stride=917504
---- Computed values ---
-batch=0 row=0 n_tile=0 col_start=0 iters=32
-A_batch_base=%zu SFA_batch_base=%zu
-B_batch_base=%zu SFB_batch_base=%zu
-C_batch_base=%zu
-rowA offset from a_ptr: %zu
-rowS offset from sfa_ptr: %zu
-colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1262262536)
-colS_ptrs[0] offset from sfb_ptr: %zu
-bytes_per_iter=16 K_WORKERS=16
-========================
-=== GEMM PARAMS DEBUG ===
-params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff807500000 params.b_ptr=0x7ff7f6000000 params.c_ptr=0x7ff843180000
-params.sfa_ptr=0x7ff7f9800000 params.sfb_ptr=0x7ff7f2000000
-params.a_batch_stride=1048576 params.b_batch_stride=58720256
-params.row_stride=8192 params.sf_row_stride=1024
-params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
-params.c_batch_stride=917504
---- Computed values ---
-batch=0 row=0 n_tile=0 col_start=0 iters=32
-A_batch_base=%zu SFA_batch_base=%zu
-B_batch_base=%zu SFB_batch_base=%zu
-C_batch_base=%zu
-rowA offset from a_ptr: %zu
-rowS offset from sfa_ptr: %zu
-colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1262262536)
-colS_ptrs[0] offset from sfb_ptr: %zu
-bytes_per_iter=16 K_WORKERS=16
-========================
-=== GEMM PARAMS DEBUG ===
-params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff807500000 params.b_ptr=0x7ff7f6000000 params.c_ptr=0x7ff84ce00000
-params.sfa_ptr=0x7ff7f9800000 params.sfb_ptr=0x7ff7f2000000
-[...] 3417 lines omitted```"
+[...] 5237 lines omitted```"
