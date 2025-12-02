@@ -30,6 +30,9 @@ static constexpr int K_WORKERS = 16;
 static constexpr int M_TILE = 8;
 static constexpr int N_TILE = 4;
 
+// Global flag to limit debug output to first kernel launch only
+__device__ int g_debug_done = 0;
+
 struct Gemm_params {
     using index_t = uint64_t;
     int m, n, k, batches;
@@ -280,11 +283,24 @@ gemm_kernel(const __grid_constant__ Gemm_params params)
     const int bytes_per_iter = 16; // 2 uint64 fp4 = 16 byes / 32 fp4 vals
     const int iters = params.k / (K_WORKERS * bytes_per_iter);
 
-    // Debug print - one thread only, first iteration
-    const bool debug = (blockIdx.x == 0) && (blockIdx.y == 0) && (blockIdx.z == 0) &&
-                       (m_idx == 0) && (k_lane == 0);
+    // Debug print - sample 3 different M x N tiles, first kernel launch only
+    // Tile 0: (blockIdx.y=0, blockIdx.x=0) - first tile
+    // Tile 1: (blockIdx.y=params.m/(2*M_TILE), blockIdx.x=params.n/(2*N_TILE)) - middle tile
+    // Tile 2: (blockIdx.y=(params.m/M_TILE)-1, blockIdx.x=(params.n/N_TILE)-1) - last tile
+    const int mid_y = (params.m / M_TILE) / 2;
+    const int mid_x = (params.n / N_TILE) / 2;
+    const int last_y = (params.m / M_TILE) - 1;
+    const int last_x = (params.n / N_TILE) - 1;
+
+    const bool is_debug_tile = (blockIdx.z == 0) && (m_idx == 0) && (k_lane == 0) && (
+        (blockIdx.y == 0 && blockIdx.x == 0) ||
+        (blockIdx.y == mid_y && blockIdx.x == mid_x) ||
+        (blockIdx.y == last_y && blockIdx.x == last_x)
+    );
+    const bool debug = is_debug_tile && (atomicAdd(&g_debug_done, 0) < 3);
     if (debug) {
-        printf("=== GEMM PARAMS DEBUG ===\\n");
+        printf("=== GEMM PARAMS DEBUG [tile blockIdx.y=%d, blockIdx.x=%d] ===\\n",
+               (int)blockIdx.y, (int)blockIdx.x);
         printf("params.m=%d params.n=%d params.k=%d params.batches=%d\\n",
                params.m, params.n, params.k, params.batches);
         printf("params.a_ptr=%p params.b_ptr=%p params.c_ptr=%p\\n",
@@ -588,6 +604,9 @@ gemm_kernel(const __grid_constant__ Gemm_params params)
         printf("\\nFINAL: expected_sum=%f, written_value=%f, diff=%f\\n",
                total_sum, written_value, written_value - total_sum);
         printf("==============================================\\n\\n");
+
+        // Increment debug counter (allow up to 3 tiles to print)
+        atomicAdd(&g_debug_done, 1);
     }
 }
 
