@@ -706,5 +706,5 @@ nvfp4_gemm_module = load_inline(
 
 def custom_kernel(data: input_t) -> output_t:
     #print(f"A.size(): {data[0].size()}, B.size(): {data[1].size()}, C.size(): {data[6].size()}, SFA.size(): {data[2].size()}, SFB.size(): {data[3].size()}")
-    #print(f"A.stride(): {data[0].stride()}, B.stride(): {data[1].stride()}, C.stride(): {data[6].stride()}, SFA.stride(): {data[2].stride()}, SFB.stride(): {data[3].stride()}")
+    print(f"A.stride(): {data[0].stride()}, B.stride(): {data[1].stride()}, C.stride(): {data[6].stride()}, SFA.stride(): {data[2].stride()}, SFB.stride(): {data[3].stride()}")
     return nvfp4_gemm_module.cuda_nvfp4_gemm(data[0], data[1], data[2], data[3], data[6])
