@@ -14,10 +14,6 @@ torch::Tensor cuda_nvfp4_gemm(
     torch::Tensor C);
 """
 
-# CUDA implementation with corrected stride math
-# Key fix: params.k = k//2 (packed bytes), so:
-#   - Data offset: row * params.k (not params.k / 2)
-#   - Scale offset: row * (params.k / 8) (not params.k / 16)
 cuda_src = """
 #include <cuda.h>
 #include <cuda_runtime.h>
@@ -35,22 +31,16 @@ static constexpr int N_TILE = 4;
 
 struct Gemm_params {
     using index_t = uint64_t;
-
-    int b, m, n, k, real_k;
-
-    void *__restrict__ a_ptr;
-    void *__restrict__ b_ptr;
-    void *__restrict__ sfa_ptr;
-    void *__restrict__ sfb_ptr;
-    void *__restrict__ c_ptr;
-
-
-    index_t a_row_stride;
-    index_t b_row_stride;
-    index_t sfa_row_stride;
-    index_t sfb_row_stride;
-    index_t c_row_stride;
+    int m, n, k;
+    const __nv_fp4x2_e2m1* __restrict__ a_ptr;
+    const __nv_fp4x2_e2m1* __restrict__ b_ptr;
+    const __nv_fp8_e4m3* __restrict__ sfa_ptr;
+    const __nv_fp8_e4m3* __restrict__ sfb_ptr;
+    __half* __restrict__ c_ptr;
+    index_t row_stride;
+    index_t sf_row_stride;
 };
+
 __device__ __forceinline__ void load_row_block(
     const __nv_fp4x2_e2m1* row_ptr,
     const uint16_t*        row_scale_ptr,
@@ -231,7 +221,6 @@ gemm_kernel(const __grid_constant__ Gemm_params params)
     const int m_idx = tid / K_WORKERS;
     const int k_lane = tid % K_WORKERS;
 
-    const int batch = blockIdx.z;
     const int row   = blockIdx.y * M_TILE + m_idx;
     const int n_tile = blockIdx.x;
 
@@ -244,14 +233,9 @@ gemm_kernel(const __grid_constant__ Gemm_params params)
         return;
     }
 
-
-    // Use actual tensor strides (like the working GEMV does)
-    const __nv_fp4x2_e2m1* rowA = static_cast<const __nv_fp4x2_e2m1*>(params.a_ptr) + row * params.a_row_stride;
-    const __nv_fp8_e4m3* rowSFA = static_cast<const __nv_fp8_e4m3*>(params.sfa_ptr) + row * params.sfa_row_stride;
-
-    // Scale pointer: offset in FP8 units first, then cast to uint16_t*
-    const uint16_t* rowSFA_u16 = reinterpret_cast<const uint16_t*>(rowSFA);
-
+    const __nv_fp4x2_e2m1* rowA = params.a_ptr + row * params.row_stride;
+    const uint16_t* rowS = reinterpret_cast<const uint16_t*>(
+        params.sfa_ptr + row * params.sf_row_stride);
 
     const __nv_fp4x2_e2m1* colB_ptrs[N_TILE];
     const uint16_t* colS_ptrs[N_TILE];
@@ -262,13 +246,9 @@ gemm_kernel(const __grid_constant__ Gemm_params params)
         int col = col_start + ci;
         if (col < params.n) {
             col_active[ci] = true;
-
-            // Use actual tensor stride for B
-            colB_ptrs[ci] = static_cast<const __nv_fp4x2_e2m1*>(params.b_ptr) + col * params.b_row_stride;
-
-            // Scale pointer: offset in FP8 units first, then cast to uint16_t*
-            const __nv_fp8_e4m3* colSFA = static_cast<const __nv_fp8_e4m3*>(params.sfb_ptr) + col * params.sfb_row_stride;
-            colS_ptrs[ci] = reinterpret_cast<const uint16_t*>(colSFA);
+            colB_ptrs[ci] = params.b_ptr + col * params.row_stride;
+            colS_ptrs[ci] = reinterpret_cast<const uint16_t*>(
+                params.sfb_ptr + col * params.sf_row_stride);
         } else {
             col_active[ci] = false;
             colB_ptrs[ci] = nullptr;
@@ -278,21 +258,18 @@ gemm_kernel(const __grid_constant__ Gemm_params params)
 
     float accum[N_TILE] = {0.f};
 
-    const int bytes_per_iter = 16; // 16 bytes = 32 FP4 values
+    const int bytes_per_iter = 16;
     const int iters = params.k / (K_WORKERS * bytes_per_iter);
 
     #pragma unroll 4
     for (int iter = 0; iter < iters; ++iter) {
         int block_base = iter * K_WORKERS + k_lane;
         int elem_base = block_base * bytes_per_iter;
-
-        // scale_block_base: offset into scale array (in uint16_t units)
-        // Each uint16 contains 2 FP8 scales covering 32 FP4 values (16 bytes)
         int scale_block_base = block_base;
 
         uint64_t a_regs[2];
         uint16_t sfa_reg;
-        load_row_block(rowA, rowSFA_u16, elem_base, scale_block_base, a_regs, sfa_reg);
+        load_row_block(rowA, rowS, elem_base, scale_block_base, a_regs, sfa_reg);
 
         #pragma unroll
         for (int ci = 0; ci < N_TILE; ++ci) {
@@ -307,7 +284,7 @@ gemm_kernel(const __grid_constant__ Gemm_params params)
         }
     }
 
-    __half* row_out = static_cast<__half*>(params.c_ptr) + row * params.c_row_stride;
+    __half* row_out = params.c_ptr + row * params.n;
 
     #pragma unroll
     for (int ci = 0; ci < N_TILE; ++ci) {
@@ -333,10 +310,8 @@ torch::Tensor cuda_nvfp4_gemm(
     torch::Tensor SFB,
     torch::Tensor C)
 {
-    const auto a_sizes = A.sizes();
-    const int M = static_cast<int>(a_sizes[0]);
-    const int K = static_cast<int>(a_sizes[1]);  // This is k//2 (packed bytes)
-
+    const int M = static_cast<int>(A.size(0));
+    const int K = static_cast<int>(A.size(1));
     const int N = static_cast<int>(B.size(0));
 
     dim3 block_dim(M_TILE * K_WORKERS, 1, 1);
@@ -348,18 +323,14 @@ torch::Tensor cuda_nvfp4_gemm(
     Gemm_params params;
     params.m = M;
     params.n = N;
-    params.k = K;  // k//2 in packed bytes
-    params.a_ptr = A.data_ptr();
-    params.b_ptr = B.data_ptr();
-    params.sfa_ptr = SFA.data_ptr();
-    params.sfb_ptr = SFB.data_ptr();
-    params.c_ptr = C.data_ptr();
-
-    params.a_row_stride = A.stride(0);
-    params.b_row_stride = B.stride(0);
-    params.sfa_row_stride = SFA.stride(0);
-    params.sfb_row_stride = SFB.stride(0);
-    params.c_row_stride = C.stride(0);
+    params.k = K;
+    params.a_ptr = reinterpret_cast<const __nv_fp4x2_e2m1*>(A.data_ptr());
+    params.b_ptr = reinterpret_cast<const __nv_fp4x2_e2m1*>(B.data_ptr());
+    params.sfa_ptr = reinterpret_cast<const __nv_fp8_e4m3*>(SFA.data_ptr());
+    params.sfb_ptr = reinterpret_cast<const __nv_fp8_e4m3*>(SFB.data_ptr());
+    params.c_ptr = reinterpret_cast<__half*>(C.data_ptr());
+    params.row_stride = A.stride(0);
+    params.sf_row_stride = SFA.stride(0);
 
     gemm_kernel<M_TILE, K_WORKERS, N_TILE><<<grid_dim, block_dim, 0>>>(params);
     return C;
