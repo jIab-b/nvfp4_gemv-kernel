@@ -283,63 +283,54 @@ gemm_kernel(const __grid_constant__ Gemm_params params)
     const int bytes_per_iter = 16; // 2 uint64 fp4 = 16 byes / 32 fp4 vals
     const int iters = params.k / (K_WORKERS * bytes_per_iter);
 
-    // Debug print - sample 3 different M x N tiles, first kernel launch only
-    // Tile 0: (blockIdx.y=0, blockIdx.x=0) - first tile
-    // Tile 1: (blockIdx.y=params.m/(2*M_TILE), blockIdx.x=params.n/(2*N_TILE)) - middle tile
-    // Tile 2: (blockIdx.y=(params.m/M_TILE)-1, blockIdx.x=(params.n/N_TILE)-1) - last tile
-    const int mid_y = (params.m / M_TILE) / 2;
-    const int mid_x = (params.n / N_TILE) / 2;
-    const int last_y = (params.m / M_TILE) - 1;
-    const int last_x = (params.n / N_TILE) - 1;
-
-    const bool is_debug_tile = (blockIdx.z == 0) && (m_idx == 0) && (k_lane == 0) && (
-        (blockIdx.y == 0 && blockIdx.x == 0) ||
-        (blockIdx.y == mid_y && blockIdx.x == mid_x) ||
-        (blockIdx.y == last_y && blockIdx.x == last_x)
-    );
-    const bool debug = is_debug_tile && (atomicAdd(&g_debug_done, 0) < 3);
-    if (debug) {
-        printf("=== GEMM PARAMS DEBUG [tile blockIdx.y=%d, blockIdx.x=%d] ===\\n",
-               (int)blockIdx.y, (int)blockIdx.x);
-        printf("params.m=%d params.n=%d params.k=%d params.batches=%d\\n",
-               params.m, params.n, params.k, params.batches);
-        printf("params.a_ptr=%p params.b_ptr=%p params.c_ptr=%p\\n",
-               (void*)params.a_ptr, (void*)params.b_ptr, (void*)params.c_ptr);
-        printf("params.sfa_ptr=%p params.sfb_ptr=%p\\n",
-               (void*)params.sfa_ptr, (void*)params.sfb_ptr);
-        printf("params.a_batch_stride=%llu params.b_batch_stride=%llu\\n",
-               (unsigned long long)params.a_batch_stride, (unsigned long long)params.b_batch_stride);
-        printf("params.row_stride=%llu params.sf_row_stride=%llu\\n",
-               (unsigned long long)params.row_stride, (unsigned long long)params.sf_row_stride);
-        printf("params.sfa_batch_stride=%llu params.sfb_batch_stride=%llu\\n",
-               (unsigned long long)params.sfa_batch_stride, (unsigned long long)params.sfb_batch_stride);
-        printf("params.c_batch_stride=%llu\\n",
-               (unsigned long long)params.c_batch_stride);
-        printf("--- Computed values ---\\n");
-        printf("batch=%d row=%d n_tile=%d col_start=%d iters=%d\\n",
-               batch, row, n_tile, col_start, iters);
-        printf("A_batch_base=%llu SFA_batch_base=%llu\\n", (unsigned long long)A_batch_base, (unsigned long long)SFA_batch_base);
-        printf("B_batch_base=%llu SFB_batch_base=%llu\\n", (unsigned long long)B_batch_base, (unsigned long long)SFB_batch_base);
-        printf("C_batch_base=%llu\\n", (unsigned long long)C_batch_base);
-        printf("rowA offset from a_ptr: %llu\\n", (unsigned long long)(rowA - params.a_ptr));
-        printf("rowS offset from sfa_ptr: %llu\\n", (unsigned long long)(rowS - reinterpret_cast<const uint16_t*>(params.sfa_ptr)));
-        printf("colB_ptrs[0] offset from b_ptr: %llu (col_active[0]=%d)\\n",
-               (unsigned long long)(col_active[0] ? (colB_ptrs[0] - params.b_ptr) : 0), (int)col_active[0]);
-        printf("colS_ptrs[0] offset from sfb_ptr: %llu\\n",
-               (unsigned long long)(col_active[0] ? (colS_ptrs[0] - reinterpret_cast<const uint16_t*>(params.sfb_ptr)) : 0));
-        printf("bytes_per_iter=%d K_WORKERS=%d\\n", bytes_per_iter, K_WORKERS);
-        printf("--- Column pointer details ---\\n");
-        for (int ci = 0; ci < N_TILE; ++ci) {
-            if (col_active[ci]) {
-                printf("col[%d]: col=%d colB_ptr=%p colS_ptr=%p\\n",
-                       ci, col_start + ci, (void*)colB_ptrs[ci], (void*)colS_ptrs[ci]);
-                printf("  colB offset=%llu (expected col*row_stride=%llu)\\n",
-                       (unsigned long long)(colB_ptrs[ci] - params.b_ptr),
-                       (unsigned long long)((col_start + ci) * params.row_stride));
-            }
-        }
-        printf("========================\\n");
-    }
+    // // Debug: ONLY first CTA (blockIdx.x=0, y=0, z=0), row 0 (m_idx=0), k_lane 0
+    // // This debugs output positions (0,0,0), (0,1,0), (0,2,0) which correspond to errors
+    // const bool debug = (params.k == 2048) &&
+    //                    (blockIdx.x == 0) && (blockIdx.y == 0) && (blockIdx.z == 0) &&
+    //                    (m_idx == 0) && (k_lane == 0) &&
+    //                    (atomicAdd(&g_debug_done, 0) == 0);
+    // if (debug) {
+    //     printf("=== GEMM PARAMS DEBUG [tile blockIdx.y=%d, blockIdx.x=%d] ===\\n",
+    //            (int)blockIdx.y, (int)blockIdx.x);
+    //     printf("params.m=%d params.n=%d params.k=%d params.batches=%d\\n",
+    //            params.m, params.n, params.k, params.batches);
+    //     printf("params.a_ptr=%p params.b_ptr=%p params.c_ptr=%p\\n",
+    //            (void*)params.a_ptr, (void*)params.b_ptr, (void*)params.c_ptr);
+    //     printf("params.sfa_ptr=%p params.sfb_ptr=%p\\n",
+    //            (void*)params.sfa_ptr, (void*)params.sfb_ptr);
+    //     printf("params.a_batch_stride=%llu params.b_batch_stride=%llu\\n",
+    //            (unsigned long long)params.a_batch_stride, (unsigned long long)params.b_batch_stride);
+    //     printf("params.row_stride=%llu params.sf_row_stride=%llu\\n",
+    //            (unsigned long long)params.row_stride, (unsigned long long)params.sf_row_stride);
+    //     printf("params.sfa_batch_stride=%llu params.sfb_batch_stride=%llu\\n",
+    //            (unsigned long long)params.sfa_batch_stride, (unsigned long long)params.sfb_batch_stride);
+    //     printf("params.c_batch_stride=%llu\\n",
+    //            (unsigned long long)params.c_batch_stride);
+    //     printf("--- Computed values ---\\n");
+    //     printf("batch=%d row=%d n_tile=%d col_start=%d iters=%d\\n",
+    //            batch, row, n_tile, col_start, iters);
+    //     printf("A_batch_base=%llu SFA_batch_base=%llu\\n", (unsigned long long)A_batch_base, (unsigned long long)SFA_batch_base);
+    //     printf("B_batch_base=%llu SFB_batch_base=%llu\\n", (unsigned long long)B_batch_base, (unsigned long long)SFB_batch_base);
+    //     printf("C_batch_base=%llu\\n", (unsigned long long)C_batch_base);
+    //     printf("rowA offset from a_ptr: %llu\\n", (unsigned long long)(rowA - params.a_ptr));
+    //     printf("rowS offset from sfa_ptr: %llu\\n", (unsigned long long)(rowS - reinterpret_cast<const uint16_t*>(params.sfa_ptr)));
+    //     printf("colB_ptrs[0] offset from b_ptr: %llu (col_active[0]=%d)\\n",
+    //            (unsigned long long)(col_active[0] ? (colB_ptrs[0] - params.b_ptr) : 0), (int)col_active[0]);
+    //     printf("colS_ptrs[0] offset from sfb_ptr: %llu\\n",
+    //            (unsigned long long)(col_active[0] ? (colS_ptrs[0] - reinterpret_cast<const uint16_t*>(params.sfb_ptr)) : 0));
+    //     printf("bytes_per_iter=%d K_WORKERS=%d\\n", bytes_per_iter, K_WORKERS);
+    //     printf("--- Column pointer details ---\\n");
+    //     for (int ci = 0; ci < N_TILE; ++ci) {
+    //         if (col_active[ci]) {
+    //             printf("col[%d]: col=%d colB_ptr=%p colS_ptr=%p\\n",
+    //                    ci, col_start + ci, (void*)colB_ptrs[ci], (void*)colS_ptrs[ci]);
+    //             printf("  colB offset=%llu (expected col*row_stride=%llu)\\n",
+    //                    (unsigned long long)(colB_ptrs[ci] - params.b_ptr),
+    //                    (unsigned long long)((col_start + ci) * params.row_stride));
+    //         }
+    //     }
+    //     printf("========================\\n");
+    // }
 
     #pragma unroll 4
     for (int iter = 0; iter < iters; ++iter) {
@@ -360,116 +351,43 @@ gemm_kernel(const __grid_constant__ Gemm_params params)
             load_col_block(colB_ptrs[ci], colS_ptrs[ci], elem_base, block_base, b_regs, sfb_reg);
             float result = block_scaled_fma_16x2fp4(a_regs, b_regs, sfa_reg, sfb_reg);
 
-            // Debug: print loaded values and result for first iteration, first column
-            if (debug && iter == 0 && ci == 0) {
-                printf("=== COMPUTE DEBUG (iter=0, col=0) ===\\n");
-                printf("elem_base=%d block_base=%d\\n", elem_base, block_base);
-                printf("a_regs[0]=0x%016llx a_regs[1]=0x%016llx\\n",
-                       (unsigned long long)a_regs[0], (unsigned long long)a_regs[1]);
-                printf("b_regs[0]=0x%016llx b_regs[1]=0x%016llx\\n",
-                       (unsigned long long)b_regs[0], (unsigned long long)b_regs[1]);
-                printf("sfa_reg=0x%04x sfb_reg=0x%04x\\n", sfa_reg, sfb_reg);
-                // Decode scales as two fp8 values
-                uint8_t sfa_lo = sfa_reg & 0xFF;
-                uint8_t sfa_hi = (sfa_reg >> 8) & 0xFF;
-                uint8_t sfb_lo = sfb_reg & 0xFF;
-                uint8_t sfb_hi = (sfb_reg >> 8) & 0xFF;
-                printf("sfa bytes: lo=0x%02x hi=0x%02x, sfb bytes: lo=0x%02x hi=0x%02x\\n",
-                       sfa_lo, sfa_hi, sfb_lo, sfb_hi);
-                printf("block_scaled_fma result = %f\\n", result);
+            // Debug: print ALL data for output (0,0,0) - row 0, col 0, batch 0
+            // Only k_lane 0 prints, iterating through ALL k blocks sequentially
+            // Note: params.k == 1024 because tensor is packed as int8 (2048 FP4 -> 1024 bytes)
+            const bool debug_full = (params.k == 1024) &&
+                                    (blockIdx.x == 0) && (blockIdx.y == 0) && (blockIdx.z == 0) &&
+                                    (m_idx == 0) && (k_lane == 0) && (ci == 0) && (iter == 0);
+            if (debug_full) {
+                // Print header
+                printf("=== RAW DATA for output[0,0,0] (row=0,col=0) k=%d ===\\n", params.k);
+                printf("Format: blk# sfa sfb A[16B] B[16B]\\n");
 
-                // === EXPECTED VALUE COMPUTATION ===
-                // FP4 E2M1 table: 4-bit value -> float
-                // Format: 1 sign bit, 2 exp bits, 1 mantissa bit
-                // Values: 0=0, 1=0.5, 2=1, 3=1.5, 4=2, 5=3, 6=4, 7=6
-                //         8=-0, 9=-0.5, 10=-1, 11=-1.5, 12=-2, 13=-3, 14=-4, 15=-6
-                const float fp4_lut[16] = {
-                    0.0f, 0.5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f,
-                    -0.0f, -0.5f, -1.0f, -1.5f, -2.0f, -3.0f, -4.0f, -6.0f
-                };
+                // Iterate through ALL k/32 blocks (each block = 32 FP4 = 16 bytes = 2 scales)
+                // Since params.k is in packed bytes, actual k = params.k * 2
+                const int num_blocks = (params.k * 2) / 32;  // 64 blocks for k=2048 (params.k=1024)
+                const uint8_t* a_base = reinterpret_cast<const uint8_t*>(rowA);
+                const uint8_t* b_base = reinterpret_cast<const uint8_t*>(colB_ptrs[0]);
+                const uint8_t* sfa_base = reinterpret_cast<const uint8_t*>(rowS);
+                const uint8_t* sfb_base = reinterpret_cast<const uint8_t*>(colS_ptrs[0]);
 
-                // Decode FP8 E4M3 scales to float
-                // E4M3: 1 sign, 4 exp (bias=7), 3 mantissa
-                auto fp8_e4m3_to_float = [](uint8_t val) -> float {
-                    uint8_t sign = (val >> 7) & 0x1;
-                    uint8_t exp = (val >> 3) & 0xF;
-                    uint8_t mant = val & 0x7;
-                    float mantissa = 1.0f + mant / 8.0f;
-                    float result;
-                    if (exp == 0) {
-                        result = (mant / 8.0f) * powf(2.0f, -6.0f); // subnormal
-                    } else if (exp == 15 && mant == 7) {
-                        result = nanf(""); // NaN
-                    } else {
-                        result = mantissa * powf(2.0f, (float)exp - 7.0f);
-                    }
-                    return sign ? -result : result;
-                };
+                for (int blk = 0; blk < num_blocks; blk++) {
+                    int byte_off = blk * 16;
+                    int scale_off = blk * 2;
 
-                float scale_a0 = fp8_e4m3_to_float(sfa_lo);
-                float scale_a1 = fp8_e4m3_to_float(sfa_hi);
-                float scale_b0 = fp8_e4m3_to_float(sfb_lo);
-                float scale_b1 = fp8_e4m3_to_float(sfb_hi);
+                    // Get scales (2 FP8 per block)
+                    uint8_t sa0 = sfa_base[scale_off];
+                    uint8_t sa1 = sfa_base[scale_off + 1];
+                    uint8_t sb0 = sfb_base[scale_off];
+                    uint8_t sb1 = sfb_base[scale_off + 1];
 
-                printf("--- EXPECTED COMPUTATION ---\\n");
-                printf("scale_a0=%f scale_a1=%f scale_b0=%f scale_b1=%f\\n",
-                       scale_a0, scale_a1, scale_b0, scale_b1);
-                printf("combined_scale0=%f combined_scale1=%f\\n",
-                       scale_a0 * scale_b0, scale_a1 * scale_b1);
-
-                // Decode first 16 FP4 pairs (from a_regs[0], b_regs[0])
-                const uint8_t* a_bytes = reinterpret_cast<const uint8_t*>(&a_regs[0]);
-                const uint8_t* b_bytes = reinterpret_cast<const uint8_t*>(&b_regs[0]);
-
-                float dot0 = 0.0f;
-                printf("First 16 FP4 pairs (a_regs[0] x b_regs[0]):\\n");
-                for (int i = 0; i < 8; i++) {
-                    uint8_t a_byte = a_bytes[i];
-                    uint8_t b_byte = b_bytes[i];
-                    // Each byte has 2 FP4 values: lo nibble and hi nibble
-                    uint8_t a_lo = a_byte & 0xF;
-                    uint8_t a_hi = (a_byte >> 4) & 0xF;
-                    uint8_t b_lo = b_byte & 0xF;
-                    uint8_t b_hi = (b_byte >> 4) & 0xF;
-                    float a0 = fp4_lut[a_lo], a1 = fp4_lut[a_hi];
-                    float b0 = fp4_lut[b_lo], b1 = fp4_lut[b_hi];
-                    dot0 += a0 * b0 + a1 * b1;
-                    if (i < 4) {
-                        printf("  byte[%d]: a=0x%02x (%.1f,%.1f) b=0x%02x (%.1f,%.1f) products=(%.2f,%.2f)\\n",
-                               i, a_byte, a0, a1, b_byte, b0, b1, a0*b0, a1*b1);
-                    }
+                    // Print compact: block#, scales, then 16 bytes of A, 16 bytes of B
+                    printf("%02d %02x%02x %02x%02x ", blk, sa0, sa1, sb0, sb1);
+                    for (int i = 0; i < 16; i++) printf("%02x", a_base[byte_off + i]);
+                    printf(" ");
+                    for (int i = 0; i < 16; i++) printf("%02x", b_base[byte_off + i]);
+                    printf("\\n");
                 }
-                printf("  ... (4 more bytes)\\n");
-                printf("  raw_dot0 = %f, scaled_dot0 = %f\\n", dot0, dot0 * scale_a0 * scale_b0);
-
-                // Decode second 16 FP4 pairs (from a_regs[1], b_regs[1])
-                const uint8_t* a_bytes1 = reinterpret_cast<const uint8_t*>(&a_regs[1]);
-                const uint8_t* b_bytes1 = reinterpret_cast<const uint8_t*>(&b_regs[1]);
-
-                float dot1 = 0.0f;
-                printf("Second 16 FP4 pairs (a_regs[1] x b_regs[1]):\\n");
-                for (int i = 0; i < 8; i++) {
-                    uint8_t a_byte = a_bytes1[i];
-                    uint8_t b_byte = b_bytes1[i];
-                    uint8_t a_lo = a_byte & 0xF;
-                    uint8_t a_hi = (a_byte >> 4) & 0xF;
-                    uint8_t b_lo = b_byte & 0xF;
-                    uint8_t b_hi = (b_byte >> 4) & 0xF;
-                    float a0 = fp4_lut[a_lo], a1 = fp4_lut[a_hi];
-                    float b0 = fp4_lut[b_lo], b1 = fp4_lut[b_hi];
-                    dot1 += a0 * b0 + a1 * b1;
-                    if (i < 4) {
-                        printf("  byte[%d]: a=0x%02x (%.1f,%.1f) b=0x%02x (%.1f,%.1f) products=(%.2f,%.2f)\\n",
-                               i, a_byte, a0, a1, b_byte, b0, b1, a0*b0, a1*b1);
-                    }
-                }
-                printf("  ... (4 more bytes)\\n");
-                printf("  raw_dot1 = %f, scaled_dot1 = %f\\n", dot1, dot1 * scale_a1 * scale_b1);
-
-                float expected_result = dot0 * scale_a0 * scale_b0 + dot1 * scale_a1 * scale_b1;
-                printf("EXPECTED total = %f, ACTUAL = %f, DIFF = %f\\n",
-                       expected_result, result, result - expected_result);
-                printf("====================================\\n");
+                printf("=== END RAW DATA ===\\n");
             }
 
             accum[ci] += result;
@@ -478,36 +396,61 @@ gemm_kernel(const __grid_constant__ Gemm_params params)
 
     __half* row_out = params.c_ptr + C_batch_base + row * params.n;
 
-    // === DEBUG: Verify per-k_lane partial sums before reduction ===
-    // IMPORTANT: All 16 k_lanes must participate in shuffle (collective op)
-    const bool is_debug_tile_all_lanes = (blockIdx.z == 0) && (m_idx == 0) && (
-        (blockIdx.y == 0 && blockIdx.x == 0) ||
-        (blockIdx.y == mid_y && blockIdx.x == mid_x) ||
-        (blockIdx.y == last_y && blockIdx.x == last_x)
-    ) && (atomicAdd(&g_debug_done, 0) < 3);
+    // // === DEBUG: Verify per-k_lane partial sums before reduction ===
+    // // IMPORTANT: All 16 k_lanes must participate in shuffle (collective op)
+    // const bool is_debug_tile_all_lanes = (blockIdx.z == 0) && (m_idx == 0) && (
+    //     (blockIdx.y == 0 && blockIdx.x == 0) ||
+    //     (blockIdx.y == mid_y && blockIdx.x == mid_x) ||
+    //     (blockIdx.y == last_y && blockIdx.x == last_x)
+    // ) && (atomicAdd(&g_debug_done, 0) < 3);
 
-    if (is_debug_tile_all_lanes && col_active[0]) {
-        float my_partial = accum[0];
+    // if (is_debug_tile_all_lanes && col_active[0]) {
+    //     float my_partial = accum[0];
 
-        // Collect all 16 partial sums to k_lane 0 using shuffle
-        // ALL 16 k_lanes execute this together, mask=0xFFFF for lanes 0-15
-        float all_partials[16];
-        for (int i = 0; i < 16; i++) {
-            all_partials[i] = __shfl_sync(0xFFFF, my_partial, i, K_WORKERS);
-        }
+    //     // Collect all 16 partial sums to k_lane 0 using shuffle
+    //     // ALL 16 k_lanes execute this together, mask=0xFFFF for lanes 0-15
+    //     float all_partials[16];
+    //     for (int i = 0; i < 16; i++) {
+    //         all_partials[i] = __shfl_sync(0xFFFF, my_partial, i, K_WORKERS);
+    //     }
 
-        // Only k_lane 0 prints
-        if (k_lane == 0) {
-            printf("\\n=== PER-K_LANE PARTIAL SUMS (before reduction) ===\\n");
-            float sum_of_partials = 0.0f;
-            for (int i = 0; i < 16; i++) {
-                printf("k_lane[%2d] partial = %f\\n", i, all_partials[i]);
-                sum_of_partials += all_partials[i];
-            }
-            printf("SUM of all partials = %f\\n", sum_of_partials);
-            printf("=================================================\\n\\n");
-        }
-    }
+    //     // Only k_lane 0 prints
+    //     if (k_lane == 0) {
+    //         printf("\\n=== PER-K_LANE PARTIAL SUMS (before reduction) ===\\n");
+    //         float sum_of_partials = 0.0f;
+    //         for (int i = 0; i < 16; i++) {
+    //             printf("k_lane[%2d] partial = %f\\n", i, all_partials[i]);
+    //             sum_of_partials += all_partials[i];
+    //         }
+    //         printf("SUM of all partials = %f\\n", sum_of_partials);
+    //         printf("=================================================\\n\\n");
+    //     }
+    // }
+
+    // // Debug: collect all k_lane partials BEFORE reduction for cols 0,1,2
+    // const bool debug_all_lanes = (params.k == 2048) &&
+    //                               (blockIdx.x == 0) && (blockIdx.y == 0) && (blockIdx.z == 0) &&
+    //                               (m_idx == 0) && (atomicAdd(&g_debug_done, 0) == 0);
+    // if (debug_all_lanes) {
+    //     for (int ci = 0; ci < 3 && col_active[ci]; ++ci) {
+    //         float my_partial = accum[ci];
+    //         // Gather all 16 partials to lane 0
+    //         float all_partials[16];
+    //         for (int i = 0; i < 16; i++) {
+    //             all_partials[i] = __shfl_sync(0xFFFF, my_partial, i, K_WORKERS);
+    //         }
+    //         if (k_lane == 0) {
+    //             float sum = 0;
+    //             printf("=== COL %d k_lane partials: ", ci);
+    //             for (int i = 0; i < 16; i++) {
+    //                 sum += all_partials[i];
+    //             }
+    //             printf("sum=%.1f [", sum);
+    //             for (int i = 0; i < 4; i++) printf("%.1f,", all_partials[i]);
+    //             printf("...]\\n");
+    //         }
+    //     }
+    // }
 
     #pragma unroll
     for (int ci = 0; ci < N_TILE; ++ci) {
@@ -522,123 +465,135 @@ gemm_kernel(const __grid_constant__ Gemm_params params)
             int col = col_start + ci;
             __half* out_ptr = row_out + col;
             out_ptr[0] = __float2half(value);
+
+            // // Debug: print final output for cols 0,1,2
+            // if (debug && ci < 3) {
+            //     // Read back what we actually wrote to verify
+            //     float written_back = __half2float(out_ptr[0]);
+            //     printf("=== FINAL OUTPUT col=%d: post_reduce=%.1f written_back=%.1f ===\\n",
+            //            col, value, written_back);
+            //     // Mark debug as done after printing all 3 cols
+            //     if (ci == 2) {
+            //         atomicAdd(&g_debug_done, 1);
+            //     }
+            // }
         }
     }
 
-    // === DEBUG: Verify full dot product for row=0, col=0 after reduction ===
-    // Only one thread (the one that wrote the result) does this check
-    if (debug && k_lane == 0 && col_active[0]) {
-        // We need to recompute the ENTIRE dot product for row 0, col 0 manually
-        // to compare against what we just wrote
+    // // === DEBUG: Verify full dot product for row=0, col=0 after reduction ===
+    // // Only one thread (the one that wrote the result) does this check
+    // if (debug && k_lane == 0 && col_active[0]) {
+    //     // We need to recompute the ENTIRE dot product for row 0, col 0 manually
+    //     // to compare against what we just wrote
 
-        const float fp4_lut[16] = {
-            0.0f, 0.5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f,
-            -0.0f, -0.5f, -1.0f, -1.5f, -2.0f, -3.0f, -4.0f, -6.0f
-        };
+    //     const float fp4_lut[16] = {
+    //         0.0f, 0.5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f,
+    //         -0.0f, -0.5f, -1.0f, -1.5f, -2.0f, -3.0f, -4.0f, -6.0f
+    //     };
 
-        auto fp8_e4m3_to_float = [](uint8_t val) -> float {
-            uint8_t sign = (val >> 7) & 0x1;
-            uint8_t exp = (val >> 3) & 0xF;
-            uint8_t mant = val & 0x7;
-            float mantissa = 1.0f + mant / 8.0f;
-            float result;
-            if (exp == 0) {
-                result = (mant / 8.0f) * powf(2.0f, -6.0f);
-            } else if (exp == 15 && mant == 7) {
-                result = nanf("");
-            } else {
-                result = mantissa * powf(2.0f, (float)exp - 7.0f);
-            }
-            return sign ? -result : result;
-        };
+    //     auto fp8_e4m3_to_float = [](uint8_t val) -> float {
+    //         uint8_t sign = (val >> 7) & 0x1;
+    //         uint8_t exp = (val >> 3) & 0xF;
+    //         uint8_t mant = val & 0x7;
+    //         float mantissa = 1.0f + mant / 8.0f;
+    //         float result;
+    //         if (exp == 0) {
+    //             result = (mant / 8.0f) * powf(2.0f, -6.0f);
+    //         } else if (exp == 15 && mant == 7) {
+    //             result = nanf("");
+    //         } else {
+    //             result = mantissa * powf(2.0f, (float)exp - 7.0f);
+    //         }
+    //         return sign ? -result : result;
+    //     };
 
-        printf("\\n=== FULL DOT PRODUCT VERIFICATION (row=0, col=0) ===\\n");
+    //     printf("\\n=== FULL DOT PRODUCT VERIFICATION (row=0, col=0) ===\\n");
 
-        // Get the value we wrote
-        float written_value = __half2float(row_out[col_start]);
-        printf("Written output value: %f\\n", written_value);
+    //     // Get the value we wrote
+    //     float written_value = __half2float(row_out[col_start]);
+    //     printf("Written output value: %f\\n", written_value);
 
-        // Recompute the full dot product from scratch
-        const uint8_t* a_data = reinterpret_cast<const uint8_t*>(rowA);
-        const uint8_t* b_data = reinterpret_cast<const uint8_t*>(colB_ptrs[0]);
-        const uint8_t* sfa_data = reinterpret_cast<const uint8_t*>(rowS);
-        const uint8_t* sfb_data = reinterpret_cast<const uint8_t*>(colS_ptrs[0]);
+    //     // Recompute the full dot product from scratch
+    //     const uint8_t* a_data = reinterpret_cast<const uint8_t*>(rowA);
+    //     const uint8_t* b_data = reinterpret_cast<const uint8_t*>(colB_ptrs[0]);
+    //     const uint8_t* sfa_data = reinterpret_cast<const uint8_t*>(rowS);
+    //     const uint8_t* sfb_data = reinterpret_cast<const uint8_t*>(colS_ptrs[0]);
 
-        float total_sum = 0.0f;
-        int num_scale_blocks = params.k / 16;  // 16 bytes = 32 FP4 = 2 scale factors (16 each)
+    //     float total_sum = 0.0f;
+    //     int num_scale_blocks = params.k / 16;  // 16 bytes = 32 FP4 = 2 scale factors (16 each)
 
-        printf("num_scale_blocks=%d (params.k=%d)\\n", num_scale_blocks, params.k);
+    //     printf("num_scale_blocks=%d (params.k=%d)\\n", num_scale_blocks, params.k);
 
-        // Sample 6 random block indices to print
-        int sample_blocks[6] = {0, 1, num_scale_blocks/4, num_scale_blocks/2, num_scale_blocks*3/4, num_scale_blocks-1};
+    //     // Sample 6 random block indices to print
+    //     int sample_blocks[6] = {0, 1, num_scale_blocks/4, num_scale_blocks/2, num_scale_blocks*3/4, num_scale_blocks-1};
 
-        for (int blk = 0; blk < num_scale_blocks; blk++) {
-            // Each block: 16 bytes of A, 16 bytes of B, 2 scale factors each
-            int byte_offset = blk * 16;
-            int scale_offset = blk * 2;  // 2 FP8 scales per 32 FP4 elements
+    //     for (int blk = 0; blk < num_scale_blocks; blk++) {
+    //         // Each block: 16 bytes of A, 16 bytes of B, 2 scale factors each
+    //         int byte_offset = blk * 16;
+    //         int scale_offset = blk * 2;  // 2 FP8 scales per 32 FP4 elements
 
-            // Load scales
-            uint8_t sfa_lo = sfa_data[scale_offset];
-            uint8_t sfa_hi = sfa_data[scale_offset + 1];
-            uint8_t sfb_lo = sfb_data[scale_offset];
-            uint8_t sfb_hi = sfb_data[scale_offset + 1];
+    //         // Load scales
+    //         uint8_t sfa_lo = sfa_data[scale_offset];
+    //         uint8_t sfa_hi = sfa_data[scale_offset + 1];
+    //         uint8_t sfb_lo = sfb_data[scale_offset];
+    //         uint8_t sfb_hi = sfb_data[scale_offset + 1];
 
-            float scale_a0 = fp8_e4m3_to_float(sfa_lo);
-            float scale_a1 = fp8_e4m3_to_float(sfa_hi);
-            float scale_b0 = fp8_e4m3_to_float(sfb_lo);
-            float scale_b1 = fp8_e4m3_to_float(sfb_hi);
+    //         float scale_a0 = fp8_e4m3_to_float(sfa_lo);
+    //         float scale_a1 = fp8_e4m3_to_float(sfa_hi);
+    //         float scale_b0 = fp8_e4m3_to_float(sfb_lo);
+    //         float scale_b1 = fp8_e4m3_to_float(sfb_hi);
 
-            // Compute dot product for first 8 bytes (16 FP4 pairs) with scale0
-            float dot0 = 0.0f;
-            for (int i = 0; i < 8; i++) {
-                uint8_t a_byte = a_data[byte_offset + i];
-                uint8_t b_byte = b_data[byte_offset + i];
-                uint8_t a_lo = a_byte & 0xF;
-                uint8_t a_hi = (a_byte >> 4) & 0xF;
-                uint8_t b_lo = b_byte & 0xF;
-                uint8_t b_hi = (b_byte >> 4) & 0xF;
-                dot0 += fp4_lut[a_lo] * fp4_lut[b_lo] + fp4_lut[a_hi] * fp4_lut[b_hi];
-            }
+    //         // Compute dot product for first 8 bytes (16 FP4 pairs) with scale0
+    //         float dot0 = 0.0f;
+    //         for (int i = 0; i < 8; i++) {
+    //             uint8_t a_byte = a_data[byte_offset + i];
+    //             uint8_t b_byte = b_data[byte_offset + i];
+    //             uint8_t a_lo = a_byte & 0xF;
+    //             uint8_t a_hi = (a_byte >> 4) & 0xF;
+    //             uint8_t b_lo = b_byte & 0xF;
+    //             uint8_t b_hi = (b_byte >> 4) & 0xF;
+    //             dot0 += fp4_lut[a_lo] * fp4_lut[b_lo] + fp4_lut[a_hi] * fp4_lut[b_hi];
+    //         }
 
-            // Compute dot product for next 8 bytes (16 FP4 pairs) with scale1
-            float dot1 = 0.0f;
-            for (int i = 0; i < 8; i++) {
-                uint8_t a_byte = a_data[byte_offset + 8 + i];
-                uint8_t b_byte = b_data[byte_offset + 8 + i];
-                uint8_t a_lo = a_byte & 0xF;
-                uint8_t a_hi = (a_byte >> 4) & 0xF;
-                uint8_t b_lo = b_byte & 0xF;
-                uint8_t b_hi = (b_byte >> 4) & 0xF;
-                dot1 += fp4_lut[a_lo] * fp4_lut[b_lo] + fp4_lut[a_hi] * fp4_lut[b_hi];
-            }
+    //         // Compute dot product for next 8 bytes (16 FP4 pairs) with scale1
+    //         float dot1 = 0.0f;
+    //         for (int i = 0; i < 8; i++) {
+    //             uint8_t a_byte = a_data[byte_offset + 8 + i];
+    //             uint8_t b_byte = b_data[byte_offset + 8 + i];
+    //             uint8_t a_lo = a_byte & 0xF;
+    //             uint8_t a_hi = (a_byte >> 4) & 0xF;
+    //             uint8_t b_lo = b_byte & 0xF;
+    //             uint8_t b_hi = (b_byte >> 4) & 0xF;
+    //             dot1 += fp4_lut[a_lo] * fp4_lut[b_lo] + fp4_lut[a_hi] * fp4_lut[b_hi];
+    //         }
 
-            float block_result = dot0 * scale_a0 * scale_b0 + dot1 * scale_a1 * scale_b1;
-            total_sum += block_result;
+    //         float block_result = dot0 * scale_a0 * scale_b0 + dot1 * scale_a1 * scale_b1;
+    //         total_sum += block_result;
 
-            // Print sample blocks
-            bool is_sample = false;
-            for (int s = 0; s < 6; s++) {
-                if (blk == sample_blocks[s]) {
-                    is_sample = true;
-                    break;
-                }
-            }
-            if (is_sample) {
-                printf("Block[%d]: byte_off=%d, scale_off=%d\\n", blk, byte_offset, scale_offset);
-                printf("  scales: sfa=(0x%02x,0x%02x)->(%f,%f) sfb=(0x%02x,0x%02x)->(%f,%f)\\n",
-                       sfa_lo, sfa_hi, scale_a0, scale_a1, sfb_lo, sfb_hi, scale_b0, scale_b1);
-                printf("  dot0=%f dot1=%f block_result=%f running_sum=%f\\n",
-                       dot0, dot1, block_result, total_sum);
-            }
-        }
+    //         // Print sample blocks
+    //         bool is_sample = false;
+    //         for (int s = 0; s < 6; s++) {
+    //             if (blk == sample_blocks[s]) {
+    //                 is_sample = true;
+    //                 break;
+    //             }
+    //         }
+    //         if (is_sample) {
+    //             printf("Block[%d]: byte_off=%d, scale_off=%d\\n", blk, byte_offset, scale_offset);
+    //             printf("  scales: sfa=(0x%02x,0x%02x)->(%f,%f) sfb=(0x%02x,0x%02x)->(%f,%f)\\n",
+    //                    sfa_lo, sfa_hi, scale_a0, scale_a1, sfb_lo, sfb_hi, scale_b0, scale_b1);
+    //             printf("  dot0=%f dot1=%f block_result=%f running_sum=%f\\n",
+    //                    dot0, dot1, block_result, total_sum);
+    //         }
+    //     }
 
-        printf("\\nFINAL: expected_sum=%f, written_value=%f, diff=%f\\n",
-               total_sum, written_value, written_value - total_sum);
-        printf("==============================================\\n\\n");
+    //     printf("\\nFINAL: expected_sum=%f, written_value=%f, diff=%f\\n",
+    //            total_sum, written_value, written_value - total_sum);
+    //     printf("==============================================\\n\\n");
 
-        // Increment debug counter (allow up to 3 tiles to print)
-        atomicAdd(&g_debug_done, 1);
-    }
+    //     // Increment debug counter (allow up to 3 tiles to print)
+    //     atomicAdd(&g_debug_done, 1);
+    // }
 }
 
 torch::Tensor cuda_nvfp4_gemm(
@@ -706,5 +661,5 @@ nvfp4_gemm_module = load_inline(
 
 def custom_kernel(data: input_t) -> output_t:
     #print(f"A.size(): {data[0].size()}, B.size(): {data[1].size()}, C.size(): {data[6].size()}, SFA.size(): {data[2].size()}, SFB.size(): {data[3].size()}")
-    print(f"A.stride(): {data[0].stride()}, B.stride(): {data[1].stride()}, C.stride(): {data[6].stride()}, SFA.stride(): {data[2].stride()}, SFB.stride(): {data[3].stride()}")
+    #print(f"A.stride(): {data[0].stride()}, B.stride(): {data[1].stride()}, C.stride(): {data[6].stride()}, SFA.stride(): {data[2].stride()}, SFB.stride(): {data[3].stride()}")
     return nvfp4_gemm_module.cuda_nvfp4_gemm(data[0], data[1], data[2], data[3], data[6])

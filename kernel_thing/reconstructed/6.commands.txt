@@ -1,0 +1,206 @@
+# Builder commands for python source
+# Automatically generated - execute to recreate AST
+
+# === ASM Block 0 ===
+from builder import ASTBuilder, reg, imm, vec, mem, sym
+from ptx_ast import Instruction, Directive
+
+b = ASTBuilder()
+b.raw('{')
+b.reg("b8", ['g0_0', 'g0_1', 'g0_2', 'g0_3', 'g0_4', 'g0_5', 'g0_6', 'g0_7'])
+b.reg("b8", ['g1_0', 'g1_1', 'g1_2', 'g1_3', 'g1_4', 'g1_5', 'g1_6', 'g1_7'])
+b.reg("b8", ['g2_0', 'g2_1', 'g2_2', 'g2_3', 'g2_4', 'g2_5', 'g2_6', 'g2_7'])
+b.reg("b8", ['g3_0', 'g3_1', 'g3_2', 'g3_3', 'g3_4', 'g3_5', 'g3_6', 'g3_7'])
+b.reg("f16x2", ['g0_a_0', 'g0_a_1', 'g0_a_2', 'g0_a_3', 'g0_b_0', 'g0_b_1', 'g0_b_2', 'g0_b_3'])
+b.reg("f16x2", ['g1_a_0', 'g1_a_1', 'g1_a_2', 'g1_a_3', 'g1_b_0', 'g1_b_1', 'g1_b_2', 'g1_b_3'])
+b.reg("f16x2", ['g2_a_0', 'g2_a_1', 'g2_a_2', 'g2_a_3', 'g2_b_0', 'g2_b_1', 'g2_b_2', 'g2_b_3'])
+b.reg("f16x2", ['g3_a_0', 'g3_a_1', 'g3_a_2', 'g3_a_3', 'g3_b_0', 'g3_b_1', 'g3_b_2', 'g3_b_3'])
+b.reg("f16x2", ['s0_0', 's0_1', 's0_2', 's0_3'])
+b.reg("f16x2", ['s1_0', 's1_1', 's1_2', 's1_3'])
+b.reg("f16x2", ['s2_0', 's2_1', 's2_2', 's2_3'])
+b.reg("f16x2", ['s3_0', 's3_1', 's3_2', 's3_3'])
+b.reg("f16x2", ['sfa_f16x2', 'sfb_f16x2', 'sf_combined'])
+b.reg("f16", ['sf_lo', 'sf_hi', 'lo', 'hi'])
+b.reg("f16x2", ['sf_lo_x2', 'sf_hi_x2'])
+b.instr("cvt", ['rn', 'f16x2', 'e4m3x2'], [reg("sfa_f16x2"), reg("%1")])
+b.instr("cvt", ['rn', 'f16x2', 'e4m3x2'], [reg("sfb_f16x2"), reg("%2")])
+b.instr("mul", ['rn', 'f16x2'], [reg("sf_combined"), reg("sfa_f16x2"), reg("sfb_f16x2")])
+b.instr("mov", ['b32'], [vec(reg("sf_lo"), reg("sf_hi")), reg("sf_combined")])
+b.instr("mov", ['b32'], [reg("sf_lo_x2"), vec(reg("sf_lo"), reg("sf_lo"))])
+b.instr("mov", ['b32'], [reg("sf_hi_x2"), vec(reg("sf_hi"), reg("sf_hi"))])
+b.line([Instruction("mov", ['b32'], [reg("s0_0"), imm("0")]), Instruction("mov", ['b32'], [reg("s0_1"), imm("0")]), Instruction("mov", ['b32'], [reg("s0_2"), imm("0")]), Instruction("mov", ['b32'], [reg("s0_3"), imm("0")])])
+b.line([Instruction("mov", ['b32'], [reg("s1_0"), imm("0")]), Instruction("mov", ['b32'], [reg("s1_1"), imm("0")]), Instruction("mov", ['b32'], [reg("s1_2"), imm("0")]), Instruction("mov", ['b32'], [reg("s1_3"), imm("0")])])
+b.line([Instruction("mov", ['b32'], [reg("s2_0"), imm("0")]), Instruction("mov", ['b32'], [reg("s2_1"), imm("0")]), Instruction("mov", ['b32'], [reg("s2_2"), imm("0")]), Instruction("mov", ['b32'], [reg("s2_3"), imm("0")])])
+b.line([Instruction("mov", ['b32'], [reg("s3_0"), imm("0")]), Instruction("mov", ['b32'], [reg("s3_1"), imm("0")]), Instruction("mov", ['b32'], [reg("s3_2"), imm("0")]), Instruction("mov", ['b32'], [reg("s3_3"), imm("0")])])
+b.instr("mov", ['b32'], [vec(reg("g0_0"), reg("g0_1"), reg("g0_2"), reg("g0_3")), reg("%3")])
+b.instr("mov", ['b32'], [vec(reg("g0_4"), reg("g0_5"), reg("g0_6"), reg("g0_7")), reg("%4")])
+b.instr("mov", ['b32'], [vec(reg("g1_0"), reg("g1_1"), reg("g1_2"), reg("g1_3")), reg("%5")])
+b.instr("mov", ['b32'], [vec(reg("g1_4"), reg("g1_5"), reg("g1_6"), reg("g1_7")), reg("%6")])
+b.instr("mov", ['b32'], [vec(reg("g2_0"), reg("g2_1"), reg("g2_2"), reg("g2_3")), reg("%7")])
+b.instr("mov", ['b32'], [vec(reg("g2_4"), reg("g2_5"), reg("g2_6"), reg("g2_7")), reg("%8")])
+b.instr("mov", ['b32'], [vec(reg("g3_0"), reg("g3_1"), reg("g3_2"), reg("g3_3")), reg("%9")])
+b.instr("mov", ['b32'], [vec(reg("g3_4"), reg("g3_5"), reg("g3_6"), reg("g3_7")), reg("%10")])
+b.line([Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g0_a_0"), reg("g0_0")]), Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g0_a_1"), reg("g0_1")])])
+b.line([Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g0_a_2"), reg("g0_2")]), Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g0_a_3"), reg("g0_3")])])
+b.line([Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g0_b_0"), reg("g0_4")]), Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g0_b_1"), reg("g0_5")])])
+b.line([Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g0_b_2"), reg("g0_6")]), Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g0_b_3"), reg("g0_7")])])
+b.line([Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g1_a_0"), reg("g1_0")]), Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g1_a_1"), reg("g1_1")])])
+b.line([Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g1_a_2"), reg("g1_2")]), Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g1_a_3"), reg("g1_3")])])
+b.line([Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g1_b_0"), reg("g1_4")]), Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g1_b_1"), reg("g1_5")])])
+b.line([Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g1_b_2"), reg("g1_6")]), Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g1_b_3"), reg("g1_7")])])
+b.line([Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g2_a_0"), reg("g2_0")]), Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g2_a_1"), reg("g2_1")])])
+b.line([Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g2_a_2"), reg("g2_2")]), Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g2_a_3"), reg("g2_3")])])
+b.line([Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g2_b_0"), reg("g2_4")]), Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g2_b_1"), reg("g2_5")])])
+b.line([Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g2_b_2"), reg("g2_6")]), Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g2_b_3"), reg("g2_7")])])
+b.line([Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g3_a_0"), reg("g3_0")]), Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g3_a_1"), reg("g3_1")])])
+b.line([Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g3_a_2"), reg("g3_2")]), Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g3_a_3"), reg("g3_3")])])
+b.line([Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g3_b_0"), reg("g3_4")]), Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g3_b_1"), reg("g3_5")])])
+b.line([Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g3_b_2"), reg("g3_6")]), Instruction("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("g3_b_3"), reg("g3_7")])])
+b.line([Instruction("fma", ['rn', 'f16x2'], [reg("s0_0"), reg("g0_a_0"), reg("g0_b_0"), reg("s0_0")]), Instruction("fma", ['rn', 'f16x2'], [reg("s0_1"), reg("g0_a_1"), reg("g0_b_1"), reg("s0_1")])])
+b.line([Instruction("fma", ['rn', 'f16x2'], [reg("s0_2"), reg("g0_a_2"), reg("g0_b_2"), reg("s0_2")]), Instruction("fma", ['rn', 'f16x2'], [reg("s0_3"), reg("g0_a_3"), reg("g0_b_3"), reg("s0_3")])])
+b.line([Instruction("fma", ['rn', 'f16x2'], [reg("s1_0"), reg("g1_a_0"), reg("g1_b_0"), reg("s1_0")]), Instruction("fma", ['rn', 'f16x2'], [reg("s1_1"), reg("g1_a_1"), reg("g1_b_1"), reg("s1_1")])])
+b.line([Instruction("fma", ['rn', 'f16x2'], [reg("s1_2"), reg("g1_a_2"), reg("g1_b_2"), reg("s1_2")]), Instruction("fma", ['rn', 'f16x2'], [reg("s1_3"), reg("g1_a_3"), reg("g1_b_3"), reg("s1_3")])])
+b.line([Instruction("fma", ['rn', 'f16x2'], [reg("s2_0"), reg("g2_a_0"), reg("g2_b_0"), reg("s2_0")]), Instruction("fma", ['rn', 'f16x2'], [reg("s2_1"), reg("g2_a_1"), reg("g2_b_1"), reg("s2_1")])])
+b.line([Instruction("fma", ['rn', 'f16x2'], [reg("s2_2"), reg("g2_a_2"), reg("g2_b_2"), reg("s2_2")]), Instruction("fma", ['rn', 'f16x2'], [reg("s2_3"), reg("g2_a_3"), reg("g2_b_3"), reg("s2_3")])])
+b.line([Instruction("fma", ['rn', 'f16x2'], [reg("s3_0"), reg("g3_a_0"), reg("g3_b_0"), reg("s3_0")]), Instruction("fma", ['rn', 'f16x2'], [reg("s3_1"), reg("g3_a_1"), reg("g3_b_1"), reg("s3_1")])])
+b.line([Instruction("fma", ['rn', 'f16x2'], [reg("s3_2"), reg("g3_a_2"), reg("g3_b_2"), reg("s3_2")]), Instruction("fma", ['rn', 'f16x2'], [reg("s3_3"), reg("g3_a_3"), reg("g3_b_3"), reg("s3_3")])])
+b.line([Instruction("add", ['rn', 'f16x2'], [reg("s0_0"), reg("s0_0"), reg("s0_1")]), Instruction("add", ['rn', 'f16x2'], [reg("s0_2"), reg("s0_2"), reg("s0_3")])])
+b.line([Instruction("add", ['rn', 'f16x2'], [reg("s1_0"), reg("s1_0"), reg("s1_1")]), Instruction("add", ['rn', 'f16x2'], [reg("s1_2"), reg("s1_2"), reg("s1_3")])])
+b.line([Instruction("add", ['rn', 'f16x2'], [reg("s2_0"), reg("s2_0"), reg("s2_1")]), Instruction("add", ['rn', 'f16x2'], [reg("s2_2"), reg("s2_2"), reg("s2_3")])])
+b.line([Instruction("add", ['rn', 'f16x2'], [reg("s3_0"), reg("s3_0"), reg("s3_1")]), Instruction("add", ['rn', 'f16x2'], [reg("s3_2"), reg("s3_2"), reg("s3_3")])])
+b.instr("add", ['rn', 'f16x2'], [reg("s0_0"), reg("s0_0"), reg("s0_2")])
+b.instr("add", ['rn', 'f16x2'], [reg("s1_0"), reg("s1_0"), reg("s1_2")])
+b.instr("add", ['rn', 'f16x2'], [reg("s2_0"), reg("s2_0"), reg("s2_2")])
+b.instr("add", ['rn', 'f16x2'], [reg("s3_0"), reg("s3_0"), reg("s3_2")])
+b.instr("add", ['rn', 'f16x2'], [reg("s0_0"), reg("s0_0"), reg("s1_0")])
+b.instr("add", ['rn', 'f16x2'], [reg("s2_0"), reg("s2_0"), reg("s3_0")])
+b.instr("mul", ['rn', 'f16x2'], [reg("s0_0"), reg("sf_lo_x2"), reg("s0_0")])
+b.instr("mul", ['rn', 'f16x2'], [reg("s2_0"), reg("sf_hi_x2"), reg("s2_0")])
+b.instr("add", ['rn', 'f16x2'], [reg("s0_0"), reg("s0_0"), reg("s2_0")])
+b.instr("mov", ['b32'], [vec(reg("lo"), reg("hi")), reg("s0_0")])
+b.instr("add", ['rn', 'f16'], [reg("lo"), reg("lo"), reg("hi")])
+b.instr("mov", ['b16'], [reg("%0"), reg("lo")])
+b.raw('}')
+
+ast = b.build()
+
+# === ASM Block 1 ===
+from builder import ASTBuilder, reg, imm, vec, mem, sym
+from ptx_ast import Instruction, Directive
+
+b = ASTBuilder()
+b.instr("cp", ['async', 'cg', 'shared', 'global'], [mem(reg("%0")), mem(reg("%1")), imm("16")])
+b.instr("cp", ['async', 'cg', 'shared', 'global'], [mem(reg("%2")), mem(reg("%3")), imm("16")])
+
+ast = b.build()
+
+# === ASM Block 2 ===
+from builder import ASTBuilder, reg, imm, vec, mem, sym
+from ptx_ast import Instruction, Directive
+
+b = ASTBuilder()
+b.instr("cp", ['async', 'cg', 'shared', 'global'], [mem(reg("%0")), mem(reg("%1")), imm("16"), imm("0")])
+b.instr("cp", ['async', 'cg', 'shared', 'global'], [mem(reg("%2")), mem(reg("%3")), imm("16"), imm("0")])
+
+ast = b.build()
+
+# === ASM Block 3 ===
+from builder import ASTBuilder, reg, imm, vec, mem, sym
+from ptx_ast import Instruction, Directive
+
+b = ASTBuilder()
+b.instr("cp", ['async', 'cg', 'shared', 'global'], [mem(reg("%0")), mem(reg("%1")), imm("16")])
+b.instr("cp", ['async', 'cg', 'shared', 'global'], [mem(reg("%2")), mem(reg("%3")), imm("16")])
+
+ast = b.build()
+
+# === ASM Block 4 ===
+from builder import ASTBuilder, reg, imm, vec, mem, sym
+from ptx_ast import Instruction, Directive
+
+b = ASTBuilder()
+b.instr("cp", ['async', 'cg', 'shared', 'global'], [mem(reg("%0")), mem(reg("%1")), imm("16"), imm("0")])
+b.instr("cp", ['async', 'cg', 'shared', 'global'], [mem(reg("%2")), mem(reg("%3")), imm("16"), imm("0")])
+
+ast = b.build()
+
+# === ASM Block 5 ===
+from builder import ASTBuilder, reg, imm, vec, mem, sym
+from ptx_ast import Instruction, Directive
+
+b = ASTBuilder()
+b.instr("cp", ['async', 'ca', 'shared', 'global'], [mem(reg("%0")), mem(reg("%1")), imm("4")])
+
+ast = b.build()
+
+# === ASM Block 6 ===
+from builder import ASTBuilder, reg, imm, vec, mem, sym
+from ptx_ast import Instruction, Directive
+
+b = ASTBuilder()
+b.instr("cp", ['async', 'ca', 'shared', 'global'], [mem(reg("%0")), mem(reg("%1")), imm("4"), imm("0")])
+
+ast = b.build()
+
+# === ASM Block 7 ===
+from builder import ASTBuilder, reg, imm, vec, mem, sym
+from ptx_ast import Instruction, Directive
+
+b = ASTBuilder()
+b.instr("cp", ['async', 'ca', 'shared', 'global'], [mem(reg("%0")), mem(reg("%1")), imm("4")])
+
+ast = b.build()
+
+# === ASM Block 8 ===
+from builder import ASTBuilder, reg, imm, vec, mem, sym
+from ptx_ast import Instruction, Directive
+
+b = ASTBuilder()
+b.instr("cp", ['async', 'ca', 'shared', 'global'], [mem(reg("%0")), mem(reg("%1")), imm("4"), imm("0")])
+
+ast = b.build()
+
+# === ASM Block 9 ===
+from builder import ASTBuilder, reg, imm, vec, mem, sym
+from ptx_ast import Instruction, Directive
+
+b = ASTBuilder()
+b.instr("cp", ['async', 'commit_group'], [])
+
+ast = b.build()
+
+# === ASM Block 10 ===
+from builder import ASTBuilder, reg, imm, vec, mem, sym
+from ptx_ast import Instruction, Directive
+
+b = ASTBuilder()
+b.instr("cp", ['async', 'wait_group'], [imm("0")])
+
+ast = b.build()
+
+# === ASM Block 11 ===
+from builder import ASTBuilder, reg, imm, vec, mem, sym
+from ptx_ast import Instruction, Directive
+
+b = ASTBuilder()
+b.instr("cp", ['async', 'commit_group'], [])
+
+ast = b.build()
+
+# === ASM Block 12 ===
+from builder import ASTBuilder, reg, imm, vec, mem, sym
+from ptx_ast import Instruction, Directive
+
+b = ASTBuilder()
+b.instr("cp", ['async', 'wait_group'], [imm("0")])
+
+ast = b.build()
+
+# === ASM Block 13 ===
+from builder import ASTBuilder, reg, imm, vec, mem, sym
+from ptx_ast import Instruction, Directive
+
+b = ASTBuilder()
+b.instr("cp", ['async', 'wait_group'], [imm("0")])
+
+ast = b.build()

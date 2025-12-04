@@ -1,5 +1,5 @@
 "**NVIDIA on GitHub ✅ success**
-> Workflow [19882310628](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19882310628>) completed
+> Workflow [19883420164](<https://github.com/gpu-mode/discord-cluster-manager/actions/runs/19883420164>) completed
 > Downloading artifacts... done
 > ❌ Benchmarking failed
 
@@ -28,318 +28,215 @@ mismatch found! custom implementation doesn't match reference: Number of mismatc
 
 ## Program stdout:
 ```
-=== GEMM PARAMS DEBUG [tile blockIdx.y=0, blockIdx.x=0] ===
-params.m=128 params.n=7168 params.k=8192 params.batches=1
-params.a_ptr=0x7ff903500000 params.b_ptr=0x7ff8f2000000 params.c_ptr=0x7ff8f8fc0000
-params.sfa_ptr=0x7ff8f5800000 params.sfb_ptr=0x7ff8ee000000
-params.a_batch_stride=1048576 params.b_batch_stride=58720256
-params.row_stride=8192 params.sf_row_stride=1024
-params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
-params.c_batch_stride=917504
---- Computed values ---
-batch=0 row=0 n_tile=0 col_start=0 iters=32
-A_batch_base=0 SFA_batch_base=0
-B_batch_base=0 SFB_batch_base=0
-C_batch_base=0
-rowA offset from a_ptr: 0
-rowS offset from sfa_ptr: 0
-colB_ptrs[0] offset from b_ptr: 0 (col_active[0]=1)
-colS_ptrs[0] offset from sfb_ptr: 0
-bytes_per_iter=16 K_WORKERS=16
---- Column pointer details ---
-=== GEMM PARAMS DEBUG [tile blockIdx.y=8, blockIdx.x=896] ===
-col[0]: col=0 colB_ptr=0x7ff8f2000000 colS_ptr=0x7ff8ee000000
-params.m=128 params.n=7168 params.k=8192 params.batches=1
-  colB offset=0 (expected col*row_stride=0)
-params.a_ptr=0x7ff903500000 params.b_ptr=0x7ff8f2000000 params.c_ptr=0x7ff8f8fc0000
-col[1]: col=1 colB_ptr=0x7ff8f2002000 colS_ptr=0x7ff8ee000400
-params.sfa_ptr=0x7ff8f5800000 params.sfb_ptr=0x7ff8ee000000
-  colB offset=8192 (expected col*row_stride=8192)
-params.a_batch_stride=1048576 params.b_batch_stride=58720256
-col[2]: col=2 colB_ptr=0x7ff8f2004000 colS_ptr=0x7ff8ee000800
-params.row_stride=8192 params.sf_row_stride=1024
-  colB offset=16384 (expected col*row_stride=16384)
-params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
-col[3]: col=3 colB_ptr=0x7ff8f2006000 colS_ptr=0x7ff8ee000c00
-params.c_batch_stride=917504
-  colB offset=24576 (expected col*row_stride=24576)
---- Computed values ---
-========================
-batch=0 row=64 n_tile=896 col_start=3584 iters=32
-=== COMPUTE DEBUG (iter=0, col=0) ===
-A_batch_base=0 SFA_batch_base=0
-elem_base=0 block_base=0
-B_batch_base=0 SFB_batch_base=0
-a_regs[0]=0xfbff0201fafb0204 a_regs[1]=0x04fafffd0105fffe
-C_batch_base=0
-b_regs[0]=0xfd04fd02fd02fdfa b_regs[1]=0xfcfaff0500fafafc
-rowA offset from a_ptr: 524288
-=== GEMM PARAMS DEBUG [tile blockIdx.y=15, blockIdx.x=1791] ===
-sfa_reg=0xc4b8 sfb_reg=0x38c0
-rowS offset from sfa_ptr: 32768
-sfa bytes: lo=0xb8 hi=0xc4, sfb bytes: lo=0xc0 hi=0x38
-params.m=128 params.n=7168 params.k=8192 params.batches=1
-colB_ptrs[0] offset from b_ptr: 29360128 (col_active[0]=1)
-block_scaled_fma result = -420.000000
-params.a_ptr=0x7ff903500000 params.b_ptr=0x7ff8f2000000 params.c_ptr=0x7ff8f8fc0000
-colS_ptrs[0] offset from sfb_ptr: 1835008
---- EXPECTED COMPUTATION ---
-params.sfa_ptr=0x7ff8f5800000 params.sfb_ptr=0x7ff8ee000000
-bytes_per_iter=16 K_WORKERS=16
-scale_a0=-1.000000 scale_a1=-3.000000 scale_b0=-2.000000 scale_b1=1.000000
-params.a_batch_stride=1048576 params.b_batch_stride=58720256
---- Column pointer details ---
-combined_scale0=2.000000 combined_scale1=-3.000000
-params.row_stride=8192 params.sf_row_stride=1024
-col[0]: col=3584 colB_ptr=0x7ff8f3c00000 colS_ptr=0x7ff8ee380000
-First 16 FP4 pairs (a_regs[0] x b_regs[0]):
-params.sfa_batch_stride=131072 params.sfb_batch_stride=7340032
-  colB offset=29360128 (expected col*row_stride=29360128)
-  byte[0]: a=0x04 (2.0,0.0) b=0xfa (-1.0,-6.0) products=(-2.00,-0.00)
-params.c_batch_stride=917504
-col[1]: col=3585 colB_ptr=0x7ff8f3c02000 colS_ptr=0x7ff8ee380400
-  byte[1]: a=0x02 (1.0,0.0) b=0xfd (-3.0,-6.0) products=(-3.00,-0.00)
---- Computed values ---
-  colB offset=29368320 (expected col*row_stride=29368320)
-  byte[2]: a=0xfb (-1.5,-6.0) b=0x02 (1.0,0.0) products=(-1.50,-0.00)
-batch=0 row=120 n_tile=1791 col_start=7164 iters=32
-col[2]: col=3586 colB_ptr=0x7ff8f3c04000 colS_ptr=0x7ff8ee380800
-A_batch_base=0 SFA_batch_base=0
-  byte[3]: a=0xfa (-1.0,-6.0) b=0xfd (-3.0,-6.0) products=(3.00,36.00)
-  colB offset=29376512 (expected col*row_stride=29376512)
-  ... (4 more bytes)
-B_batch_base=0 SFB_batch_base=0
-col[3]: col=3587 colB_ptr=0x7ff8f3c06000 colS_ptr=0x7ff8ee380c00
-  raw_dot0 = 58.500000, scaled_dot0 = 117.000000
-C_batch_base=0
-  colB offset=29384704 (expected col*row_stride=29384704)
-Second 16 FP4 pairs (a_regs[1] x b_regs[1]):
-rowA offset from a_ptr: 983040
-========================
-rowS offset from sfa_ptr: 61440
-  byte[0]: a=0xfe (-4.0,-6.0) b=0xfc (-2.0,-6.0) products=(8.00,36.00)
-=== COMPUTE DEBUG (iter=0, col=0) ===
-colB_ptrs[0] offset from b_ptr: 58687488 (col_active[0]=1)
-elem_base=0 block_base=0
-  byte[1]: a=0xff (-6.0,-6.0) b=0xfa (-1.0,-6.0) products=(6.00,36.00)
-colS_ptrs[0] offset from sfb_ptr: 3667968
-  byte[2]: a=0x05 (3.0,0.0) b=0xfa (-1.0,-6.0) products=(-3.00,-0.00)
-a_regs[0]=0x0305020501040303 a_regs[1]=0xfcfaff03fc050400
-bytes_per_iter=16 K_WORKERS=16
-b_regs[0]=0xfbfe05fd00000504 b_regs[1]=0xffff0302fa0501fc
-  byte[3]: a=0x01 (0.5,0.0) b=0x00 (0.0,0.0) products=(0.00,0.00)
---- Column pointer details ---
-  ... (4 more bytes)
-sfa_reg=0x38c0 sfb_reg=0x3840
-col[0]: col=7164 colB_ptr=0x7ff8f57f8000 colS_ptr=0x7ff8ee6ff000
-  raw_dot1 = 179.000000, scaled_dot1 = -537.000000
-sfa bytes: lo=0xc0 hi=0x38, sfb bytes: lo=0x40 hi=0x38
-  colB offset=58687488 (expected col*row_stride=58687488)
-EXPECTED total = -420.000000, ACTUAL = -420.000000, DIFF = 0.000000
-block_scaled_fma result = 181.500000
-col[1]: col=7165 colB_ptr=0x7ff8f57fa000 colS_ptr=0x7ff8ee6ff400
-====================================
---- EXPECTED COMPUTATION ---
-  colB offset=58695680 (expected col*row_stride=58695680)
-scale_a0=-2.000000 scale_a1=1.000000 scale_b0=2.000000 scale_b1=1.000000
-col[2]: col=7166 colB_ptr=0x7ff8f57fc000 colS_ptr=0x7ff8ee6ff800
-combined_scale0=-4.000000 combined_scale1=1.000000
-
-=== PER-K_LANE PARTIAL SUMS (before reduction) ===
-  colB offset=58703872 (expected col*row_stride=58703872)
-First 16 FP4 pairs (a_regs[0] x b_regs[0]):
-col[3]: col=7167 colB_ptr=0x7ff8f57fe000 colS_ptr=0x7ff8ee6ffc00
-k_lane[ 0] partial = 3422.000000
-  byte[0]: a=0x03 (1.5,0.0) b=0x04 (2.0,0.0) products=(3.00,0.00)
-k_lane[ 1] partial = -1658.500000
-  colB offset=58712064 (expected col*row_stride=58712064)
-  byte[1]: a=0x03 (1.5,0.0) b=0x05 (3.0,0.0) products=(4.50,0.00)
-k_lane[ 2] partial = 6371.000000
-========================
-k_lane[ 3] partial = 2630.500000
-  byte[2]: a=0x04 (2.0,0.0) b=0x00 (0.0,0.0) products=(0.00,0.00)
-=== COMPUTE DEBUG (iter=0, col=0) ===
-k_lane[ 4] partial = -827.250000
-elem_base=0 block_base=0
-  byte[3]: a=0x01 (0.5,0.0) b=0x00 (0.0,0.0) products=(0.00,0.00)
-k_lane[ 5] partial = 3649.750000
-a_regs[0]=0xff0105fa01fa0002 a_regs[1]=0xfb05fdfefc02fb02
-  ... (4 more bytes)
-k_lane[ 6] partial = 1395.250000
-b_regs[0]=0x010300fdfc04fc01 b_regs[1]=0xfdfb0404fbfe0402
-  raw_dot0 = -12.750000, scaled_dot0 = 51.000000
-k_lane[ 7] partial = 762.000000
-sfa_reg=0x38c4 sfb_reg=0xb8b8
-Second 16 FP4 pairs (a_regs[1] x b_regs[1]):
-k_lane[ 8] partial = 2278.000000
-sfa bytes: lo=0xc4 hi=0x38, sfb bytes: lo=0xb8 hi=0xb8
-  byte[0]: a=0x00 (0.0,0.0) b=0xfc (-2.0,-6.0) products=(-0.00,-0.00)
-k_lane[ 9] partial = 92.750000
-block_scaled_fma result = 47.750000
-  byte[1]: a=0x04 (2.0,0.0) b=0x01 (0.5,0.0) products=(1.00,0.00)
-k_lane[10] partial = 984.500000
---- EXPECTED COMPUTATION ---
-k_lane[11] partial = 1579.750000
-  byte[2]: a=0x05 (3.0,0.0) b=0x05 (3.0,0.0) products=(9.00,0.00)
-scale_a0=-3.000000 scale_a1=1.000000 scale_b0=-1.000000 scale_b1=-1.000000
-k_lane[12] partial = 3123.750000
-  byte[3]: a=0xfc (-2.0,-6.0) b=0xfa (-1.0,-6.0) products=(2.00,36.00)
-combined_scale0=3.000000 combined_scale1=-1.000000
-k_lane[13] partial = 9355.250000
-  ... (4 more bytes)
-First 16 FP4 pairs (a_regs[0] x b_regs[0]):
-k_lane[14] partial = 2914.000000
-  raw_dot1 = 130.500000, scaled_dot1 = 130.500000
-  byte[0]: a=0x02 (1.0,0.0) b=0x01 (0.5,0.0) products=(0.50,0.00)
-k_lane[15] partial = -740.750000
-EXPECTED total = 181.500000, ACTUAL = 181.500000, DIFF = 0.000000
-  byte[1]: a=0x00 (0.0,0.0) b=0xfc (-2.0,-6.0) products=(-0.00,-0.00)
-SUM of all partials = 35332.000000
-====================================
-  byte[2]: a=0xfa (-1.0,-6.0) b=0x04 (2.0,0.0) products=(-2.00,-0.00)
-=================================================
-
-  byte[3]: a=0x01 (0.5,0.0) b=0xfc (-2.0,-6.0) products=(-1.00,-0.00)
-
-=== FULL DOT PRODUCT VERIFICATION (row=0, col=0) ===
-  ... (4 more bytes)
-Written output value: 35328.000000
-
-=== PER-K_LANE PARTIAL SUMS (before reduction) ===
-  raw_dot0 = 34.250000, scaled_dot0 = 102.750000
-num_scale_blocks=512 (params.k=8192)
-k_lane[ 0] partial = 1518.000000
-Second 16 FP4 pairs (a_regs[1] x b_regs[1]):
-k_lane[ 1] partial = -146.500000
-Block[0]: byte_off=0, scale_off=0
-  byte[0]: a=0x02 (1.0,0.0) b=0x02 (1.0,0.0) products=(1.00,0.00)
-k_lane[ 2] partial = 585.500000
-  scales: sfa=(0xb8,0xc4)->(-1.000000,-3.000000) sfb=(0xc0,0x38)->(-2.000000,1.000000)
-  byte[1]: a=0xfb (-1.5,-6.0) b=0x04 (2.0,0.0) products=(-3.00,-0.00)
-k_lane[ 3] partial = -2045.250000
-  dot0=58.500000 dot1=179.000000 block_result=-420.000000 running_sum=-420.000000
-  byte[2]: a=0x02 (1.0,0.0) b=0xfe (-4.0,-6.0) products=(-4.00,-0.00)
-k_lane[ 4] partial = 2211.500000
-Block[1]: byte_off=16, scale_off=2
-  byte[3]: a=0xfc (-2.0,-6.0) b=0xfb (-1.5,-6.0) products=(3.00,36.00)
-k_lane[ 5] partial = -367.000000
-  scales: sfa=(0xc4,0x00)->(-3.000000,0.000000) sfb=(0xb8,0x38)->(-1.000000,1.000000)
-  ... (4 more bytes)
-k_lane[ 6] partial = 1834.750000
-  dot0=69.750000 dot1=146.000000 block_result=209.250000 running_sum=-210.750000
-  raw_dot1 = 55.000000, scaled_dot1 = -55.000000
-k_lane[ 7] partial = 2815.500000
-EXPECTED total = 47.750000, ACTUAL = 47.750000, DIFF = 0.000000
-k_lane[ 8] partial = 2080.500000
-====================================
-k_lane[ 9] partial = -3853.000000
-k_lane[10] partial = 4571.250000
-Block[128]: byte_off=2048, scale_off=256
-
-=== PER-K_LANE PARTIAL SUMS (before reduction) ===
-k_lane[11] partial = -1065.500000
-k_lane[ 0] partial = 4854.250000
-  scales: sfa=(0xb8,0x38)->(-1.000000,1.000000) sfb=(0x40,0x00)->(2.000000,0.000000)
-k_lane[12] partial = 1910.500000
-k_lane[ 1] partial = 1306.500000
-  dot0=80.250000 dot1=52.750000 block_result=-160.500000 running_sum=15543.500000
-k_lane[13] partial = 1224.000000
-k_lane[ 2] partial = -501.250000
-k_lane[14] partial = 390.750000
-k_lane[ 3] partial = -2801.250000
-k_lane[15] partial = 4685.750000
-k_lane[ 4] partial = 661.750000
-SUM of all partials = 16350.750000
-k_lane[ 5] partial = 2933.000000
-Block[256]: byte_off=4096, scale_off=512
-=================================================
-
-k_lane[ 6] partial = -1608.000000
-  scales: sfa=(0xb8,0xc4)->(-1.000000,-3.000000) sfb=(0xb8,0xc0)->(-1.000000,-2.000000)
-
-=== FULL DOT PRODUCT VERIFICATION (row=0, col=0) ===
-k_lane[ 7] partial = -226.750000
-  dot0=-26.000000 dot1=132.000000 block_result=766.000000 running_sum=28717.500000
-Written output value: 16352.000000
-k_lane[ 8] partial = 3619.750000
-num_scale_blocks=512 (params.k=8192)
-k_lane[ 9] partial = -307.250000
-k_lane[10] partial = 5023.000000
-Block[0]: byte_off=0, scale_off=0
-k_lane[11] partial = 2597.000000
-  scales: sfa=(0xc0,0x38)->(-2.000000,1.000000) sfb=(0x40,0x38)->(2.000000,1.000000)
-Block[384]: byte_off=6144, scale_off=768
-k_lane[12] partial = 2348.500000
-  dot0=-12.750000 dot1=130.500000 block_result=181.500000 running_sum=181.500000
-k_lane[13] partial = -4231.500000
-  scales: sfa=(0x40,0xc4)->(2.000000,-3.000000) sfb=(0xc4,0x00)->(-3.000000,0.000000)
-Block[1]: byte_off=16, scale_off=2
-k_lane[14] partial = -5321.750000
-  dot0=-31.750000 dot1=68.250000 block_result=190.500000 running_sum=32316.500000
-  scales: sfa=(0x38,0x00)->(1.000000,0.000000) sfb=(0x00,0xb8)->(0.000000,-1.000000)
-k_lane[15] partial = -1467.000000
-  dot0=120.000000 dot1=46.500000 block_result=0.000000 running_sum=181.500000
-SUM of all partials = 6879.000000
-=================================================
-
-
-=== FULL DOT PRODUCT VERIFICATION (row=0, col=0) ===
-Block[511]: byte_off=8176, scale_off=1022
-Written output value: 6880.000000
-  scales: sfa=(0x38,0xc4)->(1.000000,-3.000000) sfb=(0xc4,0x00)->(-3.000000,0.000000)
-Block[128]: byte_off=2048, scale_off=256
-num_scale_blocks=512 (params.k=8192)
-  dot0=233.000000 dot1=31.000000 block_result=-699.000000 running_sum=35330.250000
-Block[0]: byte_off=0, scale_off=0
-  scales: sfa=(0xc0,0x40)->(-2.000000,2.000000) sfb=(0x38,0xc0)->(1.000000,-2.000000)
-
-FINAL: expected_sum=35330.250000, written_value=35328.000000, diff=-2.250000
-  dot0=59.750000 dot1=18.500000 block_result=-193.500000 running_sum=1063.000000
-  scales: sfa=(0xc4,0x38)->(-3.000000,1.000000) sfb=(0xb8,0xb8)->(-1.000000,-1.000000)
-==============================================
-
-  dot0=34.250000 dot1=55.000000 block_result=47.750000 running_sum=47.750000
-Block[1]: byte_off=16, scale_off=2
-  scales: sfa=(0x00,0x40)->(0.000000,2.000000) sfb=(0x38,0xb8)->(1.000000,-1.000000)
-  dot0=48.250000 dot1=71.250000 block_result=-142.500000 running_sum=-94.750000
-Block[256]: byte_off=4096, scale_off=512
-  scales: sfa=(0x40,0x40)->(2.000000,2.000000) sfb=(0x00,0xc0)->(0.000000,-2.000000)
-  dot0=33.000000 dot1=-15.000000 block_result=60.000000 running_sum=5989.250000
-Block[128]: byte_off=2048, scale_off=256
-  scales: sfa=(0x38,0xc4)->(1.000000,-3.000000) sfb=(0x38,0xc0)->(1.000000,-2.000000)
-  dot0=134.000000 dot1=30.250000 block_result=315.500000 running_sum=1968.750000
-Block[384]: byte_off=6144, scale_off=768
-  scales: sfa=(0x38,0x40)->(1.000000,2.000000) sfb=(0xc4,0xc0)->(-3.000000,-2.000000)
-  dot0=113.500000 dot1=80.750000 block_result=-663.500000 running_sum=13045.500000
-Block[256]: byte_off=4096, scale_off=512
-  scales: sfa=(0x38,0xc4)->(1.000000,-3.000000) sfb=(0x38,0xc4)->(1.000000,-3.000000)
-  dot0=90.000000 dot1=184.750000 block_result=1752.750000 running_sum=6067.250000
-Block[511]: byte_off=8176, scale_off=1022
-  scales: sfa=(0x00,0xc0)->(0.000000,-2.000000) sfb=(0xb8,0x40)->(-1.000000,2.000000)
-  dot0=46.500000 dot1=91.250000 block_result=-365.000000 running_sum=16355.500000
-
-FINAL: expected_sum=16355.500000, written_value=16352.000000, diff=-3.500000
-Block[384]: byte_off=6144, scale_off=768
-==============================================
-
-  scales: sfa=(0x00,0x00)->(0.000000,0.000000) sfb=(0x40,0xb8)->(2.000000,-1.000000)
-  dot0=140.000000 dot1=36.000000 block_result=0.000000 running_sum=6387.250000
-Block[511]: byte_off=8176, scale_off=1022
-  scales: sfa=(0x00,0xb8)->(0.000000,-1.000000) sfb=(0xc0,0x38)->(-2.000000,1.000000)
-  dot0=155.000000 dot1=74.000000 block_result=-74.000000 running_sum=6878.000000
-
-FINAL: expected_sum=6878.000000, written_value=6880.000000, diff=2.000000
-==============================================
-
-A.stride(): (8192, 1, 1048576), B.stride(): (8192, 1, 58720256), C.stride(): (7168, 1, 917504), SFA.stride(): (1024, 1, 131072), SFB.stride(): (1024, 1, 7340032)
-A.stride(): (8192, 1, 1048576), B.stride(): (8192, 1, 58720256), C.stride(): (7168, 1, 917504), SFA.stride(): (1024, 1, 131072), SFB.stride(): (1024, 1, 7340032)
-A.stride(): (8192, 1, 1048576), B.stride(): (8192, 1, 58720256), C.stride(): (7168, 1, 917504), SFA.stride(): (1024, 1, 131072), SFB.stride(): (1024, 1, 7340032)
-A.stride(): (8192, 1, 1048576), B.stride(): (8192, 1, 58720256), C.stride(): (7168, 1, 917504), SFA.stride(): (1024, 1, 131072), SFB.stride(): (1024, 1, 7340032)
-A.stride(): (8192, 1, 1048576), B.stride(): (8192, 1, 58720256), C.stride(): (7168, 1, 917504), SFA.stride(): (1024, 1, 131072), SFB.stride(): (1024, 1, 7340032)
-A.stride(): (8192, 1, 1048576), B.stride(): (8192, 1, 58720256), C.stride(): (7168, 1, 917504), SFA.stride(): (1024, 1, 131072), SFB.stride(): (1024, 1, 7340032)
-A.stride(): (8192, 1, 1048576), B.stride(): (8192, 1, 58720256), C.stride(): (7168, 1, 917504), SFA.stride(): (1024, 1, 131072), SFB.stride(): (1024, 1, 7340032)
-A.stride(): (8192, 1, 1048576), B.stride(): (8192, 1, 58720256), C.stride(): (7168, 1, 917504), SFA.stride(): (1024, 1, 131072), SFB.stride(): (1024, 1, 7340032)
-A.stride(): (8192, 1, 1048576), B.stride(): (8192, 1, 58720256), C.stride(): (7168, 1, 917504), SFA.stride(): (1024, 1, 131072), SFB.stride(): (1024, 1, 7340032)
-A.stride(): (8192, 1, 1048576), B.stride(): (8192, 1, 58720256), C.stride(): (7168, 1, 917504), SFA.stride(): (1024, 1, 131072), SFB.stride(): (1024, 1, 7340032)
-A.stride(): (8192, 1, 1048576), B.stride(): (8192, 1, 58720256), C.stride(): (7168, 1, 917504), SFA.stride(): (1024, 1, 131072), SFB.stride(): (1024, 1, 7340032)
-[...] 190 lines omitted```"
+=== RAW DATA for output[0,0,0] (row=0,col=0) k=1024 ===
+Format: blk# sfa sfb A[16B] B[16B]
+00 c440 4000 0402fbfa0102fffbfeff0501fdfffa04 fafd02fd02fd04fdfcfafa0005fffafc
+01 3840 40c4 020405fb04fc03fffafffdfcfffdfeff 0105fffefafb0300fafc040203fdfb03
+02 0000 38b8 fc040405fffcfe000000fdfffbfbfcfb 05fe05fc03000201020400fafcfe0300
+03 00b8 40b8 fe02fafb02010504feff030304fe03fc fd02fb0501fafc010200fffb0401fdfb
+04 38b8 c000 fefafa040501fc03fafdfa000404feff fc05ff04fc000202fe0303fe04fffc01
+05 3840 c438 fafdfcfcfc00fafffefffefefefc05fd 0103faff01fc00050105fafc03fa0105
+06 3840 00c0 040100fefbfe0202fffcfc03fdfcfefc fefefffcfefcfe05fffe04010404fb02
+07 3800 c000 fa02fcfd00fd0400fa03fcfafbfbfc04 05fd03fbfc0003fcfe00fbfa0003fefc
+08 b8c0 38c0 030103000204ff0002fffefdfa03fefc fbfb0100fefe03fdfbfc03fa030002ff
+09 b840 b8c4 fdfe0003fc03fbfc03030201fb01fefd 0302fb0105000305fcfcfd0303010205
+10 c4c4 0038 fffc04fbfffe04fffbfdfd0405fdfdfc 02ff0500fdfafdfb03fafdfbfb0203fb
+11 b8c0 00c4 01fa050204fd010401fcfffffbfe00fb 0202fdff010403fbfe05fa00ff0403fb
+12 3840 00c4 0404fdfcfffdfdfc030203fafb0504fd fffffbfdff01fc02fe02fd05fdfcfbfc
+13 3838 c400 fcfefffdfbfffa00fefffafa00fefc03 fdfffefefcfefa01040504fefefffb04
+14 4000 c438 000301fe02fa0403fe0305fb04ff0500 fd02000002fa0103fe0300fa02fffb00
+15 0040 00c4 fffbfefbfa040101fefeff0303050204 01fdfd0003fafb04030505fbfb02fefd
+16 c000 38c4 01040005010301fdfd04fc0305fafcfe fc05040104040503fd03050304fbfafa
+17 3800 b8c0 03fdfe04fafa02fffb000000fefffb01 fd02fbfcfa05fbfcfafe02fc05fd03ff
+18 c0c4 0038 0403fbfefafe0404040500020104fc04 fc00fdfffbfd02faff030204faff0401
+19 c038 3840 fe04fcfafdfafbfd0402020205fafefe 0202fbfb0203fe0502030400fdfbfbfd
+20 4000 c0c0 01fafd05fbfdfefa01ff0002fcfd05fb fafd00fc0203fefd03fdfc00050202ff
+21 40c0 c0c0 fa03fcff03fafa01fefcfbfc040105fc fcfefbff030302fd0403fafbfe03fd02
+22 b8b8 4040 05fffafefc00fcfb0502fcfc04fb0500 04fefa050203fa0305fbfd0003ff04ff
+23 00b8 3838 03fc05fd04fa040000fd00fd01fa03fb 01fc0304fcff040105fa0002ff02fdfc
+24 40c0 b800 fdfafc01fbfefbfdff01fcfd04fd00ff ff02ff00fd0300fd0201fc05fd040305
+25 c038 38c0 fffafa02fa0501fd02fd050103fdfdfc fc01000101fe02fd05050005fffefffa
+26 4000 38b8 04fcfafa0200fd05fefcfdfe05faff05 0302ff05fffa02030103020001fafafa
+27 38c0 c0b8 fc03fefbfcfa0400010200020004fb05 fcfffb05fffcfefdfffb05fa01050405
+28 c4c0 c440 010105020203faff05fefcfe0005fe03 fdfefe030201010305fd0201fffffb05
+29 b840 b8b8 03050404fefe0002ff04ff01fcfefb04 fe03fefcfc04fc02fa02000305ff0104
+30 c0c4 00c0 fd0505fffdfd00fc04fcfafffd0003ff fafe04fd02000503fefffbfe01fefefa
+31 40b8 c0b8 0103fd00030104050100fdff0300fb04 fa05030002fefffb0200fb04fd01fe03
+32 4040 c440 fcfbfb03fefe0100000504fc02faff02 02fafefa020501fb04ff04feffff0104
+33 0038 4038 fa05010504fbfbfbfc00fd00fcff01fd fe01ff0200fbfdfe04fcfd03fffa05fc
+34 b8c4 00c0 0402fcfefa0503faff01ff05fc01fe05 04050200fe01ff0000fd0300fcfa0204
+35 0000 c038 fe01fd0104fefafd01fafbfdfffc0403 02fe0005fd0505fafb0105040500fe02
+36 4038 c0b8 ff000101ff020002fefa000200fa0100 00fbfa04feff010005fc0302fefb0201
+37 4038 b838 0202ff0505fa01050305fdfc01fdfafb 05fbfffdfb000403fbfeff02ff05fdfd
+38 c0b8 40c0 0204fdfc04fbff05fe0405fc0305fe03 03fdff03fd05fffefbfbfd0203fbfe03
+39 c000 4000 fd010102ff000304fdfafdff00fe0005 01fb04fb02fa0404fe0402fb00fafa00
+40 c400 c4c4 0201000202fc00ffff02fdfd02ffff04 fcfafc04fa0204fa00fb02fffdfdfdfc
+41 b800 c4c4 0503fbfefeff05ff0402fbff00fa04fd 04fffffd0402fafa04fafefcfc030300
+42 c0c0 c4c0 05fffe05fd00fffffe040103fd01fd03 fdfd01fb02020200010104040401fa04
+43 c000 c040 03fa02fb0004fe05fbfefbfe02fafafc 0304030502fdfd03fe03fcff01020205
+44 b8c0 b840 0301fb0105fc010002fcfb05fb0503fb 03010301ff01fffb01fffbfa03fc0502
+45 00b8 b8c4 fdfdfd01fffbfdfafffefd03fcfd0300 fdfa02fdfafefc04fe04fbfcfcfc01fe
+46 00c4 00c4 0301fbfffc00ff01020000fdfdff0005 fcfa0502fffa05fc0505fc0201fafffe
+47 3838 c0c0 fbfffb0200fdfdfd01fbfcfffafe0102 fcff05fffd04fa03fe05050402fcfd01
+48 b8c4 c0c0 0304fffe01020201fafcfa00030301fb fd04fefd0503fd01010500fb0304fe04
+49 c438 38b8 0400fdfa0402fa030402030400010404 fbfafb0400fe05fc02fc03fd0004fafa
+50 c440 00c0 050200fafbff040102fafd0305fd02fa fefdfe0000fafffb01fd00ff00fc04fe
+51 3840 38c0 fcfafd05fb0200050401fafd03040404 0303fdfefc0402fc04fdfffefbfcfdfd
+52 3800 b8c4 040501fcfcfc0505fc05fdfc01fffc04 000302fe00050502030204ff01ff0001
+53 c440 38c0 fe03fefefaff0005fe0504ff0104fafd fb03fa040500030405fe05fb0205fafe
+54 38c0 c400 fffbfafcfefa03fafa0102ff02fefcfd fbfbfffc0300040305fbfe03ffff04fc
+55 38c4 c400 fefd01fbfbfefe0204040004fcfefefd fa0305ff0505fb01fefeff0003fd0001
+56 3838 c4c4 040004fcfbfaff040000040401fffa00 0001fd0104fc0105fa010202fcfffafd
+57 b8b8 c4b8 00fafc0105fffffffd0503fefffefa04 fbfafffffffdfe01fd02fb05050404fb
+58 c400 c0c0 00fbfffe03fc04fdfc05fffbfdfa0200 ff03fa0504030302fffefd01fcfafb01
+59 0040 c4c4 00040002fe0201fc0203fdfe0102fcff fb0404fffdfd01fc0404020105030002
+60 c0c4 b8b8 0001fffdfffd02fc02fbfffbfc00fcfd fcfffdfbfe0100fe02fd01ff00fcffff
+61 c438 0038 fc0502fcfe04fffa020404ff040500fd 04fc0100fdfcfffefcff0002fb00fc03
+62 b838 38c0 0501fc03fd02fe01fefe04fbfefffbff 03fc02fa03fefd020104fe02fffb02fa
+63 3800 b800 fefa00fb0500fb02ff03fe05040304fa 05fb05fb02fa0004fbfd0102fb03fbfa
+=== END RAW DATA ===
+=== RAW DATA for output[0,0,0] (row=0,col=0) k=1024 ===
+Format: blk# sfa sfb A[16B] B[16B]
+00 c0c0 b800 05010101fa01fc01040401fa03fd0400 fa02010304fa03fd00fbfb05fe000504
+01 c0c4 b838 040102fa0404fffafc03020502fefdfc fb0303fbff02ff040201fefffefd05ff
+02 0038 40c0 050504fdfe05ff03fbfefd01fcfefc05 02fd05fc03030000fb030103fa050003
+03 b838 b8b8 0201fcfb01fb0505040501fe0002fffd fcfffdfa05fcfa000201fafafafdfc00
+04 38c4 c038 04fbfd04fcfa04fb04fafcfcfefc0202 0101fdfbfd010202fe0103fafeff0505
+05 0040 40c0 fa0002fafd0203fbfd03030205010405 fd00fc0504fb00fffffb00fafafc0000
+06 3840 b800 0302feff000101fdfbfcfb0305ff01fd 05fefe05fefdfb040304fdfe03020000
+07 3840 b8c4 ffff050404fafa00fb00feff00040100 fc040304fa05fe000400fbfdfdfcfafa
+08 40c4 3840 020002fc04ff03fafcfd04010301fbfe fd00fa04fcfa02fe0305fcfffdfbfb04
+09 40c0 c400 fe02fb0404fefa020004fb0300fb04fb 0100fbfafb02fafb00fa02010101fffc
+10 0040 0040 fb05ff00fafafafbfe0500fa04fd0304 ff02fefd03fffa05fdfc05fcfafffd05
+11 c438 c4b8 fa00fc05010302fc00000305fefdfafd 04fc010501fc01fdfffd02fbfaff01ff
+12 38c0 c400 05fcfb03fdfe03fd020002fafcfa0503 0301fc03fbfa00fefaff020504020402
+13 4038 b840 05fefdfafafefbfcfaff0100feff02fc 00fcfe020000fa00fafeff03fbfb05fe
+14 0000 00b8 fffe00fbfd03fbff02ff010500fbff02 00fe0000fe0300fefa01fd050404fafe
+15 b8b8 c4b8 fc00fe0405fbfdfb0000fe03fefa0101 fbfbfe030500fb03fffa05ffff000203
+16 38c4 00b8 fb00fc0100030101fafbfd05fe0502fc 00fd00fd0303000001fffbfe02fafa05
+17 3840 00c0 fafc0504fa020503010005fefe05fa00 04fa000002fdfe0003fe03fcfc00fafb
+18 40b8 b840 ff0403fefc02010300050001fbfefc01 020402fe01fafc05fcfbff03fd040500
+19 b8c0 0040 0003030304fefbfffafc0104fbffff03 ff040401fbfcfdfffaff01fc04fefe03
+20 4038 4040 0201fe05fcfafdfa05fefd030201fa05 04fa04fb01fafe05fafc0401fafe04ff
+21 00b8 38c0 00fc03fd0504fc02fc02fa0004fa0405 03fefbfa01fefc02fcfa05040503fb05
+22 00b8 c0c4 01fa030301fdfafa05fcfd01fe0100ff ff05fffafb02fc03030505fbfafefb02
+23 40c0 00b8 fafffc02040403fb040502010200fb05 fbfb03fa03050305fbfdfcfdfcfd0302
+24 c4c4 c4c4 fbfb05fc01fb01fc0204fffa05fafafb 04fd04fd0400fd00fd01ff03fdfcfd04
+25 40b8 3800 0100fa04fb04fc05fafbfcfd0101fcfb 0502fb03fdfeff040200fd00fe05fb00
+26 3800 b840 fbfd030405010104fefefd03fdfa01fe 05fa0300fffbfbfe0401fdfbfffffc04
+27 38c4 3800 0100fa01fc04fb05fbfb02fefe03fcff 0505fe040204fdfefc03fbff01fdfffe
+28 b800 b8c4 00fcfc00fffefdfb04ff02fe02fc05fb fffb01fbfc0404040200000001fefbff
+29 3838 c0c4 fc0205fe0102fafdfc0400020300fa05 0101fb02fcfcfa050105fdfeff02fe00
+30 4000 c0c0 fafdfa02fb02fbfb04fc0105030500fe fa00fffbfb040000fc04fcfafc0004ff
+31 c4b8 0040 ff0501ff05fa01fbfffafc030103fa00 fffa0304fc01fe02fe0200fcfeff0302
+32 c438 c0c0 fb00fa01fcfb020202fa01fefbff0500 010504040500fd02fcfefbfd02fb00fa
+33 00b8 3838 0401fefefdfc0205fcfe020405fe0004 0301fffa03fcfd05fafffd0402fefe02
+34 b8c4 40c4 02fdfdfa05faff0405fc0303fc01fe00 02fc04050102010103fb02030404ff03
+35 4038 c440 03fd02fe010104fe020004fe04fcfc01 01ffff02050404000101fdff0101fcfd
+36 b8c0 38c4 03040101fd00fe05fb020202fbfcfffa 04fe0504fdfcfbfffd0501ff04fd04fe
+37 38c0 c400 01fafd03fffcfa0502fb01fc050105fe fd0200fd03fe04fe0102ff0405fbfa05
+38 00c4 0038 fffefa03fd0203fbfc02fffd0000fc00 02010303fa04fdff000201030104fa04
+39 c038 4000 fafdfefdfd03fcfefd00010301000302 02feff030205fcfafefffbfafffafcfb
+40 38c0 c038 ff04fa00050400040002fc030402fafe 00fc01fc0005fc02fb04fa00040103fe
+41 3838 c000 010500030202fe0000fcfafb0405fbff fb040100fafa010304fe050005fcfc03
+42 c400 c4c4 040400fafdfd0200fffa00fc04fe0505 fcff0404ff00fd04050405fdfd020501
+43 3800 c0c0 fa0003fd03fc04fdfdfe03fd00fcfb02 04fafafbfa04020001faff0000fefa00
+44 c4b8 c438 fd04fe05fcfd05000000fcfffcfafcff fe02fd0001fffbfcfa0100fc0200fafa
+45 c438 b838 04fefc05fa02fc02fafffc01fefffd02 fcfe000401faffff00fe03fb00040502
+46 b8c4 c438 0000fefe01030505fefb03ffff03fd00 fafffd01fafdff0501fa040200050101
+47 00b8 4000 03ff04020305fafafefefcfc020005fe fcfd00fdfbfb000302000301ff040001
+48 c0c0 c040 03000504fb01fa04ff0203fffa010000 0401010100fd0302010403fe02ff0505
+49 40c0 c438 05040201030204050300fd0403fcfffd 00fa050103000200fefafa02fffb02fa
+50 c438 c440 05fc00fa02fcff01ff050001ff01fafd 0400fdfcfcfe0202fcfbff030400fffa
+51 3840 38c0 fefafe05fefe0304fffbfc050104fdfc 020402fd04fefb01040203fefe01fdfc
+52 b840 c400 00fcfafe0404fdff050101fc04fbff05 fefafafcfbfe02fc03010402fe020004
+53 b8b8 40c0 ff0100fa03fefbfe050501fd02fd0403 01000300fd00fc0501fefdfc04fdfd04
+54 00c0 00b8 0202010304ff05020001fafffaff0101 05fb0304fefbfc03fdfa0500fa02fe01
+55 40c0 b840 fefbfffefafcff01fffa0505fafc0404 fa0204fafe04fcfdfefb01fdfdfd04fd
+56 c4c0 00b8 03fcff03fd0402fefbfd01fafefafe05 fefc04fd0001fc04fbfd020302fbfbfe
+57 c4c0 3840 fb0001fcfd04fb0002fdfbfcfafefd01 0105fb02fafa02fbfb02fb000403fb05
+58 4038 b8c4 01fa0302fffafffb01fe04fd02fc0102 fa0303030101fc0400fb0201ff04fc02
+59 40b8 c4b8 fffb05fffdfd04fdfafa04fb00fcfb03 01fd05fd02000302fe0004fcfefcfc00
+60 c4c0 3838 01fffd0202fd02fc0502fafcfbff04fc 0105fbfefcfafc0200fc0105ff030401
+61 c0c4 40b8 03fe0405fb05fb01fb040402010401fb 0001ff00fdfe0301fd0000fbfe05fc02
+62 b838 4040 00000105fdfb0002fd020304fcfa02fb fd050104fdfefc0104fbfefbfc05fffe
+63 c0c0 c000 fa0005fefefffcffff05fcfefdfbfd05 05fbfe03fe05fafafbff0400030202fd
+=== END RAW DATA ===
+=== RAW DATA for output[0,0,0] (row=0,col=0) k=1024 ===
+Format: blk# sfa sfb A[16B] B[16B]
+00 c000 b8c4 fefb01fbfd04fcfefb0303ff02fb04fa ff03010102fefeff02050502fefafe01
+01 0040 0040 fdfafbfc0302fd02fafc0403fdfdfffb 050203000003fa03fa01020003fafbff
+02 c040 4038 01fafa02fefb05ff0202fa02fafefefa fa03fb000500fafe02fb010300040403
+03 38c4 38b8 0402ff03fe01ff01fc0405fafd050503 01fc02fefb04fafa04fe01fdfd030505
+04 00c4 c440 fc0501fc05fcfd01fe0002faff050102 0104fffe0202fdff01ff050505fa03fd
+05 c4b8 38c4 0000040504fbfcfbfd0001fcfefafbfe fbfbfe030303feff03fffe05ff00fd03
+06 0038 40c0 fefa02fefa050502fa01fafdff0002ff fdfffffcfc0002fb01fefafb00fe0501
+07 38c0 40b8 fafffd02fc0000fb0204fefbfbfafefd 05ff020002fcfc0203fcfc05ff02fa03
+08 c000 38c4 fd0502fefe02fdfe0002fafb01fcfa05 02fcfc030505fafafb0300fbfbfc0305
+09 c038 b8c0 fbfcfefc000502fc010401fd05fcfafe fb05ff0302fe0101fafffefafefcfc03
+10 0000 b838 0103fbfd05fd000302fafafffbfa0200 fa02fffd01fefa040204fcfafbfa05fb
+11 4040 40b8 02fdfffafe0202fbfbfc0500040100fa fdfc0102050501fd03fffc03fefd04fb
+12 38c0 c0c0 03050300fa040505fdfefdff01fb03fc fe03fdfa0505fdfc0104fb03ff0002fc
+13 40b8 00c0 0300fe050200fafbfa0500fffffa0402 02fb04030304fa0004fffd04faff0304
+14 00c0 b8c0 050501fdff0202fcfbff05fe040203fe fcfbff0002fa03fd00fc050404fbfeff
+15 40c4 0040 fcfafdff030004fbfa02fe010400fb04 ff0100010203fffe030002fefa030005
+16 c4c4 c4c0 fffffafe02fe04ff040201fefefafb03 00fc0400fefcfbfd01fd020301fdfc04
+17 c0b8 00b8 0103010300fd050300fdfbfe0204fcff fa03fe0402fffd000101fd00fefa04fa
+18 c4c4 3838 fe04fffbfbfdfdfd0205fefc0302fa02 03fffe03fcfe05fcfefffa020302fcff
+19 c000 c038 00fe010204fd040502fcfe02fafbfd03 01fbfcfb05fb040501fffdfeff020403
+20 40c0 38c0 fe010400fa0102040404fd04fc02fd04 fc0503fe01fd0505fc00fcfb010202fa
+21 40c4 c040 000404ff040401fa05fc0000fefaff04 ff0304fafd030304fb04fdfffd04fd02
+22 c0c4 0040 040000fa05fe03050300fffafefefa04 0404050202ff0104fe0303fefa0200fb
+23 0038 c0b8 fbfd0504ffff020404fafbfb05fcff00 000004fffffffb000501fdfcff04fafe
+24 c0c0 c0c0 fbfd04030304fdfcfd02fc0102000504 020000fffefc03fdfeff0105fe010301
+25 4040 40b8 0003fc02030501fcfbfe0503fb030401 000003fffcfc02040503fefb02010000
+26 00c0 38c0 00020504ff03fafffc0304fc0001fc02 fe0201fd03fbfe0104fcfdfefb000504
+27 b800 40b8 0004040300fafbfe05000401fd01fb04 fc0501fa0004fd0305ff01fa010501fc
+28 38c4 c440 05ff00fffa02fc02fc05fc00fb0403fc fcfe000404fefafdfdfdfd01040100fd
+29 b8c4 b8c0 01ff02fd000204fdfffa05fbfa010103 fdfb01fafc03fefafe05fbfd01030302
+30 b838 c4b8 05fe03fbfbfcfbfafe00fafa03fdfe04 fbfbfb01fb02040303020403fdfdfbfd
+31 00b8 b8c0 ff00040504feffff03faff01fffcff01 fcfefa0304feff04fefa00fbfa02ff01
+32 b838 3840 01fbfeff04fe0305fa02fd04fb02fe00 040504ff01fafd03fb04010404fe0301
+33 0038 c4b8 faff050303020303fa01ff0304fb01fd fafa040202fbfefefefefc00fdff02fb
+34 c400 40c0 01040003fafb00fbfc03040300fb0403 01000505fffdfbfa030300fdfb04fe01
+35 3800 b8c0 04fa03ff00fb000001fcfbff04fd04fd 02fffffcfbfafd020505fefbfafffa05
+36 3838 00c0 03fe03fdff03fd0105fafbfdff01fd00 00fa01fffa0002fe01fd010205fbfc05
+37 c400 3800 03fa030101fffffffefb05fcfffd00fb 05fd04ff01fafffafb0402fa040202fb
+38 38c0 c438 04fb0405fcfafbff01fefffffcfd0003 fcff00fa0204fa00ff04fcfd01fd0305
+39 b838 b8c4 03fdfdfafe04fdfe0504fafefcfa01fd fa0501020503fafc02fdfa05fc020400
+40 c000 4000 04fa04fbfcff0305fdfffd01fc0300ff fb03fe0400fdfb02fafb0304fa01fc03
+41 b8c0 40c4 fb05fc0303fb0305fefe0404fffc0102 000000fdfefffe02fa0002fa05fffafe
+42 40c4 c4c0 00fa0403fffb02fa0203fb0301fbfffb 03fcfe04030500fefafa0501fcfefb00
+43 b8c0 b800 02010400fb02fc04050505fdfcff0203 0304fd04fa03fffcfffffafe0100fe03
+44 00b8 c040 fafb00fd05fffffefafbfcfc040500fa 02020400fd0004fe0403fafe00fbfffc
+45 0040 38c4 fcfdfc05ff05fafcfd020202fa00ff05 fbfdfe00fc03030402fafefdff04fbfa
+46 38b8 c038 fcfa050401fdfd05fb0000fa05fd04fa ff010400fbfcfa00faff05fc000304fb
+47 4038 b800 fafbfefa03ff02fd01fd0502fb00faff 0303fd03fa03fa0103fc03fcff0500fb
+48 b838 40b8 fc000202fbfdfc0402fafb0002030401 04ff03fcfd0401fbfbfd00fc04fb0102
+49 4000 40b8 05fafe02020205fafe0304fffafefcff fffdfefd050000fa04fb02fc01050502
+50 40c0 c4b8 0002fbfafc02fb020103fb00fe000003 fefcfd04fdfefbfd02fafbfcfe0000fd
+51 0000 b800 fafcfa0303010505fb00ff02020404fd 0002fb02fe0101fbfefc0200fb050305
+52 c0b8 40b8 00fbff02fe02020003fefb0103fb0201 0301fbfc03fafc000401050300020400
+53 c0c0 0038 fcfcfcfafd0500fefc01fd030501fdfa 0103fbfe01fbfefb0000fbfffd04fa02
+54 40b8 00b8 fc01fdfc040404ff01fafbfffb04ff00 fd02fbfffd0204fcfefbfe00fd0101fb
+55 c4c4 c4b8 fe010100fb0503000304faff01fafbfd fa0403ff03fd00fcfcfffdfcfcfbfefe
+56 b800 0040 fffcfafd04fa0205040201fa03fd0404 0001fc03fcfbfb01ff0502fc0300fd03
+57 c038 c038 04fe04fffffffd0304fd03fbfefbfb03 0504fdfd05fbfafa00fe02fefbfffcff
+58 3840 4000 04fbfb0204fcfb05fdfafc0302fffffc ff05ff05010201fefffe000102fffcfd
+59 4000 3838 fd000202020103fcfcfefb0405030104 000200010200ff00fcfa03fc0002fdfb
+60 4040 c000 fc0401010502fdff0304fcfafcfffb03 0302040004fb03fefb02fc0401010103
+61 38c4 c0c4 fe05fffcfdfefafb00fa00ff00fbfffe 01fa02fefcfcfcfb02040504fffb00fa
+62 3840 b800 fcfefdfbfcfe0302ff05ff03fffdfffd fdfafffefafd03fd0305030001030200
+63 c040 c0c4 040100fdfaff03fbfafdfefeff00fa05 fa03fd010401feff02fb0501fcfb01fd
+=== END RAW DATA ===
+=== RAW DATA for output[0,0,0] (row=0,col=0) k=1024 ===
+Format: blk# sfa sfb A[16B] B[16B]
+00 c0c4 b8c4 0205ff0305fb03050204fb02fb00fc02 fbfc01fffbfefcfa0101fffffcfc0002
+01 3840 40c0 fb0402fbfb02fc0000ff00fa00000301 05fbfe00fcfefdfafcfe0201fa0204ff
+02 b800 b8c0 00ff0205fffa01fc05fbfe01fcfd04ff faff03fa03ff040104fcfbfcfb02fefc
+03 3838 c4c4 fc00020002fffa0503fe0003faff0500 ff02fffbff04fdfafbfa0100ff010000
+04 38b8 b800 00fcfefc0104fd01fffe020400fefc01 04fb02fefd0200fb030101ff03fb0202
+05 b800 38c0 04fdfdff0004fdfc02fdfa01fbff0005 05fa05fbfe01fd030400fc02fffefe02
+06 c0c4 40c4 0005fa010003020303040404fffefdfe 03fafdfa0503fc00ff0201fafa01fe04
+07 b8b8 00c4 ff01020104fffdfe0404fb05fbff0004 fdfefffafc01fcfefefd03fcfd0402ff
+[...] 3140 lines omitted```"

@@ -1,0 +1,63 @@
+# Builder commands for python source
+# Automatically generated - execute to recreate AST
+
+# === ASM Block 0 ===
+from builder import ASTBuilder, reg, imm, vec, mem, sym
+from ptx_ast import Instruction, Directive
+
+b = ASTBuilder()
+b.raw('{')
+b.reg("b8", ['tmp0', 'tmp1', 'tmp2', 'tmp3'])
+b.instr("mov", ['b32'], [vec(reg("tmp0"), reg("tmp1"), reg("tmp2"), reg("tmp3")), reg("%4")])
+b.instr("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("%0"), reg("tmp0")])
+b.instr("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("%1"), reg("tmp1")])
+b.instr("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("%2"), reg("tmp2")])
+b.instr("cvt", ['rn', 'f16x2', 'e2m1x2'], [reg("%3"), reg("tmp3")])
+b.raw('}')
+
+ast = b.build()
+
+# === ASM Block 1 ===
+from builder import ASTBuilder, reg, imm, vec, mem, sym
+from ptx_ast import Instruction, Directive
+
+b = ASTBuilder()
+b.instr("cvt", ['rn', 'f16x2', 'e4m3x2'], [reg("%0"), reg("%1")])
+
+ast = b.build()
+
+# === ASM Block 2 ===
+from builder import ASTBuilder, reg, imm, vec, mem, sym
+from ptx_ast import Instruction, Directive
+
+b = ASTBuilder()
+b.instr("ld", ['global', 'nc', 'L1::no_allocate', 'v2', 'u64'], [vec(reg("%0"), reg("%1")), mem(reg("%2"))])
+
+ast = b.build()
+
+# === ASM Block 3 ===
+from builder import ASTBuilder, reg, imm, vec, mem, sym
+from ptx_ast import Instruction, Directive
+
+b = ASTBuilder()
+b.instr("ld", ['global', 'nc', 'L1::evict_last', 'v2', 'u64'], [vec(reg("%0"), reg("%1")), mem(reg("%2"))])
+
+ast = b.build()
+
+# === ASM Block 4 ===
+from builder import ASTBuilder, reg, imm, vec, mem, sym
+from ptx_ast import Instruction, Directive
+
+b = ASTBuilder()
+b.instr("ld", ['global', 'nc', 'L1::no_allocate', 'u16'], [reg("%0"), mem(reg("%1"))])
+
+ast = b.build()
+
+# === ASM Block 5 ===
+from builder import ASTBuilder, reg, imm, vec, mem, sym
+from ptx_ast import Instruction, Directive
+
+b = ASTBuilder()
+b.instr("ld", ['global', 'nc', 'L1::evict_last', 'u16'], [reg("%0"), mem(reg("%1"))])
+
+ast = b.build()

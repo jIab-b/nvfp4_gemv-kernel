@@ -19,7 +19,7 @@ def custom_kernel(data: input_t) -> output_t:
     """
     # c: [m, n, l] is pre-allocated memory to avoid timing allocation overhead.
     a, b, sfa, sfb, sfa_permuted, sfb_permuted, c = data
-
+    # note, shape of k is actually k / 2, as fp4 is packed as fp8
     # Your implementation here
 
     return c
