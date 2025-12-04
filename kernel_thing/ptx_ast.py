@@ -580,6 +580,126 @@ def _parse_asm_block(source: str, start: int) -> Optional[InlineAsmBlock]:
 
 
 # =============================================================================
+# CUDA SOURCE REPRESENTATION
+# =============================================================================
+
+@dataclass
+class CudaCode:
+    """Raw C++/CUDA code segment (between asm blocks)."""
+    text: str
+
+    def emit(self) -> str:
+        return self.text
+
+    def to_builder(self) -> str:
+        # Escape the text for Python string literal
+        escaped = self.text.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
+        return f'b.cuda("""{self.text}""")'
+
+
+@dataclass
+class CudaSource:
+    """
+    Complete CUDA source as sequence of segments.
+    Segments alternate between CudaCode and InlineAsmBlock.
+    """
+    segments: List[Union[CudaCode, InlineAsmBlock]] = field(default_factory=list)
+
+    def emit(self) -> str:
+        """Reconstruct the full CUDA source."""
+        return "".join(seg.emit() if isinstance(seg, CudaCode) else _emit_asm_block(seg)
+                       for seg in self.segments)
+
+    def find_asm_blocks(self) -> List[InlineAsmBlock]:
+        """Get all inline asm blocks."""
+        return [seg for seg in self.segments if isinstance(seg, InlineAsmBlock)]
+
+    def find_cuda_code(self) -> List[CudaCode]:
+        """Get all CUDA code segments."""
+        return [seg for seg in self.segments if isinstance(seg, CudaCode)]
+
+    def to_builder_commands(self, structured: bool = False) -> str:
+        """
+        Generate Python code that reconstructs this CUDA source via builder API.
+
+        Args:
+            structured: If True, use StructuredCudaBuilder with parsed CUDA AST.
+                       If False, use legacy CudaBuilder with raw text blobs.
+        """
+        if structured:
+            return self._to_structured_builder_commands()
+
+        lines = [
+            "from builder import CudaBuilder, ASTBuilder, reg, imm, vec, mem, sym",
+            "from ptx_ast import Instruction, Directive",
+            "",
+            "cb = CudaBuilder()",
+        ]
+        for seg in self.segments:
+            if isinstance(seg, CudaCode):
+                # Use triple quotes for multiline CUDA code
+                lines.append(f'cb.cuda("""{seg.text}""")')
+            elif isinstance(seg, InlineAsmBlock) and seg.ast:
+                lines.append("")
+                lines.append("# --- inline asm block ---")
+                lines.append("b = ASTBuilder()")
+                for stmt in seg.ast.statements:
+                    lines.append(stmt.to_builder())
+                lines.append(f"cb.asm(b.build(), outputs={repr(seg.outputs)}, inputs={repr(seg.inputs)}, clobbers={repr(seg.clobbers)})")
+        lines.append("")
+        lines.append("cuda_source = cb.build()")
+        return "\n".join(lines)
+
+    def _to_structured_builder_commands(self) -> str:
+        """Generate structured builder commands using CUDA AST."""
+        # Import cuda_ast locally to avoid circular imports
+        from cuda_ast import parse_cuda
+
+        # Get full source and parse with CUDA AST
+        full_source = self.emit()
+        cuda_ast = parse_cuda(full_source)
+
+        return cuda_ast.to_builder()
+
+
+def _emit_asm_block(block: InlineAsmBlock) -> str:
+    """Emit an inline asm block back to C code."""
+    if block.ast:
+        ptx = escape_ptx(emit_ptx(block.ast))
+    else:
+        ptx = escape_ptx(block.ptx_normalized)
+    return _build_asm_block(ptx, block.outputs, block.inputs, block.clobbers)
+
+
+def parse_cuda_source(source: str) -> CudaSource:
+    """Parse CUDA source into segments of code and asm blocks."""
+    segments = []
+    asm_blocks = extract_inline_asm(source)
+
+    if not asm_blocks:
+        # No asm blocks - entire source is CUDA code
+        return CudaSource(segments=[CudaCode(text=source)])
+
+    # Sort by position
+    asm_blocks.sort(key=lambda b: b.start_pos)
+
+    pos = 0
+    for block in asm_blocks:
+        # Add CUDA code before this asm block
+        if block.start_pos > pos:
+            segments.append(CudaCode(text=source[pos:block.start_pos]))
+        # Add the asm block
+        segments.append(block)
+        pos = block.end_pos
+
+    # Add remaining CUDA code after last asm block
+    if pos < len(source):
+        segments.append(CudaCode(text=source[pos:]))
+
+    return CudaSource(segments=segments)
+
+
+# =============================================================================
 # HIGH-LEVEL API
 # =============================================================================
 
@@ -591,6 +711,7 @@ class DeconstructedSource:
     asm_blocks: List[InlineAsmBlock] = field(default_factory=list)
     ptx_ast: Optional[PTXModule] = None
     cuda_var_name: Optional[str] = None
+    cuda_source: Optional[CudaSource] = None  # Full CUDA representation
 
 
 def deconstruct(source: str, source_type: str = "auto") -> DeconstructedSource:
@@ -610,13 +731,15 @@ def deconstruct(source: str, source_type: str = "auto") -> DeconstructedSource:
     if source_type == "ptx":
         result.ptx_ast = parse_ptx(source)
     elif source_type == "cuda":
-        result.asm_blocks = extract_inline_asm(source)
+        result.cuda_source = parse_cuda_source(source)
+        result.asm_blocks = result.cuda_source.find_asm_blocks()
     elif source_type == "python":
         for match in re.finditer(r'(\w+)\s*=\s*r?"""(.*?)"""', source, re.DOTALL):
             var_name, content = match.group(1), match.group(2)
             if '__global__' in content or 'asm volatile' in content or '__device__' in content:
                 result.cuda_var_name = var_name
-                result.asm_blocks = extract_inline_asm(content)
+                result.cuda_source = parse_cuda_source(content)
+                result.asm_blocks = result.cuda_source.find_asm_blocks()
                 break
 
     return result
@@ -627,15 +750,14 @@ def reconstruct(doc: DeconstructedSource) -> str:
     if doc.source_type == "ptx" and doc.ptx_ast:
         return emit_ptx(doc.ptx_ast)
 
-    if doc.source_type == "cuda" and doc.asm_blocks:
-        return _reconstruct_with_asm_blocks(doc.original, doc.asm_blocks)
+    if doc.source_type == "cuda" and doc.cuda_source:
+        return doc.cuda_source.emit()
 
-    if doc.source_type == "python" and doc.asm_blocks and doc.cuda_var_name:
+    if doc.source_type == "python" and doc.cuda_source and doc.cuda_var_name:
         match = re.search(rf'({re.escape(doc.cuda_var_name)}\s*=\s*r?)"""(.*?)"""',
                          doc.original, re.DOTALL)
         if match:
-            cuda_source = match.group(2)
-            new_cuda = _reconstruct_with_asm_blocks(cuda_source, doc.asm_blocks)
+            new_cuda = doc.cuda_source.emit()
             return doc.original[:match.start(2)] + new_cuda + doc.original[match.end(2):]
 
     return doc.original

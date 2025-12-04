@@ -25,7 +25,8 @@ from ptx_ast import deconstruct_file, reconstruct, DeconstructedSource
 
 def process_file(input_path: str, output_dir: str,
                  generate_commands: bool = False,
-                 verify: bool = False) -> Tuple[bool, str]:
+                 verify: bool = False,
+                 structured: bool = False) -> Tuple[bool, str]:
     """
     Process a single file.
 
@@ -73,7 +74,7 @@ def process_file(input_path: str, output_dir: str,
     # Generate builder commands if requested
     if generate_commands:
         commands_path = output_path.with_suffix('.commands.txt')
-        commands = _generate_all_commands(doc)
+        commands = _generate_all_commands(doc, structured=structured)
         with open(commands_path, 'w') as f:
             f.write(commands)
 
@@ -82,11 +83,12 @@ def process_file(input_path: str, output_dir: str,
     return True, f"Written to {output_path} ({stats})"
 
 
-def _generate_all_commands(doc: DeconstructedSource) -> str:
+def _generate_all_commands(doc: DeconstructedSource, structured: bool = False) -> str:
     """Generate builder commands for all AST blocks in the document."""
     lines = [
         f"# Builder commands for {doc.source_type} source",
-        f"# Automatically generated - execute to recreate AST",
+        f"# Automatically generated - execute to recreate AST/CUDA",
+        f"# Mode: {'structured' if structured else 'legacy'}",
         "",
     ]
 
@@ -95,13 +97,20 @@ def _generate_all_commands(doc: DeconstructedSource) -> str:
         lines.append(doc.ptx_ast.to_builder_commands())
         lines.append("")
 
-    for i, block in enumerate(doc.asm_blocks):
-        lines.append(f"# === ASM Block {i} ===")
-        if block.ast:
-            lines.append(block.ast.to_builder_commands())
-        else:
-            lines.append("# (no AST)")
+    # Prefer full CUDA source if available (includes both code and asm)
+    if doc.cuda_source:
+        lines.append("# === Full CUDA Source ===")
+        lines.append(doc.cuda_source.to_builder_commands(structured=structured))
         lines.append("")
+    elif doc.asm_blocks:
+        # Fallback to individual asm blocks
+        for i, block in enumerate(doc.asm_blocks):
+            lines.append(f"# === ASM Block {i} ===")
+            if block.ast:
+                lines.append(block.ast.to_builder_commands())
+            else:
+                lines.append("# (no AST)")
+            lines.append("")
 
     return "\n".join(lines)
 
@@ -110,6 +119,13 @@ def _get_stats(doc: DeconstructedSource) -> str:
     """Get statistics string for a document."""
     if doc.ptx_ast:
         return f"{len(doc.ptx_ast.statements)} statements"
+
+    if doc.cuda_source:
+        n_cuda = len(doc.cuda_source.find_cuda_code())
+        n_asm = len(doc.cuda_source.find_asm_blocks())
+        total_stmts = sum(len(b.ast.statements) if b.ast else 0
+                         for b in doc.cuda_source.find_asm_blocks())
+        return f"{n_cuda} cuda segments, {n_asm} asm blocks, {total_stmts} ptx stmts"
 
     if doc.asm_blocks:
         total_stmts = sum(len(b.ast.statements) if b.ast else 0 for b in doc.asm_blocks)
@@ -144,6 +160,8 @@ def main():
                         help="Verify roundtrip fidelity without writing files")
     parser.add_argument("-q", "--quiet", action="store_true",
                         help="Only print errors")
+    parser.add_argument("-s", "--structured", action="store_true",
+                        help="Use structured CUDA AST for command generation")
 
     args = parser.parse_args()
 
@@ -155,7 +173,8 @@ def main():
             file_path,
             args.output,
             generate_commands=args.commands,
-            verify=args.verify
+            verify=args.verify,
+            structured=args.structured
         )
 
         if success:
