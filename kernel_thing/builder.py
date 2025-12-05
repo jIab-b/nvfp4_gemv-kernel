@@ -581,6 +581,23 @@ class StructuredCudaBuilder:
         ))
         return self
 
+    # --- Scoped Blocks ---
+
+    def block_begin(self) -> "StructuredCudaBuilder":
+        """Begin a scoped block { ... }"""
+        self._stack.append(("block", []))
+        return self
+
+    def block_end(self) -> "StructuredCudaBuilder":
+        """End scoped block."""
+        if not self._stack or self._stack[-1][0] != "block":
+            raise ValueError("block_end() without matching block_begin()")
+        ctx = self._stack.pop()
+        body = ctx[1]
+        from cuda_ast import Block
+        self._current_list().append(Block(body=body))
+        return self
+
     # --- Inline ASM ---
 
     def asm(self, ptx_ast: PTXModule,

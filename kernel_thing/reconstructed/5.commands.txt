@@ -1,0 +1,529 @@
+# Builder commands for python source
+# Automatically generated - execute to recreate AST/CUDA
+# Mode: structured
+
+# === Full CUDA Source ===
+from cuda_ast import *
+from builder import CudaBuilder, ASTBuilder, reg, imm, vec, mem, sym
+
+cb = CudaBuilder()
+cb.include("torch/extension.h", system=True)
+cb.include("cuda_runtime.h", system=True)
+cb.include("cuda_fp16.h", system=True)
+cb.include("cuda_fp4.h", system=True)
+cb.include("cuda_fp8.h", system=True)
+cb.include("ATen/cuda/Exceptions.h", system=True)
+cb.include("ATen/cuda/CUDAContext.h", system=True)
+cb.comment('NVFP4 is 4-bit float (e2m1): 1 sign bit, 2 exponent bits, 1 mantissa bit')
+cb.comment('Stored as 2 values per byte')
+cb.comment('Scale factors are FP8 (e4m3) for every 16 FP4 values')
+cb.func_begin("warp_reduce_sum", TypeRef("float"), params=[Param("val", TypeRef("float"))], qualifier="__device__", forceinline=True)
+    cb.for_begin('int offset = 16', 'offset > 0', 'offset /= 2', unroll=True)
+        cb.stmt('val += __shfl_down_sync(0xffffffff, val, offset)')
+    cb.for_end()
+    cb.ret('val')
+cb.func_end()
+cb.comment('Batched kernel: processes all L batches in one launch for better efficiency.')
+cb.comment('Each block handles multiple M rows, each warp handles one or more L batches.')
+cb.comment('Inputs have native PyTorch strides from .permute() - K dimension has stride 1 (contiguous).')
+cb.comment('Template parameters:')
+cb.comment('SmallK: true for small K (flat loops, .cg cache), false for large K (nested loops, .cs cache)')
+cb.comment('LPerWarp: number of L batches each warp processes (2 for L=4,8)')
+cb.func_begin("nvfp4_gemv_batched_kernel", TypeRef("void"), params=[Param("a", TypeRef("const uint8_t* __restrict__")), Param("[M", TypeRef("//")), Param("K//2", TypeRef("void")), Param("(K_half", TypeRef("L] with strides")), Param("1", TypeRef("void")), Param("b", TypeRef("M*K_half) const uint8_t* __restrict__")), Param("[N", TypeRef("//")), Param("K//2", TypeRef("void")), Param("(K_half", TypeRef("L] with strides")), Param("1", TypeRef("void")), Param("N*K_half)", TypeRef("void")), Param("N", TypeRef("void"), default='128 padded\n    const __nv_fp8_e4m3* __restrict__ sfa'), Param("[M", TypeRef("//")), Param("K//16", TypeRef("void")), Param("(K_div_16", TypeRef("L] with strides")), Param("1", TypeRef("void")), Param("sfb", TypeRef("M*K_div_16) const __nv_fp8_e4m3* __restrict__")), Param("[N", TypeRef("//")), Param("K//16", TypeRef("void")), Param("(K_div_16", TypeRef("L] with strides")), Param("1", TypeRef("void")), Param("c", TypeRef("N*K_div_16) half* __restrict__")), Param("[M", TypeRef("//")), Param("1", TypeRef("void")), Param("M", TypeRef("L] output FP16 int")), Param("K", TypeRef("int")), Param("L", TypeRef("int"))], qualifier="__global__", template=['bool SmallK', 'int LPerWarp'])
+    cb.comment('Shared memory layout: B vectors [L, K/2], sfb [L, K/16]')
+    cb.stmt('extern __shared__ uint8_t smem[]')
+    cb.stmt('int K_half = K / 2')
+    cb.stmt('int K_div_16 = K / 16')
+    cb.stmt('uint8_t* sb = smem')
+    cb.comment('B vectors: L × K/2 bytes')
+    cb.stmt('__nv_fp8_e4m3* ssfb = reinterpret_cast<__nv_fp8_e4m3*>(sb + L * K_half)')
+    cb.comment('Scale factors B: L × K/16')
+    cb.stmt('int tid = threadIdx.x')
+    cb.stmt('int warp_id = threadIdx.x / 32')
+    cb.stmt('int lane = threadIdx.x % 32')
+    cb.stmt('const int N_padded = 128')
+    cb.comment('B is padded to 128 rows for torch._scaled_mm')
+    cb.comment('Cooperatively load all L B vectors into shared memory with vectorization')
+    cb.comment('Strategy depends on K size:')
+    cb.comment('- Large K (nested loops): exploit K-contiguity for coalesced global loads')
+    cb.comment('- Small K (flat loops): better memory-level parallelism across L')
+    cb.comment('B in memory: b[n, k, l] at offset n*K_half + k + l*N_padded*K_half')
+    cb.comment('We only need n=0 (the actual vector, rest is padding)')
+    cb.comment('Use uint4 vectorization (16 bytes) + .cg cache hint for L2 caching')
+    cb.if_begin('!SmallK', constexpr=True)
+        cb.comment('Large K (SmallK=false): nested loops with vectorized loads')
+        cb.stmt('int num_vec4_loads = K_half / 16')
+        cb.comment('K is always divisible by 64, so K_half divisible by 32')
+        cb.for_begin('int l = 0', 'l < L', 'l++')
+        cb.for_begin('int i = tid', 'i < num_vec4_loads', 'i += blockDim.x')
+        cb.stmt('uint4 data')
+        cb.stmt('const uint32_t* b_ptr = reinterpret_cast<const uint32_t*>(&b[i * 16 + l * N_padded * K_half])')
+        cb.asm_raw(['ld.global.cg.v4.u32 {%0, %1, %2, %3}, [%4];'], outputs=[('=r', 'data.x'), ('=r', 'data.y'), ('=r', 'data.z'), ('=r', 'data.w')], inputs=[('l', 'b_ptr')], clobbers=[])
+        cb.stmt('*reinterpret_cast<uint4*>(&sb[l * K_half + i * 16]) = data')
+    cb.for_end()
+    cb.for_end()
+    cb.else_begin()
+        cb.comment('Small K (SmallK=true): flat loops with vectorized loads')
+        cb.stmt('int num_vec4_loads = K_half / 16')
+        cb.for_begin('int li = tid', 'li < num_vec4_loads * L', 'li += blockDim.x')
+        cb.stmt('int i = li / L')
+        cb.stmt('int l = li % L')
+        cb.stmt('uint4 data')
+        cb.stmt('const uint32_t* b_ptr = reinterpret_cast<const uint32_t*>(&b[i * 16 + l * N_padded * K_half])')
+        cb.asm_raw(['ld.global.cg.v4.u32 {%0, %1, %2, %3}, [%4];'], outputs=[('=r', 'data.x'), ('=r', 'data.y'), ('=r', 'data.z'), ('=r', 'data.w')], inputs=[('l', 'b_ptr')], clobbers=[])
+        cb.stmt('*reinterpret_cast<uint4*>(&sb[l * K_half + i * 16]) = data')
+    cb.for_end()
+    cb.if_end()
+    cb.comment('Cooperatively load scale factors for B with vectorization')
+    cb.comment('sfb elements are fp8 (1 byte each), vectorize with uint4 (16 bytes)')
+    cb.if_begin('!SmallK', constexpr=True)
+        cb.comment('Large K (SmallK=false): nested loops with vectorized loads')
+        cb.stmt('int num_sfb_vec4 = K_div_16 / 16')
+        cb.comment('K_div_16 is divisible by 16 for all test cases')
+        cb.for_begin('int l = 0', 'l < L', 'l++')
+        cb.for_begin('int i = tid', 'i < num_sfb_vec4', 'i += blockDim.x')
+        cb.stmt('uint4 data')
+        cb.stmt('const uint32_t* sfb_ptr = reinterpret_cast<const uint32_t*>(&sfb[i * 16 + l * N_padded * K_div_16])')
+        cb.asm_raw(['ld.global.cg.v4.u32 {%0, %1, %2, %3}, [%4];'], outputs=[('=r', 'data.x'), ('=r', 'data.y'), ('=r', 'data.z'), ('=r', 'data.w')], inputs=[('l', 'sfb_ptr')], clobbers=[])
+        cb.stmt('*reinterpret_cast<uint4*>(&ssfb[l * K_div_16 + i * 16]) = data')
+    cb.for_end()
+    cb.for_end()
+    cb.else_begin()
+        cb.comment('Small K (SmallK=true): flat loops with vectorized loads')
+        cb.stmt('int num_sfb_vec4 = K_div_16 / 16')
+        cb.for_begin('int li = tid', 'li < num_sfb_vec4 * L', 'li += blockDim.x')
+        cb.stmt('int i = li / L')
+        cb.stmt('int l = li % L')
+        cb.stmt('uint4 data')
+        cb.stmt('const uint32_t* sfb_ptr = reinterpret_cast<const uint32_t*>(&sfb[i * 16 + l * N_padded * K_div_16])')
+        cb.asm_raw(['ld.global.cg.v4.u32 {%0, %1, %2, %3}, [%4];'], outputs=[('=r', 'data.x'), ('=r', 'data.y'), ('=r', 'data.z'), ('=r', 'data.w')], inputs=[('l', 'sfb_ptr')], clobbers=[])
+        cb.stmt('*reinterpret_cast<uint4*>(&ssfb[l * K_div_16 + i * 16]) = data')
+    cb.for_end()
+    cb.if_end()
+    cb.stmt('__syncthreads()')
+    cb.comment('Parallelize across L dimension with LPerWarp warps handling multiple L batches')
+    cb.stmt('const int WARPS_PER_BLOCK = blockDim.x / 32')
+    cb.stmt('const int WARPS_PER_M_ROW = L / LPerWarp')
+    cb.comment('Fewer warps when each handles multiple L')
+    cb.stmt('const int M_ROWS_PER_BLOCK = WARPS_PER_BLOCK / WARPS_PER_M_ROW')
+    cb.stmt('int m_base = blockIdx.x * M_ROWS_PER_BLOCK')
+    cb.comment('Which M row and which L batch group?')
+    cb.stmt('int m_local = warp_id / WARPS_PER_M_ROW')
+    cb.stmt('int l_group = warp_id % WARPS_PER_M_ROW')
+    cb.stmt('int m = m_base + m_local')
+    cb.if_begin('m >= M')
+        cb.stmt('return')
+    cb.if_end()
+    cb.comment('Each warp processes LPerWarp consecutive L batches')
+    cb.stmt('int l_base = l_group * LPerWarp')
+    cb.comment('Process LPerWarp L batches per warp')
+    cb.for_begin('int l_offset = 0', 'l_offset < LPerWarp', 'l_offset++')
+        cb.stmt('int l = l_base + l_offset')
+        cb.if_begin('l >= L')
+        cb.stmt('break')
+    cb.if_end()
+        cb.stmt('float sum = 0.0f')
+        cb.comment('K dimension has stride 1, enabling coalesced access')
+        cb.stmt('const int a_base = m * K_half + l * (M * K_half)')
+        cb.stmt('const int sfa_base = m * K_div_16 + l * (M * K_div_16)')
+        cb.stmt('const uint8_t* sb_row = &sb[l * K_half]')
+        cb.stmt('const __nv_fp8_e4m3* ssfb_row = &ssfb[l * K_div_16]')
+        cb.comment('Process 2 scale blocks per iteration for better ILP (16 bytes with uint4)')
+        cb.stmt('int num_scale_pairs = K_div_16 / 2')
+        cb.for_begin('int scale_pair = lane', 'scale_pair < num_scale_pairs', 'scale_pair += 32')
+        cb.stmt('int scale_block_0 = scale_pair * 2')
+        cb.comment('Load A scale factors with cache hint based on K size')
+        cb.stmt('uint16_t sfa_raw')
+        cb.if_begin('SmallK', constexpr=True)
+        cb.comment('Small K: use .cg (L2 cache)')
+        cb.asm_raw(['ld.global.cg.u16 %0, [%1];'], outputs=[('=h', 'sfa_raw')], inputs=[('l', '&sfa[sfa_base + scale_block_0]')], clobbers=[])
+    cb.else_begin()
+        cb.comment('Large K: use .cs (streaming)')
+        cb.asm_raw(['ld.global.cs.u16 %0, [%1];'], outputs=[('=h', 'sfa_raw')], inputs=[('l', '&sfa[sfa_base + scale_block_0]')], clobbers=[])
+    cb.if_end()
+        cb.stmt('__nv_fp8x2_e4m3 scale_a_pair = *reinterpret_cast<__nv_fp8x2_e4m3*>(&sfa_raw)')
+        cb.stmt('__nv_fp8x2_e4m3 scale_b_pair = *reinterpret_cast<const __nv_fp8x2_e4m3*>(&ssfb_row[scale_block_0])')
+        cb.comment('Direct conversion to half2 and SIMD multiplication (compute both scales at once!)')
+        cb.stmt('__half2 scales_a = static_cast<__half2>(scale_a_pair)')
+        cb.stmt('__half2 scales_b = static_cast<__half2>(scale_b_pair)')
+        cb.stmt('__half2 combined_scales = __hmul2(scales_a, scales_b)')
+        cb.comment('SIMD: both scales in one instruction')
+        cb.comment('Broadcast each scale to half2 for use in compute loop')
+        cb.stmt('__half2 scale2_0 = __half2half2(combined_scales.x)')
+        cb.stmt('__half2 scale2_1 = __half2half2(combined_scales.y)')
+        cb.comment('Load 16 bytes at once using uint4')
+        cb.stmt('int k_byte_base = scale_block_0 * 8')
+        cb.comment('A matrix: use .cs streaming hint (pure streaming access, no reuse)')
+        cb.stmt('uint4 a_data')
+        cb.stmt('const uint32_t* a_ptr = reinterpret_cast<const uint32_t*>(&a[a_base + k_byte_base])')
+        cb.asm_raw(['ld.global.cs.v4.u32 {%0, %1, %2, %3}, [%4];'], outputs=[('=r', 'a_data.x'), ('=r', 'a_data.y'), ('=r', 'a_data.z'), ('=r', 'a_data.w')], inputs=[('l', 'a_ptr')], clobbers=[])
+        cb.comment('B from shared memory: contiguous access')
+        cb.stmt('const uint4 b_data = *reinterpret_cast<const uint4*>(&sb_row[k_byte_base])')
+        cb.stmt('const __nv_fp4x2_storage_t* a_fp4x2 = reinterpret_cast<const __nv_fp4x2_storage_t*>(&a_data)')
+        cb.stmt('const __nv_fp4x2_storage_t* b_fp4x2 = reinterpret_cast<const __nv_fp4x2_storage_t*>(&b_data)')
+        cb.comment('Process first 8 bytes with scale_0 - use FMA for efficiency')
+        cb.stmt('__half2 local_sum_0 = __float2half2_rn(0.0f)')
+        cb.for_begin('int i = 0', 'i < 8', 'i++', unroll=True)
+        cb.stmt('__half2 a_vals = __nv_cvt_fp4x2_to_halfraw2(a_fp4x2[i], __NV_E2M1)')
+        cb.stmt('__half2 b_vals = __nv_cvt_fp4x2_to_halfraw2(b_fp4x2[i], __NV_E2M1)')
+        cb.stmt('__half2 product = __hmul2(a_vals, b_vals)')
+        cb.stmt('local_sum_0 = __hfma2(product, scale2_0, local_sum_0)')
+        cb.comment('FMA: product * scale + sum')
+    cb.for_end()
+        cb.stmt('sum += __half2float(__hadd(local_sum_0.x, local_sum_0.y))')
+        cb.comment('Process second 8 bytes with scale_1 - use FMA for efficiency')
+        cb.stmt('__half2 local_sum_1 = __float2half2_rn(0.0f)')
+        cb.for_begin('int i = 8', 'i < 16', 'i++', unroll=True)
+        cb.stmt('__half2 a_vals = __nv_cvt_fp4x2_to_halfraw2(a_fp4x2[i], __NV_E2M1)')
+        cb.stmt('__half2 b_vals = __nv_cvt_fp4x2_to_halfraw2(b_fp4x2[i], __NV_E2M1)')
+        cb.stmt('__half2 product = __hmul2(a_vals, b_vals)')
+        cb.stmt('local_sum_1 = __hfma2(product, scale2_1, local_sum_1)')
+        cb.comment('FMA: product * scale + sum')
+    cb.for_end()
+        cb.stmt('sum += __half2float(__hadd(local_sum_1.x, local_sum_1.y))')
+    cb.for_end()
+        cb.stmt('sum = warp_reduce_sum(sum)')
+        cb.comment('c_ref has shape [M, 1, L] with strides (1, 1, M) from permute')
+        cb.comment('So c_ref[m, 0, l] is at linear offset: m + l*M')
+        cb.if_begin('lane == 0')
+        cb.stmt('c[m + l * M] = __float2half(sum)')
+    cb.if_end()
+    cb.for_end()
+cb.func_end()
+cb.func_begin("nvfp4_gemv_kernel", TypeRef("void"), params=[Param("a", TypeRef("const uint8_t* __restrict__")), Param("[M", TypeRef("//")), Param("b", TypeRef("K//2] packed FP4 (2 per byte) const uint8_t* __restrict__")), Param("[1", TypeRef("//")), Param("sfa", TypeRef("K//2] packed FP4 const __nv_fp8_e4m3* __restrict__")), Param("[M", TypeRef("//")), Param("sfb", TypeRef("K//16] FP8 scale factors for A const __nv_fp8_e4m3* __restrict__")), Param("[1", TypeRef("//")), Param("c", TypeRef("K//16] FP8 scale factors for B half* __restrict__")), Param("[M", TypeRef("//")), Param("M", TypeRef("1] output FP16 int")), Param("K", TypeRef("int"))], qualifier="__global__")
+    cb.comment('2 warps per M row - gives 8 iterations per thread for better latency hiding')
+    cb.comment('4 M rows per block with 256 threads total (8 warps) for good occupancy')
+    cb.comment('1792 blocks (12.1 per SM) - excellent balance of occupancy and work per thread')
+    cb.stmt('const int WARPS_PER_M_ROW = 2')
+    cb.stmt('const int M_ROWS_PER_BLOCK = 4')
+    cb.comment('Shared memory: B vector, scale factors B, and warp partial sums')
+    cb.stmt('extern __shared__ uint8_t smem[]')
+    cb.stmt('uint8_t* sb = smem')
+    cb.stmt('__nv_fp8_e4m3* ssfb = reinterpret_cast<__nv_fp8_e4m3*>(sb + K/2)')
+    cb.stmt('float* warp_sums = reinterpret_cast<float*>(ssfb + K/16)')
+    cb.stmt('int tid = threadIdx.x')
+    cb.stmt('int warp_id = tid / 32')
+    cb.stmt('int lane = tid % 32')
+    cb.stmt('int K_half = K / 2')
+    cb.stmt('int K_div_16 = K / 16')
+    cb.comment('Cooperatively load B vector into shared memory with streaming cache hint')
+    cb.comment('Use .cs (cache streaming, evict first) since B is loaded once per block')
+    cb.stmt('int num_vec_loads = K_half / 16')
+    cb.for_begin('int i = tid', 'i < num_vec_loads', 'i += blockDim.x')
+        cb.stmt('uint4 data')
+        cb.stmt('const uint32_t* b_ptr = reinterpret_cast<const uint32_t*>(&b[i * 16])')
+        cb.asm_raw(['ld.global.cs.v4.u32 {%0, %1, %2, %3}, [%4];'], outputs=[('=r', 'data.x'), ('=r', 'data.y'), ('=r', 'data.z'), ('=r', 'data.w')], inputs=[('l', 'b_ptr')], clobbers=[])
+        cb.stmt('reinterpret_cast<uint4*>(sb)[i] = data')
+    cb.for_end()
+    cb.comment('Tail loop for B: handles remaining bytes when K_half not divisible by 16')
+    cb.comment('K is always divisible by 64 per task spec, so K_half divisible by 32, usually by 16')
+    cb.comment('This loop is unlikely to execute for valid inputs, commented out for clarity')
+    cb.comment('int vec_bytes = num_vec_loads * 16;')
+    cb.comment('for (int i = tid + vec_bytes; i < K_half; i += blockDim.x) {')
+    cb.comment('unsigned int data;')
+    cb.comment('asm volatile(')
+    cb.stmt('"ld.global.cs.u8 %0, [%1]')
+    cb.raw(""""
+            : "=r"(data)
+            : "l"(&b[i])
+        )
+        //     sb[i] = data;
+        //""")
+cb.func_end()
+cb.comment('Cooperatively load scale factors for B with streaming cache hint')
+cb.raw("""int num_vec_loads_sfb = K_div_16 / 16;
+    for (int i = tid; i < num_vec_loads_sfb; i += blockDim.x) {
+        uint4 data;
+        const uint32_t* sfb_ptr = reinterpret_cast<const uint32_t*>(&sfb[i * 16]);""")
+cb.raw("""asm volatile(
+        "ld.global.cs.v4.u32 {%0, %1, %2, %3}, [%4];"
+        : "=r"(data.x), "=r"(data.y), "=r"(data.z), "=r"(data.w)
+        : "l"(sfb_ptr)
+    )
+        reinterpret_cast<uint4*>(reinterpret_cast<uint8_t*>(ssfb))[i] = data;""")
+cb.raw("""}
+    // Tail loop for sfb: unlikely to execute for valid inputs
+    // int vec_bytes_sfb = num_vec_loads_sfb * 16;
+    // for (int i = tid + vec_bytes_sfb; i < K_div_16; i += blockDim.x) {
+    //     unsigned int data;
+    //     asm volatile(
+        "ld.global.cs.u8 %0, [%1];"
+        : "=r"(data)
+        : "l"(&sfb[i])
+    )
+    //     ssfb[i].__x = data;
+    // }
+
+    __syncthreads();
+
+    // Each block processes 8 M rows
+    int m_base = blockIdx.x * M_ROWS_PER_BLOCK;
+
+    // Which M row and K chunk does this warp handle?
+    int m_local = warp_id / WARPS_PER_M_ROW;
+    int m = m_base + m_local;
+
+    if (m >= M) return;
+
+    int warp_in_m_group = warp_id % WARPS_PER_M_ROW;
+
+    // Process 2 scale blocks per iteration for optimal balance
+    int scale_pairs_per_warp = (K_div_16 / WARPS_PER_M_ROW) / 2;  // 1024 / 4 / 2 = 128 scale pairs per warp
+    int scale_pair_start = warp_in_m_group * scale_pairs_per_warp;
+    int scale_pair_end = scale_pair_start + scale_pairs_per_warp;
+
+    float sum = 0.0f;
+
+    // Loop over scale pairs - each iteration processes 16 bytes (2 scale blocks)
+    // With 4 warps per M row: 128 scale pairs / 32 threads = 4 iterations per thread
+    for (int scale_pair = scale_pair_start + lane; scale_pair < scale_pair_end; scale_pair += 32) {
+        int scale_block_0 = scale_pair * 2;
+
+        // Load scale factors (sfa from global with L2 cache hint, sfb from shared memory)
+        uint16_t sfa_raw;""")
+cb.raw("""asm volatile(
+        "ld.global.cg.u16 %0, [%1];"
+        : "=h"(sfa_raw)
+        : "l"(&sfa[m * K_div_16 + scale_block_0])
+    )
+        __nv_fp8x2_e4m3 scale_a_pair = *reinterpret_cast<__nv_fp8x2_e4m3*>(&sfa_raw);""")
+cb.raw("""__nv_fp8x2_e4m3 scale_b_pair = *reinterpret_cast<const __nv_fp8x2_e4m3*>(&ssfb[scale_block_0]);
+
+        // Convert to half2 and SIMD multiply
+        __half2 scales_a = static_cast<__half2>(scale_a_pair);
+        __half2 scales_b = static_cast<__half2>(scale_b_pair);
+        __half2 combined_scales = __hmul2(scales_a, scales_b);
+
+        // Broadcast each scale to half2
+        __half2 scale2_0 = __half2half2(combined_scales.x);
+        __half2 scale2_1 = __half2half2(combined_scales.y);
+
+        int k_byte_base = scale_block_0 * 8;
+
+        // A matrix: streaming access, use .cg cache hint (L2 only)
+        uint4 a_data;
+        const uint32_t* a_ptr = reinterpret_cast<const uint32_t*>(&a[m * K_half + k_byte_base]);""")
+cb.raw("""asm volatile(
+        "ld.global.cg.v4.u32 {%0, %1, %2, %3}, [%4];"
+        : "=r"(a_data.x), "=r"(a_data.y), "=r"(a_data.z), "=r"(a_data.w)
+        : "l"(a_ptr)
+    )
+
+        // B from shared memory
+        const uint4 b_data = *reinterpret_cast<const uint4*>(&sb[k_byte_base]);""")
+cb.raw("""const __nv_fp4x2_storage_t* a_fp4x2 = reinterpret_cast<const __nv_fp4x2_storage_t*>(&a_data);
+        const __nv_fp4x2_storage_t* b_fp4x2 = reinterpret_cast<const __nv_fp4x2_storage_t*>(&b_data);
+
+        // Process first 8 bytes with scale_0
+        __half2 local_sum_0 = __float2half2_rn(0.0f);""")
+cb.pragma("unroll")
+cb.raw("""for (int i = 0; i < 8; i++) {
+            __half2 a_vals = __nv_cvt_fp4x2_to_halfraw2(a_fp4x2[i], __NV_E2M1);
+            __half2 b_vals = __nv_cvt_fp4x2_to_halfraw2(b_fp4x2[i], __NV_E2M1);
+            __half2 product = __hmul2(a_vals, b_vals);
+            local_sum_0 = __hfma2(product, scale2_0, local_sum_0);
+        }
+
+        // Process second 8 bytes with scale_1
+        __half2 local_sum_1 = __float2half2_rn(0.0f);""")
+cb.pragma("unroll")
+cb.raw("""for (int i = 8; i < 16; i++) {
+            __half2 a_vals = __nv_cvt_fp4x2_to_halfraw2(a_fp4x2[i], __NV_E2M1);
+            __half2 b_vals = __nv_cvt_fp4x2_to_halfraw2(b_fp4x2[i], __NV_E2M1);
+            __half2 product = __hmul2(a_vals, b_vals);
+            local_sum_1 = __hfma2(product, scale2_1, local_sum_1);
+        }
+
+        __half2 combined = __hadd2(local_sum_0, local_sum_1);
+        __half h = __hadd(combined.x, combined.y);
+        sum += __half2float(h);
+    }
+
+    // Intra-warp reduction
+    sum = warp_reduce_sum(sum);
+
+    // Lane 0 of each warp writes its partial sum to shared memory
+    if (lane == 0) {
+        warp_sums[warp_id] = sum;
+    }
+
+    __syncthreads();
+
+    // Final reduction: each of the first M_ROWS_PER_BLOCK threads reduces one M row
+    if (tid < M_ROWS_PER_BLOCK) {
+        int m_write = m_base + tid;
+        if (m_write < M) {
+            // Reduce WARPS_PER_M_ROW partial sums for this M row
+            float final_sum = 0.0f;
+            int warp_start = tid * WARPS_PER_M_ROW;""")
+cb.pragma("unroll")
+cb.raw("""for (int w = 0; w < WARPS_PER_M_ROW; w++) {
+                final_sum += warp_sums[warp_start + w];
+            }
+            c[m_write] = __float2half(final_sum);
+        }
+    }
+}""")
+cb.func_begin("nvfp4_gemv_cuda", TypeRef("void"), params=[Param("a", TypeRef("torch::Tensor")), Param("b", TypeRef("torch::Tensor")), Param("sfa", TypeRef("torch::Tensor")), Param("sfb", TypeRef("torch::Tensor")), Param("c", TypeRef("torch::Tensor")), Param("M", TypeRef("int")), Param("K", TypeRef("int"))])
+    cb.comment('4-way M-dimension split for optimal stream-level parallelism')
+    cb.comment('Strategy: Split M=7168 into 4 chunks of 1792 rows → 448 blocks per kernel')
+    cb.comment('First chunk on default stream (zero allocation overhead)')
+    cb.comment('Remaining 3 on pool streams with explicit sync (no device-wide barrier)')
+    cb.stmt('const int NUM_STREAMS = 4')
+    cb.stmt('const int M_PER_STREAM = (M + NUM_STREAMS - 1) / NUM_STREAMS')
+    cb.comment('1792 for M=7168')
+    cb.stmt('const int WARPS_PER_M_ROW = 2')
+    cb.stmt('const int M_ROWS_PER_BLOCK = 4')
+    cb.stmt('const int WARPS_PER_BLOCK = WARPS_PER_M_ROW * M_ROWS_PER_BLOCK')
+    cb.comment('8')
+    cb.stmt('const int threads = WARPS_PER_BLOCK * 32')
+    cb.comment('256 threads')
+    cb.stmt('const int smem_size = K / 2 + K / 16 + WARPS_PER_BLOCK * sizeof(float)')
+    cb.stmt('const int K_half = K / 2')
+    cb.stmt('const int K_div_16 = K / 16')
+    cb.comment('Get current CUDA stream from PyTorch')
+    cb.stmt('cudaStream_t stream = at::cuda::getCurrentCUDAStream(a.device().index())')
+    cb.comment('Chunk 0: Launch on default stream (no allocation overhead)')
+    cb.block_begin()
+        cb.stmt('int m_start = 0')
+        cb.stmt('int m_count = std::min(M_PER_STREAM, M)')
+        cb.stmt('int blocks_i = (m_count + M_ROWS_PER_BLOCK - 1) / M_ROWS_PER_BLOCK')
+        cb.stmt('nvfp4_gemv_kernel<<<blocks_i, threads, smem_size, stream>>>(\n            a.data_ptr<uint8_t>(),\n            b.data_ptr<uint8_t>(),\n            reinterpret_cast<const __nv_fp8_e4m3*>(sfa.data_ptr<at::Float8_e4m3fn>()),\n            reinterpret_cast<const __nv_fp8_e4m3*>(sfb.data_ptr<at::Float8_e4m3fn>()),\n            reinterpret_cast<half*>(c.data_ptr<at::Half>()),\n            m_count,\n            K\n        )')
+    cb.block_end()
+    cb.comment('Chunk 1: Pool stream')
+    cb.stmt('c10::cuda::CUDAStream stream1 = c10::cuda::getStreamFromPool(false, a.device().index())')
+    cb.block_begin()
+        cb.stmt('int m_start = M_PER_STREAM')
+        cb.stmt('int m_count = std::min(M_PER_STREAM, M - m_start)')
+        cb.stmt('int blocks_i = (m_count + M_ROWS_PER_BLOCK - 1) / M_ROWS_PER_BLOCK')
+        cb.stmt('nvfp4_gemv_kernel<<<blocks_i, threads, smem_size, stream1.stream()>>>(\n            a.data_ptr<uint8_t>() + m_start * K_half,\n            b.data_ptr<uint8_t>(),\n            reinterpret_cast<const __nv_fp8_e4m3*>(sfa.data_ptr<at::Float8_e4m3fn>()) + m_start * K_div_16,\n            reinterpret_cast<const __nv_fp8_e4m3*>(sfb.data_ptr<at::Float8_e4m3fn>()),\n            reinterpret_cast<half*>(c.data_ptr<at::Half>()) + m_start,\n            m_count,\n            K\n        )')
+    cb.block_end()
+    cb.comment('Chunk 2: Pool stream')
+    cb.stmt('c10::cuda::CUDAStream stream2 = c10::cuda::getStreamFromPool(false, a.device().index())')
+    cb.block_begin()
+        cb.stmt('int m_start = 2 * M_PER_STREAM')
+        cb.stmt('int m_count = std::min(M_PER_STREAM, M - m_start)')
+        cb.stmt('int blocks_i = (m_count + M_ROWS_PER_BLOCK - 1) / M_ROWS_PER_BLOCK')
+        cb.stmt('nvfp4_gemv_kernel<<<blocks_i, threads, smem_size, stream2.stream()>>>(\n            a.data_ptr<uint8_t>() + m_start * K_half,\n            b.data_ptr<uint8_t>(),\n            reinterpret_cast<const __nv_fp8_e4m3*>(sfa.data_ptr<at::Float8_e4m3fn>()) + m_start * K_div_16,\n            reinterpret_cast<const __nv_fp8_e4m3*>(sfb.data_ptr<at::Float8_e4m3fn>()),\n            reinterpret_cast<half*>(c.data_ptr<at::Half>()) + m_start,\n            m_count,\n            K\n        )')
+    cb.block_end()
+    cb.comment('Chunk 3: Pool stream')
+    cb.stmt('c10::cuda::CUDAStream stream3 = c10::cuda::getStreamFromPool(false, a.device().index())')
+    cb.block_begin()
+        cb.stmt('int m_start = 3 * M_PER_STREAM')
+        cb.stmt('int m_count = std::min(M_PER_STREAM, M - m_start)')
+        cb.stmt('int blocks_i = (m_count + M_ROWS_PER_BLOCK - 1) / M_ROWS_PER_BLOCK')
+        cb.stmt('nvfp4_gemv_kernel<<<blocks_i, threads, smem_size, stream3.stream()>>>(\n            a.data_ptr<uint8_t>() + m_start * K_half,\n            b.data_ptr<uint8_t>(),\n            reinterpret_cast<const __nv_fp8_e4m3*>(sfa.data_ptr<at::Float8_e4m3fn>()) + m_start * K_div_16,\n            reinterpret_cast<const __nv_fp8_e4m3*>(sfb.data_ptr<at::Float8_e4m3fn>()),\n            reinterpret_cast<half*>(c.data_ptr<at::Half>()) + m_start,\n            m_count,\n            K\n        )')
+    cb.block_end()
+    cb.comment('Sync pool streams explicitly (default stream synced by benchmark system)')
+    cb.stmt('stream1.synchronize()')
+    cb.stmt('stream2.synchronize()')
+    cb.stmt('stream3.synchronize()')
+    cb.comment('Check for kernel launch errors')
+    cb.stmt('AT_CUDA_CHECK(cudaGetLastError())')
+cb.func_end()
+cb.func_begin("nvfp4_gemv_batched_cuda", TypeRef("void"), params=[Param("a", TypeRef("torch::Tensor")), Param("b", TypeRef("torch::Tensor")), Param("sfa", TypeRef("torch::Tensor")), Param("sfb", TypeRef("torch::Tensor")), Param("c", TypeRef("torch::Tensor")), Param("M", TypeRef("int")), Param("K", TypeRef("int")), Param("L", TypeRef("int"))])
+    cb.stmt('const int WARPS_PER_BLOCK = 32')
+    cb.stmt('const int threads = WARPS_PER_BLOCK * 32')
+    cb.comment('1024 threads')
+    cb.comment('Get current CUDA stream from PyTorch')
+    cb.stmt('cudaStream_t stream = at::cuda::getCurrentCUDAStream(a.device().index())')
+    cb.stmt('const int K_half = K / 2')
+    cb.stmt('const int K_div_16 = K / 16')
+    cb.stmt('const int smem_size = L * K_half + L * K_div_16')
+    cb.comment('Dispatch based on L to optimize LPerWarp for ILP and shared memory amortization')
+    cb.if_begin('L == 8')
+        cb.comment('L=8: Split into two L=4 kernel launches on different streams for concurrent execution')
+        cb.comment('Each L=4: 256 blocks, 14KB shared memory (vs single L=8: 512 blocks, 28KB)')
+        cb.comment("Different streams enable partial overlap when first kernel's blocks complete")
+        cb.stmt('const int L_split = 4')
+        cb.stmt('const int L_PER_WARP = 2')
+        cb.stmt('const int WARPS_PER_M_ROW = L_split / L_PER_WARP')
+        cb.comment('2')
+        cb.stmt('const int M_ROWS_PER_BLOCK = WARPS_PER_BLOCK / WARPS_PER_M_ROW')
+        cb.comment('16')
+        cb.stmt('const int blocks = (M + M_ROWS_PER_BLOCK - 1) / M_ROWS_PER_BLOCK')
+        cb.stmt('const int smem_size_l4 = L_split * K_half + L_split * K_div_16')
+        cb.comment("Get second stream from PyTorch's stream pool for concurrent execution")
+        cb.stmt('c10::cuda::CUDAStream stream2 = c10::cuda::getStreamFromPool(false, a.device().index())')
+        cb.comment('Compute pointer offsets for second L=4 batch (l=4..7)')
+        cb.stmt('const int N_padded = 128')
+        cb.stmt('const size_t a_offset = L_split * M * K_half')
+        cb.stmt('const size_t b_offset = L_split * N_padded * K_half')
+        cb.stmt('const size_t sfa_offset = L_split * M * K_div_16')
+        cb.stmt('const size_t sfb_offset = L_split * N_padded * K_div_16')
+        cb.stmt('const size_t c_offset = L_split * M')
+        cb.comment('Launch both kernels on different streams (can overlap execution)')
+        cb.comment('First L=4 batch (l=0..3) on original stream (L=8 has large K, SmallK=false)')
+        cb.stmt('nvfp4_gemv_batched_kernel<false, 2><<<blocks, threads, smem_size_l4, stream>>>(\n            a.data_ptr<uint8_t>(),\n            b.data_ptr<uint8_t>(),\n            reinterpret_cast<const __nv_fp8_e4m3*>(sfa.data_ptr<at::Float8_e4m3fn>()),\n            reinterpret_cast<const __nv_fp8_e4m3*>(sfb.data_ptr<at::Float8_e4m3fn>()),\n            reinterpret_cast<half*>(c.data_ptr<at::Half>()),\n            M, K, L_split)')
+        cb.comment('Second L=4 batch (l=4..7) on second stream (L=8 has large K, SmallK=false)')
+        cb.stmt('nvfp4_gemv_batched_kernel<false, 2><<<blocks, threads, smem_size_l4, stream2.stream()>>>(\n            a.data_ptr<uint8_t>() + a_offset,\n            b.data_ptr<uint8_t>() + b_offset,\n            reinterpret_cast<const __nv_fp8_e4m3*>(sfa.data_ptr<at::Float8_e4m3fn>()) + sfa_offset,\n            reinterpret_cast<const __nv_fp8_e4m3*>(sfb.data_ptr<at::Float8_e4m3fn>()) + sfb_offset,\n            reinterpret_cast<half*>(c.data_ptr<at::Half>()) + c_offset,\n            M, K, L_split)')
+        cb.comment('Sync secondary stream (default stream synced by benchmark system)')
+        cb.stmt('stream2.synchronize()')
+    cb.else_begin()
+        cb.if_begin('L == 4')
+        cb.comment('L=4: Split into two L=2 kernel launches for higher occupancy')
+        cb.comment('256 threads (8 warps) per block maximizes occupancy with small shared memory footprint')
+        cb.comment('Each L=2: 896 blocks, total 1792 blocks for excellent SM utilization')
+        cb.stmt('const int L_split = 2')
+        cb.stmt('const int threads_l2 = 256')
+        cb.comment('8 warps - maximize occupancy')
+        cb.stmt('const int WARPS_PER_BLOCK_L2 = threads_l2 / 32')
+        cb.stmt('const int L_PER_WARP = 2')
+        cb.stmt('const int WARPS_PER_M_ROW = L_split / L_PER_WARP')
+        cb.comment('1')
+        cb.stmt('const int M_ROWS_PER_BLOCK = WARPS_PER_BLOCK_L2 / WARPS_PER_M_ROW')
+        cb.comment('8')
+        cb.stmt('const int blocks = (M + M_ROWS_PER_BLOCK - 1) / M_ROWS_PER_BLOCK')
+        cb.stmt('const int smem_size_l2 = L_split * K_half + L_split * K_div_16')
+        cb.comment("Get second stream from PyTorch's stream pool for concurrent execution")
+        cb.stmt('c10::cuda::CUDAStream stream2 = c10::cuda::getStreamFromPool(false, a.device().index())')
+        cb.comment('Compute pointer offsets for second L=2 batch (l=2..3)')
+        cb.stmt('const int N_padded = 128')
+        cb.stmt('const size_t a_offset = L_split * M * K_half')
+        cb.stmt('const size_t b_offset = L_split * N_padded * K_half')
+        cb.stmt('const size_t sfa_offset = L_split * M * K_div_16')
+        cb.stmt('const size_t sfb_offset = L_split * N_padded * K_div_16')
+        cb.stmt('const size_t c_offset = L_split * M')
+        cb.comment('Launch both kernels on different streams (L=4 has small K, SmallK=true)')
+        cb.comment('First L=2 batch (l=0..1) on original stream')
+        cb.stmt('nvfp4_gemv_batched_kernel<true, 2><<<blocks, threads_l2, smem_size_l2, stream>>>(\n            a.data_ptr<uint8_t>(),\n            b.data_ptr<uint8_t>(),\n            reinterpret_cast<const __nv_fp8_e4m3*>(sfa.data_ptr<at::Float8_e4m3fn>()),\n            reinterpret_cast<const __nv_fp8_e4m3*>(sfb.data_ptr<at::Float8_e4m3fn>()),\n            reinterpret_cast<half*>(c.data_ptr<at::Half>()),\n            M, K, L_split)')
+        cb.comment('Second L=2 batch (l=2..3) on second stream (L=4 has small K, SmallK=true)')
+        cb.stmt('nvfp4_gemv_batched_kernel<true, 2><<<blocks, threads_l2, smem_size_l2, stream2.stream()>>>(\n            a.data_ptr<uint8_t>() + a_offset,\n            b.data_ptr<uint8_t>() + b_offset,\n            reinterpret_cast<const __nv_fp8_e4m3*>(sfa.data_ptr<at::Float8_e4m3fn>()) + sfa_offset,\n            reinterpret_cast<const __nv_fp8_e4m3*>(sfb.data_ptr<at::Float8_e4m3fn>()) + sfb_offset,\n            reinterpret_cast<half*>(c.data_ptr<at::Half>()) + c_offset,\n            M, K, L_split)')
+        cb.comment('Sync secondary stream (default stream synced by benchmark system)')
+        cb.stmt('stream2.synchronize()')
+    cb.else_begin()
+        cb.comment('Default: 1 L per warp (assume large K, SmallK=false)')
+        cb.stmt('const int WARPS_PER_M_ROW = L')
+        cb.stmt('const int M_ROWS_PER_BLOCK = WARPS_PER_BLOCK / WARPS_PER_M_ROW')
+        cb.stmt('const int blocks = (M + M_ROWS_PER_BLOCK - 1) / M_ROWS_PER_BLOCK')
+        cb.stmt('nvfp4_gemv_batched_kernel<false, 1><<<blocks, threads, smem_size, stream>>>(\n            a.data_ptr<uint8_t>(), b.data_ptr<uint8_t>(),\n            reinterpret_cast<const __nv_fp8_e4m3*>(sfa.data_ptr<at::Float8_e4m3fn>()),\n            reinterpret_cast<const __nv_fp8_e4m3*>(sfb.data_ptr<at::Float8_e4m3fn>()),\n            reinterpret_cast<half*>(c.data_ptr<at::Half>()), M, K, L)')
+    cb.if_end()
+    cb.if_end()
+    cb.comment('Check for kernel launch errors')
+    cb.stmt('AT_CUDA_CHECK(cudaGetLastError())')
+cb.func_end()
+cb.comment('Dispatch function - handles L=1 and batched L cases')
+cb.func_begin("nvfp4_gemv_dispatch_cuda", TypeRef("void"), params=[Param("a_ref", TypeRef("torch::Tensor")), Param("[M", TypeRef("//")), Param("K//2", TypeRef("void")), Param("b_ref", TypeRef("L] FP4 torch::Tensor")), Param("[128", TypeRef("//")), Param("K//2", TypeRef("void")), Param("sfa", TypeRef("L] FP4 torch::Tensor")), Param("[M", TypeRef("//")), Param("K//16", TypeRef("void")), Param("sfb", TypeRef("L] FP8 torch::Tensor")), Param("[128", TypeRef("//")), Param("K//16", TypeRef("void")), Param("[M", TypeRef("L] FP8 torch::Tensor c_ref //")), Param("1", TypeRef("void")), Param("FP16", TypeRef("L]"))])
+    cb.stmt('int M = a_ref.size(0)')
+    cb.stmt('int K_half = a_ref.size(1)')
+    cb.stmt('int L = a_ref.size(2)')
+    cb.stmt('int K = K_half * 2')
+    cb.if_begin('L == 1')
+        cb.comment('L=1 uses specialized kernel optimized for single batch')
+        cb.comment('Extract the L=1 slices and call the specialized kernel')
+        cb.stmt('auto a_slice = a_ref.index({torch::indexing::Slice(), torch::indexing::Slice(), 0})')
+        cb.stmt('auto b_slice = b_ref.index({0, torch::indexing::Slice(), 0})')
+        cb.stmt('auto sfa_slice = sfa.index({torch::indexing::Slice(), torch::indexing::Slice(), 0})')
+        cb.stmt('auto sfb_slice = sfb.index({0, torch::indexing::Slice(), 0})')
+        cb.stmt('auto a_bytes = a_slice.view(torch::kUInt8).contiguous()')
+        cb.stmt('auto b_bytes = b_slice.view(torch::kUInt8).contiguous()')
+        cb.stmt('nvfp4_gemv_cuda(\n            a_bytes, b_bytes,\n            sfa_slice.contiguous(), sfb_slice.contiguous(),\n            c_ref, M, K\n        )')
+    cb.else_begin()
+        cb.comment('L > 1 uses batched kernel with optimized dispatch for different L values')
+        cb.stmt('auto a_bytes = a_ref.view(torch::kUInt8)')
+        cb.stmt('auto b_bytes = b_ref.view(torch::kUInt8)')
+        cb.stmt('nvfp4_gemv_batched_cuda(\n            a_bytes, b_bytes, sfa, sfb, c_ref,\n            M, K, L\n        )')
+    cb.if_end()
+cb.func_end()
+
+cuda_source = cb.build()

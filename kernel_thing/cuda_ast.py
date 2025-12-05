@@ -769,6 +769,27 @@ class While(CudaNode):
         return "\n".join(lines)
 
 
+@dataclass
+class Block(CudaNode):
+    """Standalone scoped block { ... }"""
+    body: List[CudaNode] = field(default_factory=list)
+
+    def emit(self) -> str:
+        lines = ["{"]
+        for node in self.body:
+            for line in node.emit().split('\n'):
+                lines.append(f"    {line}")
+        lines.append("}")
+        return "\n".join(lines)
+
+    def to_builder(self) -> str:
+        lines = ['cb.block_begin()']
+        for node in self.body:
+            lines.append(f"    {node.to_builder()}")
+        lines.append('cb.block_end()')
+        return "\n".join(lines)
+
+
 # =============================================================================
 # INLINE ASM (connects to PTX AST)
 # =============================================================================
@@ -1039,13 +1060,19 @@ class CudaParser:
         if self._match(r'(struct|class)\s+\w+'):
             return self._parse_struct()
 
-        # Static constexpr
-        if self._match(r'static\s+constexpr\s+'):
+        # Static constexpr variable or constexpr function
+        # Check if it's a constexpr variable (has = or []) or function (has ())
+        if self._match(r'(?:static\s+)?constexpr\s+\w+\s+\w+\s*(?:\[\s*\])?\s*='):
+            # It's a constexpr variable or array
             return self._parse_constexpr()
 
-        # Function (device/global/host/regular)
-        if self._match(r'(__device__|__global__|__host__|static|inline|__forceinline__|[a-zA-Z_]\w*(?:\s*::\s*\w+)*\s+\w+\s*\()'):
+        # Function (device/global/host/regular/constexpr)
+        if self._match(r'(__device__|__global__|__host__|static|inline|__forceinline__|constexpr|[a-zA-Z_]\w*(?:\s*::\s*\w+)*\s+\w+\s*\()'):
             return self._parse_function_or_decl()
+
+        # Macro blocks like TORCH_LIBRARY(name, m) { ... }
+        if self._match(r'[A-Z_][A-Z0-9_]*\s*\([^)]*\)\s*\{'):
+            return self._parse_macro_block()
 
         # Using statement at top level
         if self._match(r'using\s+\w+'):
@@ -1272,16 +1299,73 @@ class CudaParser:
         return UsingDecl(name="", type_expr="")
 
     def _parse_constexpr(self) -> Constexpr:
-        """Parse static constexpr declaration."""
-        m = self._consume_match(r'static\s+constexpr\s+(\w+)\s+(\w+)\s*=\s*([^;]+);')
-        if m:
-            return Constexpr(
-                name=m.group(2),
-                type=TypeRef(name=m.group(1)),
-                value=m.group(3).strip(),
-                storage=StorageClass.STATIC
-            )
-        return Constexpr(name="", type=TypeRef(name=""), value="")
+        """Parse [static] constexpr declaration, including arrays."""
+        start = self.pos
+
+        # Parse storage and constexpr keyword
+        storage = StorageClass.NONE
+        if self._match(r'static\s+'):
+            self._consume_match(r'static\s+')
+            storage = StorageClass.STATIC
+        self._consume_match(r'constexpr\s+')
+
+        # Parse type name
+        m = self._match(r'(\w+)\s+(\w+)\s*(\[\s*\])?\s*=')
+        if not m:
+            return self._read_until_semicolon_as_raw(start)
+
+        type_str = m.group(1)
+        name = m.group(2)
+        is_array = bool(m.group(3))
+        self.pos += m.end()
+
+        # Parse value - could be simple value or { ... } initializer
+        self._skip_whitespace()
+        if self._peek(1) == '{':
+            # Array initializer - read until matching }
+            value = self._parse_balanced_braces()
+        else:
+            # Simple value - read until ;
+            end = self.source.find(';', self.pos)
+            if end == -1:
+                end = len(self.source)
+            value = self.source[self.pos:end].strip()
+            self.pos = end
+
+        # Skip semicolon
+        if self.pos < len(self.source) and self.source[self.pos] == ';':
+            self.pos += 1
+
+        return Constexpr(
+            name=name,
+            type=TypeRef(name=type_str + ("[]" if is_array else "")),
+            value=value,
+            storage=storage
+        )
+
+    def _parse_macro_block(self) -> Function:
+        """Parse macro blocks like TORCH_LIBRARY(name, m) { ... }"""
+        start = self.pos
+
+        # Match: MACRO_NAME(args) {
+        m = self._consume_match(r'([A-Z_][A-Z0-9_]*)\s*\(([^)]*)\)\s*\{')
+        if not m:
+            return self._read_until_brace_or_semicolon_as_raw(start)
+
+        macro_name = m.group(1)
+        args = m.group(2).strip()
+
+        # Parse the body
+        body = self._parse_function_body()
+
+        # Return as a function-like node
+        return Function(
+            name=macro_name,
+            return_type=TypeRef(name=""),
+            params=[Parameter(name=args, type=TypeRef(name=""))],
+            body=body,
+            qualifier=FunctionQualifier.NONE
+        )
 
     def _parse_template_decl(self) -> CudaNode:
         """Parse template<...> followed by struct/class/function."""
@@ -1341,6 +1425,9 @@ class CudaParser:
             elif self._match(r'static\s+'):
                 self._consume_match(r'static\s+')
                 storage = StorageClass.STATIC
+            elif self._match(r'constexpr\s+'):
+                self._consume_match(r'constexpr\s+')
+                storage = StorageClass.CONSTEXPR
             elif self._match(r'__launch_bounds__\s*\('):
                 lb = self._parse_launch_bounds()
                 if lb:
@@ -1589,9 +1676,10 @@ class CudaParser:
                 continue
 
             if c == '{':
-                depth += 1
-                body.append(RawCode(text='{'))
+                # Standalone scoped block - _parse_block_body handles depth internally
                 self.pos += 1
+                inner_body = self._parse_block_body()
+                body.append(Block(body=inner_body))
                 continue
 
             # Comment
@@ -1996,6 +2084,25 @@ class CudaParser:
                     result = self.source[start:self.pos]
                     self.pos += 1
                     return result
+            self.pos += 1
+
+        return self.source[start:self.pos]
+
+    def _parse_balanced_braces(self) -> str:
+        """Parse content inside { ... } including the braces."""
+        if self._peek(1) != '{':
+            return ""
+
+        start = self.pos
+        self.pos += 1  # skip opening {
+        depth = 1
+
+        while self.pos < len(self.source) and depth > 0:
+            c = self.source[self.pos]
+            if c == '{':
+                depth += 1
+            elif c == '}':
+                depth -= 1
             self.pos += 1
 
         return self.source[start:self.pos]
