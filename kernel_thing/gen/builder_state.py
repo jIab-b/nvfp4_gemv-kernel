@@ -17,11 +17,11 @@ from enum import IntEnum
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from cuda_ast import (
+from exec.cuda_ast import (
     CudaNode, CudaModule, Function, Struct, If, For, While, Block,
     Parameter, StructField, InlineAsm
 )
-from ptx_ast import (
+from exec.ptx_ast import (
     PTXModule, Instruction, Directive, Label, RegisterDecl, SharedDecl,
     Statement as PTXStatement
 )

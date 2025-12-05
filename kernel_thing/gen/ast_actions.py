@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from cuda_ast import (
+from exec.cuda_ast import (
     CudaNode, CudaModule, Include, Define, Pragma, Comment, RawCode, BlankLine,
     TypeRef, Variable, Parameter, StructField, UsingDecl, Struct,
     LaunchBounds, FunctionDecl, Function, Statement, VarDecl, Return,

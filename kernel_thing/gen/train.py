@@ -107,10 +107,10 @@ class Trainer:
         # Import exec modules
         from exec.compile import compile_source, get_sm_version
         from exec.run import load_and_run
-        from exec.bench import benchmark_kernel
+        from exec.bench import benchmark_kernel_source
         self.compile_source = compile_source
         self.load_and_run = load_and_run
-        self.benchmark_kernel = benchmark_kernel
+        self.benchmark_kernel_source = benchmark_kernel_source
         self.sm = get_sm_version()
 
         # Output dirs

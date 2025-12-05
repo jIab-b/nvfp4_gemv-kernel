@@ -1,5 +1,0 @@
-## 6.3. Destination Operands 
-
-PTX instructions that produce a single result store the result in the field denoted by `d` (for
-destination) in the instruction descriptions. The result operand is a scalar or vector variable in
-the register state space.

@@ -270,20 +270,22 @@ class PolicyNetwork(nn.Module):
         encoding = state.encode_state()
         in_ptx_mode = encoding["in_ptx_mode"]
 
-        with torch.no_grad():
-            cuda_logits, ptx_logits, cuda_val_logits, ptx_val_logits, value, new_hidden = \
-                self.forward(encoding, hidden)
+        # Forward pass WITH gradients for log_prob computation
+        cuda_logits, ptx_logits, cuda_val_logits, ptx_val_logits, value, new_hidden = \
+            self.forward(encoding, hidden)
 
         if in_ptx_mode:
             # Sample PTX node type
             logits = ptx_logits
             if temperature == 0:
-                type_idx = logits.argmax(dim=-1)
+                type_idx = logits.argmax(dim=-1).detach()
             else:
-                probs = F.softmax(logits / temperature, dim=-1)
-                type_idx = torch.multinomial(probs, 1).squeeze(-1)
+                with torch.no_grad():
+                    probs = F.softmax(logits / temperature, dim=-1)
+                    type_idx = torch.multinomial(probs, 1).squeeze(-1)
 
             node_type = PTXNodeType(type_idx.item())
+            # Log prob WITH gradient
             log_probs = F.log_softmax(logits, dim=-1)
             type_log_prob = log_probs[0, type_idx]
 
@@ -297,12 +299,14 @@ class PolicyNetwork(nn.Module):
             # Sample CUDA node type
             logits = cuda_logits
             if temperature == 0:
-                type_idx = logits.argmax(dim=-1)
+                type_idx = logits.argmax(dim=-1).detach()
             else:
-                probs = F.softmax(logits / temperature, dim=-1)
-                type_idx = torch.multinomial(probs, 1).squeeze(-1)
+                with torch.no_grad():
+                    probs = F.softmax(logits / temperature, dim=-1)
+                    type_idx = torch.multinomial(probs, 1).squeeze(-1)
 
             node_type = NodeType(type_idx.item())
+            # Log prob WITH gradient
             log_probs = F.log_softmax(logits, dim=-1)
             type_log_prob = log_probs[0, type_idx]
 
@@ -323,7 +327,8 @@ class PolicyNetwork(nn.Module):
     ) -> Tuple[Dict[str, Any], torch.Tensor]:
         """Sample values for a CUDA node type."""
         values = {}
-        total_log_prob = torch.tensor(0.0, device=next(self.parameters()).device)
+        device = next(self.parameters()).device
+        log_probs_list = []
 
         for val_name, val_type in zip(spec.value_names, spec.value_types):
             if val_type == ValueType.NONE:
@@ -332,15 +337,22 @@ class PolicyNetwork(nn.Module):
             logits = value_logits[val_type.name]
 
             if temperature == 0:
-                val_idx = logits.argmax(dim=-1)
+                val_idx = logits.argmax(dim=-1).detach()
             else:
-                probs = F.softmax(logits / temperature, dim=-1)
-                val_idx = torch.multinomial(probs, 1).squeeze(-1)
+                with torch.no_grad():
+                    probs = F.softmax(logits / temperature, dim=-1)
+                    val_idx = torch.multinomial(probs, 1).squeeze(-1)
 
+            # Log prob WITH gradient
             val_log_probs = F.log_softmax(logits, dim=-1)
-            total_log_prob = total_log_prob + val_log_probs[0, val_idx]
+            log_probs_list.append(val_log_probs[0, val_idx])
 
             values[val_name] = self._decode_cuda_value(val_type, val_idx.item())
+
+        if log_probs_list:
+            total_log_prob = torch.stack(log_probs_list).sum()
+        else:
+            total_log_prob = torch.tensor(0.0, device=device, requires_grad=True)
 
         return values, total_log_prob
 
@@ -352,7 +364,8 @@ class PolicyNetwork(nn.Module):
     ) -> Tuple[Dict[str, Any], torch.Tensor]:
         """Sample values for a PTX node type."""
         values = {}
-        total_log_prob = torch.tensor(0.0, device=next(self.parameters()).device)
+        device = next(self.parameters()).device
+        log_probs_list = []
 
         for op in spec.operands:
             val_type = op.value_type
@@ -364,15 +377,22 @@ class PolicyNetwork(nn.Module):
             logits = value_logits[val_type.name]
 
             if temperature == 0:
-                val_idx = logits.argmax(dim=-1)
+                val_idx = logits.argmax(dim=-1).detach()
             else:
-                probs = F.softmax(logits / temperature, dim=-1)
-                val_idx = torch.multinomial(probs, 1).squeeze(-1)
+                with torch.no_grad():
+                    probs = F.softmax(logits / temperature, dim=-1)
+                    val_idx = torch.multinomial(probs, 1).squeeze(-1)
 
+            # Log prob WITH gradient
             val_log_probs = F.log_softmax(logits, dim=-1)
-            total_log_prob = total_log_prob + val_log_probs[0, val_idx]
+            log_probs_list.append(val_log_probs[0, val_idx])
 
             values[val_name] = self._decode_ptx_value(val_type, val_idx.item())
+
+        if log_probs_list:
+            total_log_prob = torch.stack(log_probs_list).sum()
+        else:
+            total_log_prob = torch.tensor(0.0, device=device, requires_grad=True)
 
         return values, total_log_prob
 

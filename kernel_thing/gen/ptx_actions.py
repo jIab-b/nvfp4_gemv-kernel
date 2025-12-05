@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from ptx_ast import (
+from exec.ptx_ast import (
     Instruction, Directive, Label, RegisterDecl, SharedDecl,
     RegisterOp, ImmediateOp, VectorOp, MemoryOp, SymbolOp,
     Operand
