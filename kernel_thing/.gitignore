@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.claude/
+.compile_cache/
+compiled_success/
+success_bench/
